@@ -1,0 +1,33 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Playfair Display", serif;
+  
+  --color-bg: #07090f;
+  --color-surface: #0d1120;
+  --color-surface2: #111827;
+  --color-border: #1e2d4a;
+  --color-border2: #243252;
+  --color-gold: #f5c842;
+  --color-gold2: #d4a017;
+  --color-gold3: #fff0a0;
+  --color-blue-accent: #2b7fff;
+  --color-blue-accent2: #1a5fd4;
+  --color-green-accent: #1fd97a;
+  --color-red-accent: #ff3f5e;
+  --color-text-main: #eef0f8;
+  --color-muted-main: #6b7a9e;
+  --color-muted-main2: #4a5470;
+}
+
+@layer base {
+  body {
+    @apply bg-bg text-text-main font-sans;
+    background-image:
+      radial-gradient(ellipse 70% 50% at 20% 0%,#0e1f3a 0%,transparent 60%),
+      radial-gradient(ellipse 50% 40% at 85% 80%,#0a1628 0%,transparent 55%);
+  }
+}
+

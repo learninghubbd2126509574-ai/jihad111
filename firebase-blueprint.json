@@ -1,0 +1,52 @@
+{
+  "entities": {
+    "Member": {
+      "title": "Member",
+      "description": "A team leader or trainer in the platform.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Name of the member" },
+        "type": { "type": "string", "enum": ["leader", "trainer"], "description": "Role of the member" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "type"]
+    },
+    "Result": {
+      "title": "Result",
+      "description": "Performance result submitted by a member.",
+      "type": "object",
+      "properties": {
+        "memberId": { "type": "string", "description": "ID of the member" },
+        "lead": { "type": "number", "description": "Number of leads" },
+        "convert": { "type": "number", "description": "Number of converts" },
+        "submitted": { "type": "boolean", "description": "Whether the result is submitted" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["memberId", "lead", "convert", "submitted"]
+    },
+    "Config": {
+      "title": "Config",
+      "description": "Global application configuration.",
+      "type": "object",
+      "properties": {
+        "timerActive": { "type": "boolean" },
+        "timerEndTime": { "type": "number", "description": "Timestamp when the timer ends" },
+        "timerDuration": { "type": "number", "description": "Duration in seconds" }
+      }
+    }
+  },
+  "firestore": {
+    "/members/{memberId}": {
+      "schema": "Member",
+      "description": "Collection of team members."
+    },
+    "/results/{resultId}": {
+      "schema": "Result",
+      "description": "Collection of performance results."
+    },
+    "/config/global": {
+      "schema": "Config",
+      "description": "Global configuration document."
+    }
+  }
+}

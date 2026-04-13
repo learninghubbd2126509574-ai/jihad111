@@ -1,0 +1,72 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    // 
+    // Collection: members
+    // Fields:
+    //   - name: string (required)
+    //   - type: string (required, 'leader' or 'trainer')
+    //   - createdAt: timestamp
+    //
+    // Collection: results
+    // Fields:
+    //   - memberId: string (required)
+    //   - lead: number (required)
+    //   - convert: number (required)
+    //   - submitted: bool (required)
+    //   - updatedAt: timestamp
+    //
+    // Collection: config
+    // Document: global
+    // Fields:
+    //   - timerActive: bool
+    //   - timerEndTime: number (timestamp)
+    //   - timerDuration: number
+    // ===============================================================
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (request.auth.token.email == "learninghubbd2126509574@gmail.com");
+    }
+
+    function isValidMember(data) {
+      return data.keys().hasAll(['name', 'type']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.type in ['leader', 'trainer'];
+    }
+
+    function isValidResult(data) {
+      return data.keys().hasAll(['memberId', 'lead', 'convert', 'submitted']) &&
+             data.memberId is string &&
+             data.lead is number && data.lead >= 0 &&
+             data.convert is number && data.convert >= 0 &&
+             data.submitted is bool;
+    }
+
+    // Rules
+    match /members/{memberId} {
+      allow read: if true;
+      allow create, update: if isAdmin() && isValidMember(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /results/{resultId} {
+      allow read: if true;
+      allow create, update: if (isValidResult(request.resource.data));
+      allow delete: if isAdmin();
+    }
+
+    match /config/global {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}
