@@ -38,6 +38,7 @@ import {
   Send, 
   CheckCircle2,
   AlertCircle,
+  Star,
   X
 } from 'lucide-react';
 
@@ -386,22 +387,43 @@ export default function App() {
     }
   };
 
-  // Stats
-  const stats = useMemo(() => {
+  // Stats & Ranking
+  const { stats, topLeader, topTrainer, sortedLeaders, sortedTrainers } = useMemo(() => {
     let totalLeads = 0;
     let totalConverts = 0;
     const resultsList = Object.values(results) as Result[];
+    
     resultsList.forEach(r => {
       if (r.submitted) {
         totalLeads += r.lead;
         totalConverts += r.convert;
       }
     });
+
+    const getMemberWithResult = (m: Member) => ({
+      ...m,
+      result: results[m.id] || { lead: 0, convert: 0, submitted: false }
+    });
+
+    const allLeaders = members.filter(m => m.type === 'leader').map(getMemberWithResult);
+    const allTrainers = members.filter(m => m.type === 'trainer').map(getMemberWithResult);
+
+    const sortByConvert = (a: any, b: any) => (b.result.convert || 0) - (a.result.convert || 0);
+
+    const sortedL = [...allLeaders].sort(sortByConvert);
+    const sortedT = [...allTrainers].sort(sortByConvert);
+
     return {
-      leaders: members.filter(m => m.type === 'leader').length,
-      trainers: members.filter(m => m.type === 'trainer').length,
-      leads: totalLeads,
-      converts: totalConverts
+      stats: {
+        leaders: allLeaders.length,
+        trainers: allTrainers.length,
+        leads: totalLeads,
+        converts: totalConverts
+      },
+      topLeader: sortedL[0]?.result?.submitted ? sortedL[0] : null,
+      topTrainer: sortedT[0]?.result?.submitted ? sortedT[0] : null,
+      sortedLeaders: sortedL,
+      sortedTrainers: sortedT
     };
   }, [members, results]);
 
@@ -479,11 +501,56 @@ export default function App() {
           ))}
         </div>
 
+        {/* Top Performers */}
+        {(topLeader || topTrainer) && (
+          <div className="mb-12">
+            <div className="flex items-center gap-3 mb-6">
+              <Star className="text-gold" size={20} />
+              <h2 className="font-serif text-xl font-bold">Top Performers</h2>
+              <div className="flex-1 h-[1px] bg-gradient-to-r from-gold/30 to-transparent" />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {topLeader && (
+                <div className="relative group">
+                  <div className="absolute -inset-0.5 bg-gradient-to-r from-gold to-orange-500 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-1000"></div>
+                  <div className="relative bg-surface border border-gold/30 rounded-2xl p-4 flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-full bg-gold/20 flex items-center justify-center text-gold text-2xl">👑</div>
+                    <div>
+                      <div className="text-[10px] text-gold font-bold uppercase tracking-widest">Best Leader</div>
+                      <div className="font-serif text-lg font-bold">{topLeader.name}</div>
+                      <div className="flex items-center gap-3 mt-1">
+                        <span className="text-xs text-green-accent font-bold">Converts: {topLeader.result.convert}</span>
+                        <span className="text-xs text-muted-main">Leads: {topLeader.result.lead}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {topTrainer && (
+                <div className="relative group">
+                  <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-accent to-purple-500 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-1000"></div>
+                  <div className="relative bg-surface border border-blue-accent/30 rounded-2xl p-4 flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-full bg-blue-accent/20 flex items-center justify-center text-blue-accent text-2xl">⚡</div>
+                    <div>
+                      <div className="text-[10px] text-blue-accent font-bold uppercase tracking-widest">Best Trainer</div>
+                      <div className="font-serif text-lg font-bold">{topTrainer.name}</div>
+                      <div className="flex items-center gap-3 mt-1">
+                        <span className="text-xs text-green-accent font-bold">Converts: {topTrainer.result.convert}</span>
+                        <span className="text-xs text-muted-main">Leads: {topTrainer.result.lead}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Boards */}
         <Board 
           title="Team Leaders" 
           icon={<Trophy size={18} />} 
-          members={members.filter(m => m.type === 'leader')} 
+          members={sortedLeaders} 
           results={results}
           timerActive={config.timerActive}
           onSubmit={submitResult}
@@ -493,7 +560,7 @@ export default function App() {
         <Board 
           title="Team Trainers" 
           icon={<GraduationCap size={18} />} 
-          members={members.filter(m => m.type === 'trainer')} 
+          members={sortedTrainers} 
           results={results}
           timerActive={config.timerActive}
           onSubmit={submitResult}
