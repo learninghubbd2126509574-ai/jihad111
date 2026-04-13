@@ -249,10 +249,24 @@ export default function App() {
   const login = async () => {
     try {
       const provider = new GoogleAuthProvider();
+      // Force account selection to ensure the popup shows up
+      provider.setCustomParameters({ prompt: 'select_account' });
+      
       await signInWithPopup(auth, provider);
       showMsg('Logged in successfully!');
-    } catch (err) {
-      showMsg('Login failed', 'error');
+    } catch (err: any) {
+      console.error('Login error details:', err);
+      let message = 'Login failed';
+      
+      if (err.code === 'auth/unauthorized-domain') {
+        message = 'Domain not authorized in Firebase! Please add this URL to Firebase Console.';
+      } else if (err.code === 'auth/popup-blocked') {
+        message = 'Popup blocked! Please allow popups for this site.';
+      } else if (err.message) {
+        message = `Login failed: ${err.message}`;
+      }
+      
+      showMsg(message, 'error');
     }
   };
 
