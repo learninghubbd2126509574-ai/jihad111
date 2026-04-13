@@ -39,6 +39,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Star,
+  UserCircle,
   X
 } from 'lucide-react';
 
@@ -55,6 +56,7 @@ interface Result {
   memberId: string;
   lead: number;
   convert: number;
+  personalLead: number;
   submitted: boolean;
   updatedAt: any;
 }
@@ -349,6 +351,7 @@ export default function App() {
               memberId: m.id,
               lead: 0,
               convert: 0,
+              personalLead: 0,
               submitted: false,
               updatedAt: serverTimestamp()
             });
@@ -364,7 +367,7 @@ export default function App() {
     });
   };
 
-  const submitResult = async (memberId: string, lead: number, convert: number) => {
+  const submitResult = async (memberId: string, lead: number, convert: number, personalLead: number) => {
     if (!config.timerActive) {
       showMsg('Submission window is closed!', 'error');
       return;
@@ -376,6 +379,7 @@ export default function App() {
         memberId,
         lead,
         convert,
+        personalLead,
         submitted: true,
         updatedAt: serverTimestamp()
       };
@@ -395,7 +399,7 @@ export default function App() {
     
     const getMemberWithResult = (m: Member) => ({
       ...m,
-      result: results[m.id] || { lead: 0, convert: 0, submitted: false }
+      result: results[m.id] || { lead: 0, convert: 0, personalLead: 0, submitted: false }
     });
 
     const allLeaders = members.filter(m => m.type === 'leader').map(getMemberWithResult);
@@ -414,7 +418,11 @@ export default function App() {
       if ((b.result.convert || 0) !== (a.result.convert || 0)) {
         return (b.result.convert || 0) - (a.result.convert || 0);
       }
-      // Secondary sort: Lead count (descending)
+      // Secondary sort: Personal Lead count (descending)
+      if ((b.result.personalLead || 0) !== (a.result.personalLead || 0)) {
+        return (b.result.personalLead || 0) - (a.result.personalLead || 0);
+      }
+      // Tertiary sort: Lead count (descending)
       return (b.result.lead || 0) - (a.result.lead || 0);
     };
 
@@ -528,7 +536,9 @@ export default function App() {
                   <div className="absolute -inset-0.5 bg-gradient-to-r from-gold via-orange-500 to-gold rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-1000 animate-pulse"></div>
                   <div className="relative bg-surface border border-gold/30 rounded-2xl p-5 flex items-center gap-5 shadow-xl">
                     <div className="relative">
-                      <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-gold/20 to-orange-500/20 flex items-center justify-center text-gold text-3xl border border-gold/30">
+                      <div 
+                        className={`w-14 h-14 rounded-2xl bg-gradient-to-br from-gold/20 to-orange-500/20 flex items-center justify-center text-gold text-3xl border border-gold/30 overflow-hidden`}
+                      >
                         👑
                       </div>
                       <div className="absolute -bottom-1 -right-1 bg-gold text-bg text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase">Top</div>
@@ -551,6 +561,11 @@ export default function App() {
                           <span className="text-[9px] text-muted-main uppercase tracking-tighter">Leads</span>
                           <span className="text-sm font-black text-blue-accent">{topLeader.result.lead}</span>
                         </div>
+                        <div className="w-[1px] h-6 bg-border" />
+                        <div className="flex flex-col">
+                          <span className="text-[9px] text-muted-main uppercase tracking-tighter">Personal</span>
+                          <span className="text-sm font-black text-purple-400">{topLeader.result.personalLead}</span>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -561,7 +576,9 @@ export default function App() {
                   <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-accent via-purple-500 to-blue-accent rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-1000 animate-pulse"></div>
                   <div className="relative bg-surface border border-blue-accent/30 rounded-2xl p-5 flex items-center gap-5 shadow-xl">
                     <div className="relative">
-                      <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-accent/20 to-purple-500/20 flex items-center justify-center text-blue-accent text-3xl border border-blue-accent/30">
+                      <div 
+                        className={`w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-accent/20 to-purple-500/20 flex items-center justify-center text-blue-accent text-3xl border border-blue-accent/30 overflow-hidden`}
+                      >
                         ⚡
                       </div>
                       <div className="absolute -bottom-1 -right-1 bg-blue-accent text-bg text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase">Top</div>
@@ -583,6 +600,11 @@ export default function App() {
                         <div className="flex flex-col">
                           <span className="text-[9px] text-muted-main uppercase tracking-tighter">Leads</span>
                           <span className="text-sm font-black text-blue-accent">{topTrainer.result.lead}</span>
+                        </div>
+                        <div className="w-[1px] h-6 bg-border" />
+                        <div className="flex flex-col">
+                          <span className="text-[9px] text-muted-main uppercase tracking-tighter">Personal</span>
+                          <span className="text-sm font-black text-purple-400">{topTrainer.result.personalLead}</span>
                         </div>
                       </div>
                     </div>
@@ -747,7 +769,7 @@ interface BoardProps {
   members: Member[];
   results: Record<string, Result>;
   timerActive: boolean;
-  onSubmit: (id: string, lead: number, convert: number) => void;
+  onSubmit: (id: string, lead: number, convert: number, personalLead: number) => void;
   accentColor: 'gold' | 'blue';
 }
 
@@ -791,7 +813,7 @@ interface MemberCardProps {
   member: Member;
   result: Result | undefined;
   timerActive: boolean;
-  onSubmit: (id: string, lead: number, convert: number) => void;
+  onSubmit: (id: string, lead: number, convert: number, personalLead: number) => void;
   accentColor: 'gold' | 'blue';
   rank: number;
 }
@@ -799,12 +821,14 @@ interface MemberCardProps {
 const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, onSubmit, accentColor, rank }) => {
   const [lead, setLead] = useState<string>('');
   const [convert, setConvert] = useState<string>('');
+  const [personalLead, setPersonalLead] = useState<string>('');
 
   // Reset local state when result is cleared from DB
   useEffect(() => {
     if (!result) {
       setLead('');
       setConvert('');
+      setPersonalLead('');
     }
   }, [result]);
 
@@ -833,9 +857,11 @@ const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, on
       className={`bg-surface border border-border rounded-2xl overflow-hidden transition-all hover:border-border2 hover:shadow-2xl ${result?.submitted ? 'border-green-accent/10 shadow-[0_8px_30px_rgb(0,0,0,0.12)]' : ''}`}
     >
       <div className="p-4 flex flex-wrap items-center gap-4">
-        <div className={`w-11 h-11 rounded-xl flex items-center justify-center font-serif font-black text-bg text-base shadow-lg relative ${
-          accentColor === 'gold' ? 'bg-gradient-to-br from-gold to-gold2 shadow-gold/20' : 'bg-gradient-to-br from-blue-accent to-blue-accent2 shadow-blue-accent/20'
-        }`}>
+        <div 
+          className={`w-11 h-11 rounded-xl flex items-center justify-center font-serif font-black text-bg text-base shadow-lg relative overflow-hidden ${
+            accentColor === 'gold' ? 'bg-gradient-to-br from-gold to-gold2 shadow-gold/20' : 'bg-gradient-to-br from-blue-accent to-blue-accent2 shadow-blue-accent/20'
+          }`}
+        >
           {initials}
           {rank <= 3 && (
             <div className="absolute -top-1.5 -right-1.5 bg-surface border border-border rounded-full w-5 h-5 flex items-center justify-center text-[10px] shadow-md">
@@ -870,6 +896,10 @@ const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, on
               <CheckCircle2 size={12} className="opacity-70" /> 
               <span className="opacity-60 font-medium">Converts:</span> {result.convert}
             </div>
+            <div className="bg-purple-500/5 text-purple-400 border border-purple-500/10 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all hover:bg-purple-500/10">
+              <UserCircle size={12} className="opacity-70" /> 
+              <span className="opacity-60 font-medium">Personal:</span> {result.personalLead}
+            </div>
           </div>
         ) : (
           <div className="flex flex-wrap items-center gap-3">
@@ -880,7 +910,7 @@ const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, on
                 value={lead}
                 onChange={(e) => setLead(e.target.value)}
                 disabled={!timerActive}
-                className="w-20 bg-bg border border-border2 rounded-lg px-2 py-1.5 text-sm font-bold text-center focus:border-blue-accent outline-none disabled:opacity-30"
+                className="w-16 bg-bg border border-border2 rounded-lg px-2 py-1.5 text-sm font-bold text-center focus:border-blue-accent outline-none disabled:opacity-30"
                 placeholder="0"
               />
             </div>
@@ -891,12 +921,23 @@ const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, on
                 value={convert}
                 onChange={(e) => setConvert(e.target.value)}
                 disabled={!timerActive}
-                className="w-20 bg-bg border border-border2 rounded-lg px-2 py-1.5 text-sm font-bold text-center focus:border-blue-accent outline-none disabled:opacity-30"
+                className="w-16 bg-bg border border-border2 rounded-lg px-2 py-1.5 text-sm font-bold text-center focus:border-blue-accent outline-none disabled:opacity-30"
+                placeholder="0"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-[10px] text-muted-main uppercase tracking-wider">Personal</label>
+              <input 
+                type="number" 
+                value={personalLead}
+                onChange={(e) => setPersonalLead(e.target.value)}
+                disabled={!timerActive}
+                className="w-16 bg-bg border border-border2 rounded-lg px-2 py-1.5 text-sm font-bold text-center focus:border-blue-accent outline-none disabled:opacity-30"
                 placeholder="0"
               />
             </div>
             <button 
-              onClick={() => onSubmit(member.id, parseInt(lead) || 0, parseInt(convert) || 0)}
+              onClick={() => onSubmit(member.id, parseInt(lead) || 0, parseInt(convert) || 0, parseInt(personalLead) || 0)}
               disabled={!timerActive}
               className="bg-gradient-to-br from-blue-accent to-blue-accent2 text-white font-bold py-2 px-5 rounded-lg text-xs shadow-lg hover:opacity-90 disabled:opacity-20 transition-all"
             >
@@ -922,6 +963,12 @@ function AdminSection({ title, onAdd, members, onDelete }: {
 }) {
   const [name, setName] = useState('');
 
+  const handleAdd = () => {
+    if (!name.trim()) return;
+    onAdd(name);
+    setName('');
+  };
+
   return (
     <div className="mb-8">
       <h4 className="text-[10px] text-muted-main tracking-[2px] uppercase mb-3 pb-2 border-b border-border">{title}</h4>
@@ -934,8 +981,9 @@ function AdminSection({ title, onAdd, members, onDelete }: {
           className="flex-1 bg-bg border border-border2 rounded-lg px-3 py-2 text-sm outline-none focus:border-gold"
         />
         <button 
-          onClick={() => { onAdd(name); setName(''); }}
-          className="bg-gradient-to-br from-gold to-gold2 text-bg font-bold px-4 py-2 rounded-lg text-xs"
+          onClick={handleAdd}
+          disabled={!name.trim()}
+          className="bg-gradient-to-br from-gold to-gold2 text-bg font-bold px-6 py-2 rounded-lg text-xs disabled:opacity-50"
         >
           Add
         </button>
