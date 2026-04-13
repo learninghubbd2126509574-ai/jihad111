@@ -408,10 +408,17 @@ export default function App() {
     const allLeaders = members.filter(m => m.type === 'leader').map(getMemberWithResult);
     const allTrainers = members.filter(m => m.type === 'trainer').map(getMemberWithResult);
 
-    const sortByConvert = (a: any, b: any) => (b.result.convert || 0) - (a.result.convert || 0);
+    const sortByPerformance = (a: any, b: any) => {
+      // Primary sort: Convert count (descending)
+      if ((b.result.convert || 0) !== (a.result.convert || 0)) {
+        return (b.result.convert || 0) - (a.result.convert || 0);
+      }
+      // Secondary sort: Lead count (descending)
+      return (b.result.lead || 0) - (a.result.lead || 0);
+    };
 
-    const sortedL = [...allLeaders].sort(sortByConvert);
-    const sortedT = [...allTrainers].sort(sortByConvert);
+    const sortedL = [...allLeaders].sort(sortByPerformance);
+    const sortedT = [...allTrainers].sort(sortByPerformance);
 
     return {
       stats: {
@@ -766,8 +773,13 @@ const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, on
 
   return (
     <motion.div 
+      layout
       initial={{ opacity: 0, x: -10 }}
       animate={{ opacity: 1, x: 0 }}
+      transition={{ 
+        layout: { type: 'spring', damping: 25, stiffness: 200 },
+        opacity: { duration: 0.2 }
+      }}
       className={`bg-surface border border-border rounded-2xl overflow-hidden transition-all hover:border-border2 hover:shadow-2xl ${result?.submitted ? 'border-green-accent/20' : ''}`}
     >
       <div className="p-4 flex flex-wrap items-center gap-4">
