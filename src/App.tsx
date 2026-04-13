@@ -513,22 +513,44 @@ export default function App() {
         {(topLeader || topTrainer) && (
           <div className="mb-12">
             <div className="flex items-center gap-3 mb-6">
-              <Star className="text-gold" size={20} />
-              <h2 className="font-serif text-xl font-bold">Top Performers</h2>
-              <div className="flex-1 h-[1px] bg-gradient-to-r from-gold/30 to-transparent" />
+              <div className="p-2 bg-gold/10 rounded-lg border border-gold/20">
+                <Star className="text-gold" size={18} />
+              </div>
+              <div>
+                <h2 className="font-serif text-xl font-bold">Elite Performers</h2>
+                <p className="text-[10px] text-muted-main tracking-widest uppercase">Top contributors of the session</p>
+              </div>
+              <div className="flex-1 h-[1px] bg-gradient-to-r from-gold/30 to-transparent ml-4" />
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {topLeader && (
                 <div className="relative group">
-                  <div className="absolute -inset-0.5 bg-gradient-to-r from-gold to-orange-500 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-1000"></div>
-                  <div className="relative bg-surface border border-gold/30 rounded-2xl p-4 flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-full bg-gold/20 flex items-center justify-center text-gold text-2xl">👑</div>
-                    <div>
-                      <div className="text-[10px] text-gold font-bold uppercase tracking-widest">Best Leader</div>
-                      <div className="font-serif text-lg font-bold">{topLeader.name}</div>
-                      <div className="flex items-center gap-3 mt-1">
-                        <span className="text-xs text-green-accent font-bold">Converts: {topLeader.result.convert}</span>
-                        <span className="text-xs text-muted-main">Leads: {topLeader.result.lead}</span>
+                  <div className="absolute -inset-0.5 bg-gradient-to-r from-gold via-orange-500 to-gold rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-1000 animate-pulse"></div>
+                  <div className="relative bg-surface border border-gold/30 rounded-2xl p-5 flex items-center gap-5 shadow-xl">
+                    <div className="relative">
+                      <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-gold/20 to-orange-500/20 flex items-center justify-center text-gold text-3xl border border-gold/30">
+                        👑
+                      </div>
+                      <div className="absolute -bottom-1 -right-1 bg-gold text-bg text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase">Top</div>
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="text-[10px] text-gold font-bold uppercase tracking-widest">Best Leader</div>
+                        <span className="text-[9px] px-2 py-0.5 rounded-full bg-gold/10 text-gold border border-gold/20 font-bold uppercase">
+                          Excellent
+                        </span>
+                      </div>
+                      <div className="font-serif text-xl font-bold text-white">{topLeader.name}</div>
+                      <div className="flex items-center gap-4 mt-2">
+                        <div className="flex flex-col">
+                          <span className="text-[9px] text-muted-main uppercase tracking-tighter">Converts</span>
+                          <span className="text-sm font-black text-green-accent">{topLeader.result.convert}</span>
+                        </div>
+                        <div className="w-[1px] h-6 bg-border" />
+                        <div className="flex flex-col">
+                          <span className="text-[9px] text-muted-main uppercase tracking-tighter">Leads</span>
+                          <span className="text-sm font-black text-blue-accent">{topLeader.result.lead}</span>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -536,15 +558,32 @@ export default function App() {
               )}
               {topTrainer && (
                 <div className="relative group">
-                  <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-accent to-purple-500 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-1000"></div>
-                  <div className="relative bg-surface border border-blue-accent/30 rounded-2xl p-4 flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-full bg-blue-accent/20 flex items-center justify-center text-blue-accent text-2xl">⚡</div>
-                    <div>
-                      <div className="text-[10px] text-blue-accent font-bold uppercase tracking-widest">Best Trainer</div>
-                      <div className="font-serif text-lg font-bold">{topTrainer.name}</div>
-                      <div className="flex items-center gap-3 mt-1">
-                        <span className="text-xs text-green-accent font-bold">Converts: {topTrainer.result.convert}</span>
-                        <span className="text-xs text-muted-main">Leads: {topTrainer.result.lead}</span>
+                  <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-accent via-purple-500 to-blue-accent rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-1000 animate-pulse"></div>
+                  <div className="relative bg-surface border border-blue-accent/30 rounded-2xl p-5 flex items-center gap-5 shadow-xl">
+                    <div className="relative">
+                      <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-accent/20 to-purple-500/20 flex items-center justify-center text-blue-accent text-3xl border border-blue-accent/30">
+                        ⚡
+                      </div>
+                      <div className="absolute -bottom-1 -right-1 bg-blue-accent text-bg text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase">Top</div>
+                    </div>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="text-[10px] text-blue-accent font-bold uppercase tracking-widest">Best Trainer</div>
+                        <span className="text-[9px] px-2 py-0.5 rounded-full bg-blue-accent/10 text-blue-accent border border-blue-accent/20 font-bold uppercase">
+                          Excellent
+                        </span>
+                      </div>
+                      <div className="font-serif text-xl font-bold text-white">{topTrainer.name}</div>
+                      <div className="flex items-center gap-4 mt-2">
+                        <div className="flex flex-col">
+                          <span className="text-[9px] text-muted-main uppercase tracking-tighter">Converts</span>
+                          <span className="text-sm font-black text-green-accent">{topTrainer.result.convert}</span>
+                        </div>
+                        <div className="w-[1px] h-6 bg-border" />
+                        <div className="flex flex-col">
+                          <span className="text-[9px] text-muted-main uppercase tracking-tighter">Leads</span>
+                          <span className="text-sm font-black text-blue-accent">{topTrainer.result.lead}</span>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -772,6 +811,16 @@ const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, on
   const initials = member.name.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
   const rankIcon = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`;
 
+  const getPerformanceStatus = (converts: number) => {
+    if (converts >= 10) return { label: 'Legendary', color: 'bg-purple-500/10 text-purple-400 border-purple-500/20' };
+    if (converts >= 6) return { label: 'Excellent', color: 'bg-blue-500/10 text-blue-400 border-blue-500/20' };
+    if (converts >= 3) return { label: 'Good', color: 'bg-green-500/10 text-green-400 border-green-500/20' };
+    if (converts >= 1) return { label: 'Average', color: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20' };
+    return { label: 'Needs Improvement', color: 'bg-red-500/10 text-red-400 border-red-500/20' };
+  };
+
+  const status = result?.submitted ? getPerformanceStatus(result.convert) : null;
+
   return (
     <motion.div 
       layout
@@ -781,30 +830,45 @@ const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, on
         layout: { type: 'spring', damping: 25, stiffness: 200 },
         opacity: { duration: 0.2 }
       }}
-      className={`bg-surface border border-border rounded-2xl overflow-hidden transition-all hover:border-border2 hover:shadow-2xl ${result?.submitted ? 'border-green-accent/20' : ''}`}
+      className={`bg-surface border border-border rounded-2xl overflow-hidden transition-all hover:border-border2 hover:shadow-2xl ${result?.submitted ? 'border-green-accent/10 shadow-[0_8px_30px_rgb(0,0,0,0.12)]' : ''}`}
     >
       <div className="p-4 flex flex-wrap items-center gap-4">
-        <div className={`w-11 h-11 rounded-xl flex items-center justify-center font-serif font-black text-bg text-base shadow-lg ${
+        <div className={`w-11 h-11 rounded-xl flex items-center justify-center font-serif font-black text-bg text-base shadow-lg relative ${
           accentColor === 'gold' ? 'bg-gradient-to-br from-gold to-gold2 shadow-gold/20' : 'bg-gradient-to-br from-blue-accent to-blue-accent2 shadow-blue-accent/20'
         }`}>
           {initials}
+          {rank <= 3 && (
+            <div className="absolute -top-1.5 -right-1.5 bg-surface border border-border rounded-full w-5 h-5 flex items-center justify-center text-[10px] shadow-md">
+              {rankIcon}
+            </div>
+          )}
         </div>
         
         <div className="flex-1 min-w-[120px]">
-          <div className="font-bold text-sm">{member.name}</div>
-          <div className="text-[10px] text-muted-main mt-0.5">{rankIcon} Member</div>
+          <div className="flex items-center gap-2">
+            <div className="font-bold text-sm">{member.name}</div>
+            {status && (
+              <span className={`text-[9px] px-2 py-0.5 rounded-full border font-bold uppercase tracking-wider ${status.color}`}>
+                {status.label}
+              </span>
+            )}
+          </div>
+          <div className="text-[10px] text-muted-main mt-0.5 flex items-center gap-2">
+            <span>{rankIcon} Member</span>
+            {result?.submitted && <span className="w-1 h-1 rounded-full bg-muted-main2" />}
+            {result?.submitted && <span className="text-green-accent/80 font-medium">Verified Submission</span>}
+          </div>
         </div>
 
         {result?.submitted ? (
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="bg-[#0d1f3a] text-[#5ba3ff] border border-[#1a3a6a] px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-2">
-              <Send size={12} /> Lead: {result.lead}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="bg-blue-accent/5 text-blue-accent border border-blue-accent/10 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all hover:bg-blue-accent/10">
+              <Send size={12} className="opacity-70" /> 
+              <span className="opacity-60 font-medium">Leads:</span> {result.lead}
             </div>
-            <div className="bg-[#0d2318] text-green-accent border border-[#1a4a2a] px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-2">
-              <CheckCircle2 size={12} /> Convert: {result.convert}
-            </div>
-            <div className="bg-[#0d2318] text-green-accent border border-[#1a4a2a] px-2 py-1 rounded-full text-[10px] font-bold">
-              ✓ Submitted
+            <div className="bg-green-accent/5 text-green-accent border border-green-accent/10 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all hover:bg-green-accent/10">
+              <CheckCircle2 size={12} className="opacity-70" /> 
+              <span className="opacity-60 font-medium">Converts:</span> {result.convert}
             </div>
           </div>
         ) : (
