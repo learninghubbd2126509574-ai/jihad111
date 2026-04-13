@@ -537,9 +537,9 @@ export default function App() {
                   <div className="relative bg-surface border border-gold/30 rounded-2xl p-5 flex items-center gap-5 shadow-xl">
                     <div className="relative">
                       <div 
-                        className={`w-14 h-14 rounded-2xl bg-gradient-to-br from-gold/20 to-orange-500/20 flex items-center justify-center text-gold text-3xl border border-gold/30 overflow-hidden`}
+                        className={`w-14 h-14 rounded-2xl bg-gradient-to-br from-gold/20 to-orange-500/20 flex items-center justify-center text-gold border border-gold/30 overflow-hidden`}
                       >
-                        👑
+                        <UserCircle size={32} strokeWidth={2} />
                       </div>
                       <div className="absolute -bottom-1 -right-1 bg-gold text-bg text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase">Top</div>
                     </div>
@@ -577,9 +577,9 @@ export default function App() {
                   <div className="relative bg-surface border border-blue-accent/30 rounded-2xl p-5 flex items-center gap-5 shadow-xl">
                     <div className="relative">
                       <div 
-                        className={`w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-accent/20 to-purple-500/20 flex items-center justify-center text-blue-accent text-3xl border border-blue-accent/30 overflow-hidden`}
+                        className={`w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-accent/20 to-purple-500/20 flex items-center justify-center text-blue-accent border border-blue-accent/30 overflow-hidden`}
                       >
-                        ⚡
+                        <UserCircle size={32} strokeWidth={2} />
                       </div>
                       <div className="absolute -bottom-1 -right-1 bg-blue-accent text-bg text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase">Top</div>
                     </div>
@@ -862,7 +862,7 @@ const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, on
             accentColor === 'gold' ? 'bg-gradient-to-br from-gold to-gold2 shadow-gold/20' : 'bg-gradient-to-br from-blue-accent to-blue-accent2 shadow-blue-accent/20'
           }`}
         >
-          {initials}
+          <UserCircle size={24} strokeWidth={2.5} />
           {rank <= 3 && (
             <div className="absolute -top-1.5 -right-1.5 bg-surface border border-border rounded-full w-5 h-5 flex items-center justify-center text-[10px] shadow-md">
               {rankIcon}
