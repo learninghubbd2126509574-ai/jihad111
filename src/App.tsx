@@ -393,13 +393,6 @@ export default function App() {
     let totalConverts = 0;
     const resultsList = Object.values(results) as Result[];
     
-    resultsList.forEach(r => {
-      if (r.submitted) {
-        totalLeads += r.lead;
-        totalConverts += r.convert;
-      }
-    });
-
     const getMemberWithResult = (m: Member) => ({
       ...m,
       result: results[m.id] || { lead: 0, convert: 0, submitted: false }
@@ -407,6 +400,14 @@ export default function App() {
 
     const allLeaders = members.filter(m => m.type === 'leader').map(getMemberWithResult);
     const allTrainers = members.filter(m => m.type === 'trainer').map(getMemberWithResult);
+
+    // Only sum results from Leaders for the total stats
+    allLeaders.forEach(m => {
+      if (m.result.submitted) {
+        totalLeads += m.result.lead;
+        totalConverts += m.result.convert;
+      }
+    });
 
     const sortByPerformance = (a: any, b: any) => {
       // Primary sort: Convert count (descending)
