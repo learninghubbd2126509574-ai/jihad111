@@ -31,8 +31,130 @@
       "properties": {
         "timerActive": { "type": "boolean" },
         "timerEndTime": { "type": "number", "description": "Timestamp when the timer ends" },
-        "timerDuration": { "type": "number", "description": "Duration in seconds" }
+        "timerDuration": { "type": "number", "description": "Duration in seconds" },
+        "announcement": { "type": "string", "description": "Broadcast message text" },
+        "announcementActive": { "type": "boolean", "description": "Whether to show the announcement" }
       }
+    },
+    "PickingItem": {
+      "title": "PickingItem",
+      "description": "An item in the picking schedule.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "isSelected": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "isSelected"]
+    },
+    "Application": {
+      "title": "Application",
+      "description": "Sub-admin application form data.",
+      "type": "object",
+      "properties": {
+        "fullName": { "type": "string" },
+        "fathersName": { "type": "string" },
+        "mothersName": { "type": "string" },
+        "dob": { "type": "string" },
+        "gender": { "type": "string" },
+        "age": { "type": "string" },
+        "maritalStatus": { "type": "string" },
+        "hasChildren": { "type": "string" },
+        "religion": { "type": "string" },
+        "nationality": { "type": "string" },
+        "mobileNumber": { "type": "string" },
+        "parentMobileNumber": { "type": "string" },
+        "paymentMethod": { "type": "string" },
+        "methodNumber": { "type": "string" },
+        "email": { "type": "string" },
+        "presentAddress": { "type": "string" },
+        "permanentAddress": { "type": "string" },
+        "highestQualification": { "type": "string" },
+        "passingYear": { "type": "string" },
+        "occupation": { "type": "string" },
+        "timeIssue": { "type": "string" },
+        "regularTime": { "type": "string" },
+        "joiningDuration": { "type": "string" },
+        "totalConverts": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["fullName", "mobileNumber", "email"]
+    },
+    "Teacher": {
+      "title": "Teacher",
+      "description": "A teacher registered in the system.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name"]
+    },
+    "AttendanceRecord": {
+      "title": "AttendanceRecord",
+      "description": "An attendance submission for a teacher.",
+      "type": "object",
+      "properties": {
+        "teacherId": { "type": "string" },
+        "teacherName": { "type": "string" },
+        "course": { "type": "string" },
+        "date": { "type": "string" },
+        "submittedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["teacherId", "teacherName", "course", "date"]
+    },
+    "STLMember": {
+      "title": "STLMember",
+      "description": "A member in the STL list.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name"]
+    },
+    "STLAttendance": {
+      "title": "STLAttendance",
+      "description": "Attendance record for STL meeting.",
+      "type": "object",
+      "properties": {
+        "memberId": { "type": "string" },
+        "memberName": { "type": "string" },
+        "submittedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["memberId", "memberName"]
+    },
+    "DemoMember": {
+      "title": "DemoMember",
+      "description": "A member in the Demo list.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name"]
+    },
+    "DemoAttendance": {
+      "title": "DemoAttendance",
+      "description": "Attendance record for Demo session.",
+      "type": "object",
+      "properties": {
+        "memberId": { "type": "string" },
+        "memberName": { "type": "string" },
+        "submittedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["memberId", "memberName"]
+    },
+    "RankingMember": {
+      "title": "RankingMember",
+      "description": "A member in a ranking board with a score.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "score": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "score"]
     }
   },
   "firestore": {
@@ -47,6 +169,46 @@
     "/config/global": {
       "schema": "Config",
       "description": "Global configuration document."
+    },
+    "/pickingSchedule/{itemId}": {
+      "schema": "PickingItem",
+      "description": "Collection of names for the picking schedule."
+    },
+    "/applications/{applicationId}": {
+      "schema": "Application",
+      "description": "Collection of sub-admin applications."
+    },
+    "/teachers/{teacherId}": {
+      "schema": "Teacher",
+      "description": "Collection of teachers."
+    },
+    "/teacherAttendance/{recordId}": {
+      "schema": "AttendanceRecord",
+      "description": "Collection of teacher attendance logs."
+    },
+    "/stlMembers/{id}": {
+      "schema": "STLMember",
+      "description": "Collection of STL members."
+    },
+    "/stlAttendance/{id}": {
+      "schema": "STLAttendance",
+      "description": "Collection of STL attendance records."
+    },
+    "/demoMembers/{id}": {
+      "schema": "DemoMember",
+      "description": "Collection of Demo members."
+    },
+    "/demoAttendance/{id}": {
+      "schema": "DemoAttendance",
+      "description": "Collection of Demo attendance records."
+    },
+    "/leaderRanking/{id}": {
+      "schema": "RankingMember",
+      "description": "Collection of members in the Team Leader Ranking."
+    },
+    "/trainerRanking/{id}": {
+      "schema": "RankingMember",
+      "description": "Collection of members in the Team Trainer Ranking."
     }
   }
 }
