@@ -1790,74 +1790,75 @@ export default function App() {
 
       <AnimatePresence>
         {showPickingModal && (
-          <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6">
+          <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowPickingModal(false)} className="absolute inset-0 bg-black/90 backdrop-blur-md" />
             <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowPickingModal(false)}
-              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-            />
-            <motion.div 
-              initial={{ y: 20, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 20, opacity: 0 }}
-              className="relative bg-surface border border-border2 p-8 rounded-3xl max-w-lg w-full shadow-2xl overflow-hidden"
+              initial={{ y: 50, opacity: 0 }} 
+              animate={{ y: 0, opacity: 1 }} 
+              exit={{ y: 50, opacity: 0 }} 
+              className="relative bg-[#0A0A0F] border border-white/10 rounded-[40px] max-w-md w-full shadow-[0_40px_100px_rgba(0,0,0,0.9)] flex flex-col max-h-[85vh] overflow-hidden"
             >
-              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-accent via-purple-500 to-blue-accent"></div>
-              <div className="flex items-center justify-between mb-8">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-blue-accent/10 rounded-xl text-blue-accent">
-                    <Calendar size={24} />
+              <div className="h-1.5 w-full bg-gradient-to-r from-blue-accent via-purple-500 to-blue-accent"></div>
+              
+              <div className="p-8 pt-10 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-blue-accent/10 rounded-2xl text-blue-accent border border-blue-accent/20">
+                    <Calendar size={28} />
                   </div>
-                  <h3 className="text-2xl font-serif font-bold text-white tracking-wide">Picking Schedule</h3>
+                  <div>
+                    <h3 className="text-2xl sm:text-3xl font-serif font-black text-white tracking-tight">Picking Board</h3>
+                    <p className="text-[10px] text-muted-main uppercase tracking-[3px] font-black opacity-30">Unity System • Priority</p>
+                  </div>
                 </div>
                 <button 
                   onClick={() => setShowPickingModal(false)} 
-                  className="p-2 hover:bg-white/5 rounded-full text-muted-main transition-colors"
+                  className="w-10 h-10 bg-white/5 rounded-2xl flex items-center justify-center hover:bg-white/10 text-muted-main hover:text-white transition-all border border-white/10"
                 >
                   <X size={20} />
                 </button>
               </div>
 
-              <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+              <div className="flex-1 overflow-y-auto px-8 py-2 custom-scrollbar space-y-3 mb-6">
                 {pickingSchedule.length === 0 ? (
-                  <div className="text-center py-12 text-muted-main2 italic">
-                    No schedule items available yet.
+                  <div className="text-center py-20 text-muted-main2 italic font-serif opacity-30">
+                    The schedule is currently empty...
                   </div>
                 ) : (
-                  pickingSchedule.map((item) => (
-                    <div 
+                  pickingSchedule.map((item, idx) => (
+                    <motion.div 
                       key={item.id} 
-                      className={`flex items-center justify-between p-4 rounded-2xl border transition-all duration-300 ${
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: idx * 0.05 }}
+                      className={`group flex items-center justify-between p-5 rounded-[24px] border transition-all duration-500 overflow-hidden ${
                         item.isSelected 
-                        ? 'bg-green-accent/10 border-green-accent shadow-[0_0_20px_rgba(31,217,122,0.15)]' 
-                        : 'bg-bg/50 border-border hover:border-border2'
+                        ? 'bg-green-accent/10 border-green-accent/50 shadow-[0_0_40px_rgba(31,217,122,0.1)]' 
+                        : 'bg-white/[0.02] border-white/5 hover:border-white/20'
                       }`}
                     >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-2 h-2 rounded-full ${item.isSelected ? 'bg-green-accent animate-pulse' : 'bg-muted-main'}`} />
-                        <span className={`font-bold transition-all ${item.isSelected ? 'text-green-accent text-lg' : 'text-white'}`}>
+                      <div className="flex items-center gap-4">
+                        <div className={`w-3 h-3 rounded-full shadow-[0_0_10px_currentcolor] ${item.isSelected ? 'bg-green-accent animate-pulse scale-125' : 'bg-white/10'}`} />
+                        <span className={`font-serif font-black text-lg sm:text-xl transition-all tracking-tight ${item.isSelected ? 'text-green-accent' : 'text-white/80 group-hover:text-white'}`}>
                           {item.name}
                         </span>
                       </div>
                       {item.isSelected && (
-                        <div className="flex items-center gap-2 bg-green-accent text-bg px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider scale-90 sm:scale-100">
-                          <Check size={12} strokeWidth={3} />
-                          Selected
+                        <div className="flex items-center gap-2 bg-green-accent text-bg px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl scale-90 sm:scale-100">
+                          <Check size={12} strokeWidth={4} />
+                          Active
                         </div>
                       )}
-                    </div>
+                    </motion.div>
                   ))
                 )}
               </div>
 
-              <div className="mt-8 pt-6 border-t border-border flex justify-end">
+              <div className="p-8 border-t border-white/5 bg-white/[0.02]">
                 <button 
                   onClick={() => setShowPickingModal(false)}
-                  className="px-8 py-3 bg-white/5 rounded-2xl text-white font-bold hover:bg-white/10 transition-all text-sm"
+                  className="w-full bg-white text-bg font-serif font-black py-5 rounded-[24px] text-sm uppercase tracking-[4px] shadow-2xl hover:-translate-y-1 transition-all"
                 >
-                  Close Schedule
+                  Confirm View
                 </button>
               </div>
             </motion.div>
@@ -3282,7 +3283,7 @@ function SimpleAttendanceModal({
   const [historyView, setHistoryView] = useState<{ name: string, time: string } | null>(null);
 
   const handleOk = () => {
-    if (!selectedId) return alert('দয়া করে আপনার নাম সিলেক্ট করুন');
+    if (!selectedId) return;
     const m = members.find(x => x.id === selectedId);
     if (m) onConfirm(selectedId, m.name);
   };
@@ -3290,100 +3291,109 @@ function SimpleAttendanceModal({
   const checkMyAttendance = (mid: string, mname: string) => {
     const records = attendanceRecords
       .filter(r => r.memberId === mid)
-      .sort((a, b) => b.submittedAt?.toMillis() - a.submittedAt?.toMillis());
+      .sort((a, b) => (b.submittedAt?.toMillis() || 0) - (a.submittedAt?.toMillis() || 0));
     
     if (records.length > 0) {
       const lastTime = records[0].submittedAt?.toDate().toLocaleString('bn-BD');
       setHistoryView({ name: mname, time: lastTime });
     } else {
-      alert(`${mname}, আপনার কোনো সাবমিট ডাটা পাওয়া যায়নি।`);
+      // Custom toast would be better but keeping simple for now
     }
   };
 
   if (!isActive) {
     return (
       <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 text-center">
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} onClick={onClose} className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
-        <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="relative bg-surface border border-border2 p-10 rounded-3xl max-w-sm w-full">
-           <div className="w-16 h-16 bg-red-accent/10 text-red-accent rounded-full flex items-center justify-center mx-auto mb-6">
-              <Lock size={32} />
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} onClick={onClose} className="absolute inset-0 bg-black/90 backdrop-blur-md" />
+        <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="relative bg-[#0A0A0F] border border-white/10 p-10 rounded-[32px] max-w-sm w-full shadow-2xl">
+           <div className="w-20 h-20 bg-red-accent/10 text-red-accent rounded-[24px] flex items-center justify-center mx-auto mb-8 border border-red-accent/20">
+              <Lock size={40} />
            </div>
-           <h3 className="text-xl font-bold text-white mb-2">অ্যাটেনডেন্স সিস্টেম বন্ধ আছে</h3>
-           <p className="text-muted-main text-sm mb-6">এডমিন বর্তমানে এই সিস্টেমটি বন্ধ করে রেখেছেন। অনুগ্রহ করে পরে চেষ্টা করুন।</p>
-           <button onClick={onClose} className="w-full py-3 bg-white/10 rounded-xl text-white font-bold">বন্ধ করুন</button>
+           <h3 className="text-2xl font-serif font-black text-white mb-3">System Offline</h3>
+           <p className="text-muted-main text-sm mb-8 leading-relaxed opacity-60 font-medium">The administrator has temporarily disabled this module. Please try again later.</p>
+           <button onClick={onClose} className="w-full py-4 bg-white/5 rounded-2xl text-white font-black uppercase tracking-[2px] border border-white/10 hover:bg-white/10 transition-all">Close Panel</button>
         </motion.div>
       </div>
     );
   }
 
   return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6">
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/90 backdrop-blur-md" />
       <motion.div 
         initial={{ y: 20, opacity: 0 }} 
         animate={{ y: 0, opacity: 1 }} 
         exit={{ y: 20, opacity: 0 }} 
-        className="relative bg-surface border border-border2 p-8 rounded-3xl max-w-md w-full shadow-2xl overflow-hidden flex flex-col max-h-[85vh]"
+        className="relative bg-[#0A0A0F] border border-white/10 rounded-[40px] max-w-md w-full shadow-[0_30px_100px_rgba(0,0,0,0.8)] overflow-hidden flex flex-col max-h-[85vh]"
       >
-        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 to-green-500"></div>
-        <div className="flex items-center gap-3 mb-8">
-          <div className="p-2 bg-blue-500/10 rounded-xl text-blue-accent">
-            <Icon size={24} />
+        <div className="h-1.5 w-full bg-gradient-to-r from-blue-accent to-purple-500"></div>
+        <div className="p-8 pt-10 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-blue-accent/10 rounded-2xl text-blue-accent border border-blue-accent/20">
+              <Icon size={24} />
+            </div>
+            <div>
+              <h3 className="text-2xl font-serif font-black text-white tracking-wide">{title}</h3>
+              <p className="text-[10px] text-muted-main uppercase tracking-[2px] opacity-40 font-black">Attendance Gateway</p>
+            </div>
           </div>
-          <h3 className="text-2xl font-serif font-bold text-white tracking-wide">{title}</h3>
+          <button onClick={onClose} className="p-2 bg-white/5 rounded-full text-muted-main hover:text-white transition-all"><X size={20} /></button>
         </div>
 
         {historyView ? (
-          <div className="flex-1 flex flex-col items-center justify-center text-center p-4">
-            <div className="w-16 h-16 bg-blue-accent/10 text-blue-accent rounded-full flex items-center justify-center mb-6">
-              <Clock size={32} />
+          <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
+            <motion.div initial={{ scale: 0.8 }} animate={{ scale: 1 }} className="w-20 h-20 bg-blue-accent/10 text-blue-accent rounded-[24px] flex items-center justify-center mb-8 border border-blue-accent/20 shadow-lg">
+              <Clock size={40} />
+            </motion.div>
+            <h4 className="text-2xl font-serif font-black text-white mb-2">{historyView.name}</h4>
+            <div className="space-y-1 mb-10 text-center">
+              <p className="text-[10px] text-muted-main uppercase tracking-[3px] font-black opacity-30">Last Contribution</p>
+              <p className="text-blue-accent font-serif font-black text-xl tracking-wide">{historyView.time}</p>
             </div>
-            <h4 className="text-xl font-bold text-white mb-2">{historyView.name}</h4>
-            <p className="text-muted-main text-sm mb-1 uppercase tracking-widest opacity-60">Last Submitted At:</p>
-            <p className="text-blue-accent font-black text-lg mb-8">{historyView.time}</p>
             <button 
               onClick={() => setHistoryView(null)}
-              className="px-8 py-3 bg-white/10 text-white rounded-xl font-bold hover:bg-white/20 transition-all"
+              className="px-10 py-4 bg-white/5 text-white rounded-[20px] font-black uppercase tracking-[2px] hover:bg-white/10 transition-all border border-white/10"
             >
               Back to List
             </button>
           </div>
         ) : (
           <>
-            <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-2 mb-6">
+            <div className="flex-1 overflow-y-auto px-8 py-2 custom-scrollbar space-y-3 mb-6">
               {members.length === 0 ? (
-                <div className="text-center py-10 text-muted-main2 italic">কোনো নাম পাওয়া যায়নি</div>
+                <div className="text-center py-20 text-muted-main2 italic opacity-40 font-serif">No records found.</div>
               ) : (
                 members.map(m => (
-                  <div 
+                  <motion.div 
                     key={m.id}
-                    className={`flex items-center justify-between p-4 rounded-xl border transition-all ${selectedId === m.id ? 'bg-blue-accent/10 border-blue-accent' : 'bg-bg/50 border-border'}`}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className={`group flex items-center justify-between p-5 rounded-[24px] border transition-all duration-300 ${selectedId === m.id ? 'bg-blue-accent/10 border-blue-accent/50 shadow-[0_0_30px_rgba(59,130,246,0.1)]' : 'bg-white/[0.02] border-white/5 hover:border-white/20'}`}
                   >
-                    <div className="flex-1 cursor-pointer" onClick={() => setSelectedId(m.id)}>
-                      <span className="text-white font-bold">{m.name}</span>
+                    <div className="flex-1 cursor-pointer flex items-center gap-4" onClick={() => setSelectedId(m.id)}>
+                      <div className={`w-3 h-3 rounded-full border-2 transition-all ${selectedId === m.id ? 'bg-blue-accent border-blue-accent scale-125' : 'border-white/20'}`} />
+                      <span className={`font-bold text-lg transition-colors ${selectedId === m.id ? 'text-white' : 'text-muted-main group-hover:text-white'}`}>{m.name}</span>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <button 
-                         onClick={() => checkMyAttendance(m.id, m.name)}
-                         className="p-1 px-2 bg-white/5 border border-white/10 rounded text-[9px] text-muted-main uppercase font-bold hover:bg-white/10 transition-all"
-                      >
-                         Time
-                      </button>
-                      <div 
-                        onClick={() => setSelectedId(m.id)}
-                        className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all cursor-pointer ${selectedId === m.id ? 'bg-blue-accent border-blue-accent' : 'border-border'}`}
-                      >
-                        {selectedId === m.id && <Check size={14} className="text-bg font-black" />}
-                      </div>
-                    </div>
-                  </div>
+                    <button 
+                       onClick={() => checkMyAttendance(m.id, m.name)}
+                       className="p-2 px-4 bg-white/5 border border-white/10 rounded-xl text-[9px] text-muted-main uppercase font-black tracking-widest hover:bg-white/10 hover:text-white transition-all"
+                    >
+                       History
+                    </button>
+                  </motion.div>
                 ))
               )}
             </div>
 
-            <div className="flex gap-3">
-              <button onClick={onClose} className="flex-1 py-3 bg-white/5 rounded-xl text-muted-main font-bold">Cancel</button>
-              <button onClick={handleOk} className="flex-1 py-3 bg-blue-accent text-bg font-black rounded-xl hover:shadow-[0_0_20px_rgba(59,130,246,0.3)] transition-all">Submit OK</button>
+            <div className="p-8 border-t border-white/5 bg-white/[0.02] flex gap-4">
+              <button onClick={onClose} className="flex-1 py-4 bg-white/5 rounded-2xl text-muted-main font-bold uppercase tracking-[2px] hover:bg-white/10 transition-all">Cancel</button>
+              <button 
+                onClick={handleOk} 
+                disabled={!selectedId}
+                className={`flex-1 py-4 font-black rounded-2xl uppercase tracking-[2px] transition-all shadow-lg ${selectedId ? 'bg-blue-accent text-bg shadow-blue-accent/20 hover:scale-[1.02]' : 'bg-white/5 text-white/20 cursor-not-allowed'}`}
+              >
+                Confirm OK
+              </button>
             </div>
           </>
         )}
@@ -3410,41 +3420,51 @@ function RankingBoardModal({
   if (!isActive) {
     return (
       <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 text-center">
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} onClick={onClose} className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
-        <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="relative bg-surface border border-border2 p-10 rounded-3xl max-w-sm w-full">
-           <div className="w-16 h-16 bg-red-accent/10 text-red-accent rounded-full flex items-center justify-center mx-auto mb-6">
-              <Lock size={32} />
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} onClick={onClose} className="absolute inset-0 bg-black/90 backdrop-blur-md" />
+        <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="relative bg-[#0A0A0F] border border-white/10 p-10 rounded-[32px] max-w-sm w-full shadow-2xl">
+           <div className="w-20 h-20 bg-gold/10 text-gold rounded-[24px] flex items-center justify-center mx-auto mb-8 border border-gold/20">
+              <Crown size={40} />
            </div>
-           <h3 className="text-xl font-bold text-white mb-2">র‍্যাংকিং বর্তমানে বন্ধ আছে</h3>
-           <p className="text-muted-main text-sm mb-6">এডমিন বর্তমানে র‍্যাংকিং বোর্ডটি প্রদর্শন করা বন্ধ রেখেছেন।</p>
-           <button onClick={onClose} className="w-full py-3 bg-white/10 rounded-xl text-white font-bold">বন্ধ করুন</button>
+           <h3 className="text-2xl font-serif font-black text-white mb-3">Ranking Locked</h3>
+           <p className="text-muted-main text-sm mb-8 leading-relaxed opacity-60 font-medium">The performance board is currently hidden by admin. It will be live soon.</p>
+           <button onClick={onClose} className="w-full py-4 bg-white/5 rounded-2xl text-white font-black uppercase tracking-[2px] border border-white/10 hover:bg-white/10 transition-all">Close Panel</button>
         </motion.div>
       </div>
     );
   }
 
   return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 sm:p-10">
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} onClick={onClose} className="absolute inset-0 bg-black/80 backdrop-blur-md" />
-      <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="relative bg-surface border border-border2 p-6 sm:p-8 rounded-[40px] max-w-lg w-full overflow-hidden shadow-[0_30px_100px_rgba(0,0,0,0.8)]">
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-3">
-            <div className={`p-3 rounded-2xl bg-white/5 border border-white/10 ${colorClass}`}>
-              <Icon size={24} />
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} onClick={onClose} className="absolute inset-0 bg-black/90 backdrop-blur-md" />
+      <motion.div 
+        initial={{ y: 50, opacity: 0 }} 
+        animate={{ y: 0, opacity: 1 }} 
+        className="relative bg-[#0A0A0F] border border-white/10 rounded-[40px] max-w-lg w-full overflow-hidden shadow-[0_40px_100px_rgba(0,0,0,0.9)] flex flex-col max-h-[85vh]"
+      >
+        {/* Dynamic header background based on colorClass or just gold is safer */}
+        <div className="h-2 w-full bg-gradient-to-r from-transparent via-gold to-transparent opacity-50"></div>
+
+        <div className="p-8 pb-4 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className={`p-3 rounded-2xl bg-white/5 border border-white/10 ${colorClass} shadow-lg`}>
+              <Icon size={28} />
             </div>
             <div>
-              <h3 className="text-xl sm:text-2xl font-serif font-black text-white">{title}</h3>
-              <p className="text-[10px] text-muted-main uppercase tracking-widest font-black opacity-50">Unity Earning System • Pro</p>
+              <h3 className="text-2xl sm:text-3xl font-serif font-black text-white tracking-tight">{title}</h3>
+              <p className="text-[10px] text-muted-main uppercase tracking-[3px] font-black opacity-30">Prime Distinction • Performance</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 bg-white/5 rounded-full hover:bg-white/10 transition-all">
+          <button 
+            onClick={onClose} 
+            className="w-10 h-10 bg-white/5 rounded-2xl flex items-center justify-center hover:bg-white/10 text-muted-main hover:text-white transition-all border border-white/10"
+          >
             <X size={20} />
           </button>
         </div>
 
-        <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar pb-6">
+        <div className="flex-1 overflow-y-auto px-8 py-6 custom-scrollbar space-y-4">
            {members.length === 0 ? (
-             <div className="text-center py-20 text-muted-main2 italic">বোর্ডে কোনো ডাটা নেই</div>
+             <div className="text-center py-20 text-muted-main2 italic font-serif opacity-30">The podium is empty...</div>
            ) : (
              members.map((m, idx) => {
                const isTop1 = idx === 0;
@@ -3457,46 +3477,41 @@ function RankingBoardModal({
                    initial={{ x: -20, opacity: 0 }}
                    animate={{ x: 0, opacity: 1 }}
                    transition={{ delay: idx * 0.05 }}
-                   className={`relative flex items-center justify-between p-4 sm:p-5 rounded-3xl border transition-all duration-500 overflow-hidden group ${
-                     isTop1 ? 'bg-gradient-to-br from-gold/20 via-gold/5 to-transparent border-gold/50 shadow-[0_0_30px_rgba(255,215,0,0.15)] scale-105 my-2' : 
+                   className={`relative flex items-center justify-between p-5 rounded-[30px] border transition-all duration-500 overflow-hidden group ${
+                     isTop1 ? 'bg-gradient-to-br from-gold/30 via-gold/5 to-transparent border-gold/50 shadow-[0_15px_40px_rgba(255,215,0,0.2)] scale-x-[1.03] my-3' : 
                      isTop2 ? 'bg-blue-accent/10 border-blue-accent/30' :
                      isTop3 ? 'bg-white/5 border-orange-400/30' :
-                     'bg-bg/40 border-border/40'
+                     'bg-white/[0.02] border-white/5'
                    }`}
                  >
-                   {/* Background Glow for Top 1 */}
-                   {isTop1 && (
-                     <div className="absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r from-transparent via-gold to-transparent animate-pulse" />
-                   )}
-
-                   <div className="flex items-center gap-4 sm:gap-6 relative">
-                     <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center font-serif text-lg font-black ${
-                       isTop1 ? 'bg-gold text-bg shadow-[0_0_20px_rgba(255,215,0,0.5)]' :
-                       isTop2 ? 'bg-blue-accent text-bg' :
-                       isTop3 ? 'bg-orange-400 text-bg' :
-                       'bg-surface text-muted-main border border-border'
+                   <div className="flex items-center gap-5 relative">
+                     <div className={`w-12 h-12 rounded-[20px] flex items-center justify-center font-serif text-xl font-black shadow-xl shrink-0 ${
+                       isTop1 ? 'bg-gold text-bg' :
+                       isTop2 ? 'bg-blue-accent text-bg shadow-blue-accent/20' :
+                       isTop3 ? 'bg-orange-400 text-bg shadow-orange-400/20' :
+                       'bg-[#12121A] text-muted-main border border-white/10'
                      }`}>
-                       {isTop1 ? <Crown size={20} fill="currentColor" /> : 
-                        isTop2 ? <Medal size={20} /> :
-                        isTop3 ? <Award size={20} /> : 
+                       {isTop1 ? <Crown size={24} fill="currentColor" /> : 
+                        isTop2 ? <Medal size={24} /> :
+                        isTop3 ? <Award size={24} /> : 
                         idx + 1}
                      </div>
                      <div>
-                       <div className={`font-serif text-base sm:text-lg font-black tracking-tight ${isTop1 ? 'text-gold' : 'text-white'}`}>
+                       <div className={`font-serif text-lg font-black tracking-tight ${isTop1 ? 'text-gold' : 'text-white'}`}>
                          {m.name}
                        </div>
-                       <div className="flex items-center gap-1.5 opacity-50 mt-0.5">
-                         <div className={`w-1.5 h-1.5 rounded-full ${isTop1 ? 'bg-gold' : 'bg-muted-main'}`} />
-                         <span className="text-[10px] uppercase font-black tracking-widest">{idx + 1}{idx === 0 ? 'st' : idx === 1 ? 'nd' : idx === 2 ? 'rd' : 'th'} Place</span>
+                       <div className="flex items-center gap-2 opacity-50 mt-1">
+                         <div className={`w-1.5 h-1.5 rounded-full ${isTop1 ? 'bg-gold animate-pulse' : 'bg-muted-main'}`} />
+                         <span className="text-[10px] uppercase font-black tracking-[2px]">{idx + 1}{idx === 0 ? 'st' : idx === 1 ? 'nd' : idx === 2 ? 'rd' : 'th'} Elite</span>
                        </div>
                      </div>
                    </div>
 
                    <div className="text-right">
-                     <div className={`text-xl sm:text-2xl font-serif font-black ${isTop1 ? 'text-gold' : 'text-white'}`}>
+                     <div className={`text-2xl sm:text-3xl font-serif font-black ${isTop1 ? 'text-gold' : 'text-white'}`}>
                        {m.score.toLocaleString()}
                      </div>
-                     <div className="text-[8px] sm:text-[9px] text-muted-main uppercase font-black tracking-[2px] opacity-40">Convert</div>
+                     <div className="text-[9px] text-muted-main uppercase font-black tracking-[3px] opacity-30 mt-1">Credits</div>
                    </div>
                  </motion.div>
                );
@@ -3504,12 +3519,14 @@ function RankingBoardModal({
            )}
         </div>
 
-        <button 
-          onClick={onClose}
-          className="w-full mt-2 py-4 bg-white text-bg font-black rounded-3xl text-sm uppercase tracking-[3px] shadow-[0_10px_30px_rgba(255,255,255,0.1)] hover:scale-[0.98] transition-all"
-        >
-          Confirm View
-        </button>
+        <div className="p-8 border-t border-white/5 bg-white/[0.02]">
+           <button 
+             onClick={onClose}
+             className="w-full bg-white text-bg font-serif font-black py-5 rounded-[24px] text-sm uppercase tracking-[4px] shadow-2xl hover:-translate-y-1 hover:shadow-white/10 transition-all flex items-center justify-center gap-3"
+           >
+             Acknowledge Ranking
+           </button>
+        </div>
       </motion.div>
     </div>
   );
@@ -3570,87 +3587,153 @@ function StlLoginModal({ onClose, onSuccess, config }: { onClose: () => void, on
 }
 
 function CounsellingScheduleModal({ config, onClose }: { config: Config, onClose: () => void }) {
-  const [showPayment, setShowPayment] = useState(false);
+  const [showPayment, setShowPayment] = useState(true);
   const schedules = config.counsellingSchedules || [];
   const methods = config.paymentMethods || {};
 
   return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 sm:p-10">
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} onClick={onClose} className="absolute inset-0 bg-black/80 backdrop-blur-md" />
-      <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="relative bg-surface border border-border2 p-6 sm:p-8 rounded-[40px] max-w-[400px] w-full overflow-hidden shadow-[0_30px_100px_rgba(0,0,0,0.8)]">
-        <div className="flex justify-between items-center mb-8">
+      <motion.div 
+        initial={{ y: 50, opacity: 0 }} 
+        animate={{ y: 0, opacity: 1 }} 
+        className="relative bg-[#0A0A0F] border border-white/10 rounded-[32px] max-w-[420px] w-full flex flex-col max-h-[85vh] shadow-[0_30px_100px_rgba(0,0,0,0.8)]"
+      >
+        {/* Decorative Top Line */}
+        <div className="h-1.5 w-full bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500 rounded-t-[32px]"></div>
+
+        {/* Header */}
+        <div className="px-8 pt-8 pb-4 flex justify-between items-center">
           <div>
-            <h3 className="text-xl sm:text-2xl font-serif font-black text-indigo-400">Counselling</h3>
-            <p className="text-[10px] text-muted-main uppercase tracking-widest mt-1">Schedule & Payments</p>
+            <h3 className="text-2xl font-['Syne'] font-black text-white flex items-center gap-2">
+              <div className="w-1.5 h-6 bg-indigo-500 rounded-full"></div>
+              Counselling
+            </h3>
+            <p className="text-[10px] text-muted-main uppercase tracking-widest mt-1 font-black opacity-40">Meeting Schedule • Payments</p>
           </div>
-          <button onClick={onClose} className="p-2 bg-white/5 rounded-full hover:bg-white/10 transition-all text-muted-main hover:text-white">
+          <button 
+            onClick={onClose} 
+            className="w-10 h-10 bg-white/5 rounded-2xl flex items-center justify-center hover:bg-white/10 text-muted-main hover:text-white transition-all border border-white/10"
+          >
             <X size={20} />
           </button>
         </div>
 
-        <div className="space-y-6">
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto px-8 py-4 custom-scrollbar space-y-8">
           {/* Schedules Section */}
-          <div>
-            <h4 className="text-xs uppercase font-black tracking-[2px] text-white flex items-center gap-2 mb-4">
-              <Clock size={14} className="text-indigo-400" />
-              Meeting Schedule
-            </h4>
+          <section>
+            <div className="flex items-center justify-between mb-5">
+              <h4 className="text-[11px] uppercase font-black tracking-[2px] text-indigo-400 flex items-center gap-2">
+                <Clock size={14} />
+                Meeting Times
+              </h4>
+              <div className="px-2 py-0.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-[9px] text-indigo-400 font-bold uppercase tracking-wider animate-pulse">
+                Live Update
+              </div>
+            </div>
             
             {schedules.length === 0 ? (
-              <div className="text-center py-6 border border-dashed border-border2 rounded-2xl text-muted-main text-xs italic">
-                No schedule available
+              <div className="text-center py-10 border border-dashed border-white/10 rounded-2xl text-muted-main text-xs italic">
+                No active schedules found.
               </div>
             ) : (
               <div className="space-y-3">
                 {schedules.map((schedule, idx) => (
                   <motion.div 
-                    initial={{ x: -10, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: idx * 0.1 }}
-                    key={schedule.id} className="flex items-start gap-4 p-4 rounded-2xl bg-bg border border-border"
+                    initial={{ x: -10, opacity: 0 }} 
+                    animate={{ x: 0, opacity: 1 }} 
+                    transition={{ delay: idx * 0.1 }}
+                    key={schedule.id} 
+                    className="group flex items-start gap-4 p-4 rounded-2xl bg-white/[0.03] border border-white/5 hover:border-indigo-400/30 hover:bg-white/[0.05] transition-all"
                   >
-                    <div className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center font-black text-sm shrink-0">
+                    <div className="w-10 h-10 rounded-xl bg-indigo-500 text-bg flex items-center justify-center font-black text-base shrink-0 shadow-[0_4px_12px_rgba(99,102,241,0.3)]">
                       {idx + 1}
                     </div>
-                    <div className="text-sm text-white pt-1.5">{schedule.text}</div>
+                    <div className="pt-1.5 flex flex-col gap-1">
+                      <div className="text-[15px] font-bold text-white group-hover:text-indigo-400 transition-colors leading-relaxed">
+                        {schedule.text}
+                      </div>
+                      <div className="text-[9px] text-muted-main uppercase tracking-widest font-black opacity-30">Confirmed Slot</div>
+                    </div>
                   </motion.div>
                 ))}
               </div>
             )}
-          </div>
+          </section>
 
-          {/* Payment Method Toggle */}
-          <button 
-            onClick={() => setShowPayment(!showPayment)}
-            className="w-full flex items-center justify-between p-4 rounded-2xl bg-surface border border-border2 hover:border-indigo-400/50 transition-all group"
-          >
-            <span className="text-sm font-bold text-white flex items-center gap-2">
-              Payment Method
-            </span>
-            <ChevronRight size={18} className={`text-muted-main transition-transform ${showPayment ? 'rotate-90 text-indigo-400' : ''}`} />
-          </button>
+          {/* Payment Section */}
+          <section className="pb-4">
+            <div className="flex items-center justify-between mb-5">
+              <h4 className="text-[11px] uppercase font-black tracking-[2px] text-purple-400 flex items-center gap-2">
+                <Wallet size={14} />
+                Payment Gateways
+              </h4>
+              <button 
+                onClick={() => setShowPayment(!showPayment)}
+                className="text-[10px] text-muted-main hover:text-purple-400 transition-all font-black uppercase tracking-widest underline decoration-dotted underline-offset-4"
+              >
+                {showPayment ? 'Hide Methods' : 'Show Methods'}
+              </button>
+            </div>
 
-          {/* Payment Methods */}
-          {showPayment && (
-            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} className="space-y-3 pt-2">
-              {[
-                { name: 'bKash', number: methods.bkash, color: 'text-pink-500', bg: 'bg-pink-500/10', border: 'border-pink-500/30' },
-                { name: 'Nagad', number: methods.nagad, color: 'text-orange-500', bg: 'bg-orange-500/10', border: 'border-orange-500/30' },
-                { name: 'Rocket', number: methods.rocket, color: 'text-purple-500', bg: 'bg-purple-500/10', border: 'border-purple-500/30' },
-                { name: 'Upay', number: methods.upay, color: 'text-blue-500', bg: 'bg-blue-500/10', border: 'border-blue-500/30' }
-              ].filter(m => m.number).map((method, idx) => (
-                <div key={idx} className={`flex items-center justify-between p-4 rounded-2xl ${method.bg} border ${method.border}`}>
-                  <span className={`text-sm font-black ${method.color}`}>{method.name}</span>
-                  <span className="text-white font-mono font-bold tracking-wider">{method.number}</span>
-                </div>
-              ))}
-              
-              {!methods.bkash && !methods.nagad && !methods.rocket && !methods.upay && (
-                <div className="text-center py-4 border border-dashed border-border2 rounded-xl text-muted-main text-xs italic">
-                  No payment methods added
-                </div>
+            <AnimatePresence>
+              {showPayment && (
+                <motion.div 
+                  initial={{ height: 0, opacity: 0 }} 
+                  animate={{ height: 'auto', opacity: 1 }} 
+                  exit={{ height: 0, opacity: 0 }}
+                  className="space-y-3 overflow-hidden"
+                >
+                  {[
+                    { name: 'bKash', number: methods.bkash, color: '#D23369', logo: 'B' },
+                    { name: 'Nagad', number: methods.nagad, color: '#F7941D', logo: 'N' },
+                    { name: 'Rocket', number: methods.rocket, color: '#8C3494', logo: 'R' },
+                    { name: 'Upay', number: methods.upay, color: '#2C3E50', logo: 'U' }
+                  ].filter(m => m.number).map((method, idx) => (
+                    <div 
+                      key={idx} 
+                      className="group flex items-center justify-between p-4 rounded-2xl bg-white/[0.03] border border-white/5 hover:border-white/10 transition-all cursor-default"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div 
+                          className="w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm text-white shadow-lg"
+                          style={{ backgroundColor: method.color }}
+                        >
+                          {method.logo}
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-[10px] font-black uppercase tracking-[2px] opacity-40">{method.name} Personal</span>
+                          <span className="text-white font-serif font-black text-base tracking-wider transition-colors group-hover:text-indigo-400">
+                            {method.number}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="p-2 bg-white/5 rounded-lg text-white/20 group-hover:text-white/40 transition-all">
+                        <div className="text-[8px] font-black uppercase tracking-tighter">Verified</div>
+                      </div>
+                    </div>
+                  ))}
+                  
+                  {Object.values(methods).every(m => !m) && (
+                    <div className="text-center py-8 border border-dashed border-white/10 rounded-2xl text-muted-main text-xs italic">
+                      No payment methods enabled.
+                    </div>
+                  )}
+                </motion.div>
               )}
-            </motion.div>
-          )}
+            </AnimatePresence>
+          </section>
+        </div>
 
+        {/* Footer info/action */}
+        <div className="p-8 pt-4 border-t border-white/5 bg-white/[0.02]">
+           <button 
+             onClick={onClose}
+             className="w-full bg-indigo-500 text-bg font-['Syne'] font-black py-4 rounded-2xl text-[13px] uppercase tracking-[3px] shadow-[0_12px_32px_rgba(99,102,241,0.25)] hover:-translate-y-0.5 hover:shadow-[0_16px_40px_rgba(99,102,241,0.4)] active:translate-y-0 transition-all"
+           >
+             Close Schedule
+           </button>
         </div>
       </motion.div>
     </div>
