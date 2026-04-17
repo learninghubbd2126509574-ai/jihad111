@@ -549,6 +549,9 @@ export default function App() {
         message = 'Domain not authorized in Firebase! Please add this URL to Firebase Console.';
       } else if (err.code === 'auth/popup-blocked') {
         message = 'Popup blocked! Please allow popups for this site.';
+      } else if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
+        // Don't show an error message if the user intentionally closed the popup
+        return;
       } else if (err.message) {
         message = `Login failed: ${err.message}`;
       }
