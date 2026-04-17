@@ -388,7 +388,6 @@ export default function App() {
       if (snapshot.exists()) {
         const newConfig = snapshot.data() as Config;
         setConfig(prev => {
-          // Reset dismiss state if announcement text changes or is activated
           if (newConfig.announcement !== prev.announcement || (newConfig.announcementActive && !prev.announcementActive)) {
             setAnnouncementDismissed(false);
           }
@@ -1116,6 +1115,7 @@ export default function App() {
                 <button 
                   onClick={() => setAnnouncementDismissed(true)}
                   className="absolute top-2 right-2 p-1.5 hover:bg-white/10 rounded-full text-muted-main hover:text-white transition-all"
+                  title="Dismiss"
                 >
                   <X size={16} />
                 </button>
