@@ -66,7 +66,12 @@ import {
   Presentation,
   Award,
   Medal,
-  Crown
+  Crown,
+  Globe,
+  Facebook,
+  Youtube,
+  MessageCircle,
+  Music
 } from 'lucide-react';
 
 // --- Types ---
@@ -171,6 +176,26 @@ interface RankingMember {
   createdAt: any;
 }
 
+interface SocialLinks {
+  facebook?: string;
+  youtube?: string;
+  whatsapp?: string;
+  telegram?: string;
+  tiktok?: string;
+}
+
+interface CounsellingSchedule {
+  id: string;
+  text: string;
+}
+
+interface PaymentMethods {
+  bkash?: string;
+  nagad?: string;
+  rocket?: string;
+  upay?: string;
+}
+
 interface Config {
   timerActive: boolean;
   timerEndTime: number;
@@ -183,6 +208,12 @@ interface Config {
   demoActive?: boolean;
   leaderRankingActive?: boolean;
   trainerRankingActive?: boolean;
+  socialLinks?: SocialLinks;
+  noticeText?: string;
+  stlLoginActive?: boolean;
+  stlPassword?: string;
+  counsellingSchedules?: CounsellingSchedule[];
+  paymentMethods?: PaymentMethods;
 }
 
 enum OperationType {
@@ -274,6 +305,7 @@ export default function App() {
   const [config, setConfig] = useState<Config>({ timerActive: false, timerEndTime: 0, timerDuration: 1800 });
   const [timeLeft, setTimeLeft] = useState(0);
   const [isAuthReady, setIsAuthReady] = useState(false);
+  const [isConfigReady, setIsConfigReady] = useState(false);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [showPickingModal, setShowPickingModal] = useState(false);
   const [pickingSchedule, setPickingSchedule] = useState<PickingItem[]>([]);
@@ -303,12 +335,18 @@ export default function App() {
   const [trainerRanking, setTrainerRanking] = useState<RankingMember[]>([]);
   const [showLeaderRankingModal, setShowLeaderRankingModal] = useState(false);
   const [showTrainerRankingModal, setShowTrainerRankingModal] = useState(false);
+  const [showSocialsModal, setShowSocialsModal] = useState(false);
+  const [showNoticeModal, setShowNoticeModal] = useState(false);
+  const [showCounsellingModal, setShowCounsellingModal] = useState(false);
 
   const [showConfirm, setShowConfirm] = useState<{ title: string, onConfirm: () => void } | null>(null);
   const [siteAuthenticated, setSiteAuthenticated] = useState(false);
+  const [stlAuthenticated, setStlAuthenticated] = useState(() => localStorage.getItem('stlAuth') === 'true');
+  const [showStlLoginModal, setShowStlLoginModal] = useState(false);
 
   // Admin check
   const adminEmail = "learninghubbd2126509574@gmail.com";
+  const hasStlAccess = isAdmin || stlAuthenticated;
 
   const COURSES = [
     "Photo Edit",
@@ -357,6 +395,7 @@ export default function App() {
           return newConfig;
         });
       }
+      setIsConfigReady(true);
     }, (err) => handleFirestoreError(err, OperationType.GET, 'config/global', showMsg));
 
     // Listen to Members
@@ -635,6 +674,56 @@ export default function App() {
         isLocked: locked
       });
       showMsg('Security settings updated', 'success');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'config/global', showMsg);
+    }
+  };
+
+  const updateStlSettings = async (password: string, active: boolean) => {
+    try {
+      await setDoc(doc(db, 'config', 'global'), {
+        ...config,
+        stlPassword: password,
+        stlLoginActive: active
+      });
+      showMsg('STL Login settings updated', 'success');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'config/global', showMsg);
+    }
+  };
+
+  const updateCounsellingSettings = async (schedules: CounsellingSchedule[], methods: PaymentMethods) => {
+    try {
+      await setDoc(doc(db, 'config', 'global'), {
+        ...config,
+        counsellingSchedules: schedules,
+        paymentMethods: methods
+      });
+      showMsg('Counselling schedule updated', 'success');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'config/global', showMsg);
+    }
+  };
+
+  const updateSocialLinks = async (links: SocialLinks) => {
+    try {
+      await setDoc(doc(db, 'config', 'global'), {
+        ...config,
+        socialLinks: links
+      });
+      showMsg('Social links updated successfully', 'success');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'config/global', showMsg);
+    }
+  };
+
+  const updateNoticeText = async (text: string) => {
+    try {
+      await setDoc(doc(db, 'config', 'global'), {
+        ...config,
+        noticeText: text
+      });
+      showMsg('Notice updated successfully', 'success');
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'config/global', showMsg);
     }
@@ -958,13 +1047,22 @@ export default function App() {
     };
   }, [members, results]);
 
-  if (config.isLocked && !siteAuthenticated) {
+  if (!isAuthReady || !isConfigReady) {
+    return (
+      <div className="min-h-screen bg-bg flex items-center justify-center">
+        <div className="w-16 h-16 border-4 border-blue-accent/20 border-t-blue-accent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  if (config.isLocked && !siteAuthenticated && (!user || user.email !== adminEmail)) {
     return (
       <SiteLock 
         correctPassword={config.securityPassword || 'unity2024'} 
         onUnlock={() => {
           setSiteAuthenticated(true);
         }} 
+        onAdminLogin={login}
       />
     );
   }
@@ -1148,36 +1246,72 @@ export default function App() {
                   <ChevronRight size={18} className="text-purple-500" />
                 </button>
 
+                {hasStlAccess && (
+                  <>
+                    <button 
+                      onClick={() => { setShowMenu(false); setShowSTLModal(true); }}
+                      className="w-full flex items-center justify-between p-4 rounded-2xl bg-blue-accent/10 border border-blue-accent/30 hover:bg-blue-accent/20 group transition-all"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-blue-accent text-bg flex items-center justify-center shadow-lg">
+                          <Users size={20} />
+                        </div>
+                        <div className="text-left">
+                          <span className="block text-sm font-black text-blue-accent">STL Meeting</span>
+                          <span className="block text-[10px] text-white/60 uppercase font-black">Attendance System</span>
+                        </div>
+                      </div>
+                      <ChevronRight size={18} className="text-blue-accent" />
+                    </button>
+
+                    <button 
+                      onClick={() => { setShowMenu(false); setShowDemoModal(true); }}
+                      className="w-full flex items-center justify-between p-4 rounded-2xl bg-green-500/10 border border-green-500/30 hover:bg-green-500/20 group transition-all"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-green-500 text-bg flex items-center justify-center shadow-lg">
+                          <Presentation size={20} />
+                        </div>
+                        <div className="text-left">
+                          <span className="block text-sm font-black text-green-500">Demo</span>
+                          <span className="block text-[10px] text-white/60 uppercase font-black">Attendance System</span>
+                        </div>
+                      </div>
+                      <ChevronRight size={18} className="text-green-500" />
+                    </button>
+                  </>
+                )}
+
                 <button 
-                  onClick={() => { setShowMenu(false); setShowSTLModal(true); }}
-                  className="w-full flex items-center justify-between p-4 rounded-2xl bg-blue-accent/10 border border-blue-accent/30 hover:bg-blue-accent/20 group transition-all"
+                  onClick={() => { setShowMenu(false); setShowCounsellingModal(true); }}
+                  className="w-full flex items-center justify-between p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 hover:bg-indigo-500/20 group transition-all"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-blue-accent text-bg flex items-center justify-center shadow-lg">
-                      <Users size={20} />
+                    <div className="w-10 h-10 rounded-xl bg-indigo-500 text-bg flex items-center justify-center shadow-lg">
+                      <Clock size={20} />
                     </div>
                     <div className="text-left">
-                      <span className="block text-sm font-black text-blue-accent">STL Meeting</span>
-                      <span className="block text-[10px] text-white/60 uppercase font-black">Attendance System</span>
+                      <span className="block text-sm font-black text-indigo-500">Counselling Schedule</span>
+                      <span className="block text-[10px] text-white/60 uppercase font-black">Meeting Times & Payments</span>
                     </div>
                   </div>
-                  <ChevronRight size={18} className="text-blue-accent" />
+                  <ChevronRight size={18} className="text-indigo-500" />
                 </button>
 
                 <button 
-                  onClick={() => { setShowMenu(false); setShowDemoModal(true); }}
-                  className="w-full flex items-center justify-between p-4 rounded-2xl bg-green-500/10 border border-green-500/30 hover:bg-green-500/20 group transition-all"
+                  onClick={() => { setShowMenu(false); setShowNoticeModal(true); }}
+                  className="w-full flex items-center justify-between p-4 rounded-2xl bg-orange-500/10 border border-orange-500/30 hover:bg-orange-500/20 group transition-all"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-green-500 text-bg flex items-center justify-center shadow-lg">
-                      <Presentation size={20} />
+                    <div className="w-10 h-10 rounded-xl bg-orange-500 text-bg flex items-center justify-center shadow-lg">
+                      <Megaphone size={20} />
                     </div>
                     <div className="text-left">
-                      <span className="block text-sm font-black text-green-500">Demo</span>
-                      <span className="block text-[10px] text-white/60 uppercase font-black">Attendance System</span>
+                      <span className="block text-sm font-black text-orange-500">Notice</span>
+                      <span className="block text-[10px] text-white/60 uppercase font-black">Announcements</span>
                     </div>
                   </div>
-                  <ChevronRight size={18} className="text-green-500" />
+                  <ChevronRight size={18} className="text-orange-500" />
                 </button>
 
                 <button 
@@ -1198,6 +1332,39 @@ export default function App() {
 
                 <div className="pt-4 mt-4 border-t border-border">
                   <div className="text-[9px] text-muted-main font-black uppercase tracking-widest mb-3 pl-1 opacity-50">System Control</div>
+                  <button 
+                    onClick={() => { setShowMenu(false); setShowSocialsModal(true); }}
+                    className="w-full flex items-center justify-between p-4 rounded-xl bg-bg border border-border hover:border-gold/30 transition-all mb-3 group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Globe className="text-blue-accent group-hover:text-gold transition-colors" size={18} />
+                      <span className="text-sm font-bold text-white group-hover:text-gold transition-colors">Social Link</span>
+                    </div>
+                    <ChevronRight size={16} className="text-muted-main group-hover:text-gold transition-colors" />
+                  </button>
+
+                  {config.stlLoginActive && (
+                    <button 
+                      onClick={() => {
+                        setShowMenu(false);
+                        if (stlAuthenticated) {
+                          setStlAuthenticated(false);
+                          localStorage.removeItem('stlAuth');
+                          showMsg('STL Logged out');
+                        } else {
+                          setShowStlLoginModal(true);
+                        }
+                      }}
+                      className="w-full flex items-center justify-between p-4 rounded-xl bg-bg border border-border hover:border-blue-accent/30 transition-all mb-3 group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Users className={stlAuthenticated ? "text-blue-accent" : "text-muted-main"} size={18} />
+                        <span className="text-sm font-bold text-white">{stlAuthenticated ? "STL Logout" : "STL Login"}</span>
+                      </div>
+                      <ChevronRight size={16} className="text-muted-main" />
+                    </button>
+                  )}
+
                   <button 
                     onClick={() => { setShowMenu(false); user ? setShowAdminPanel(true) : login(); }}
                     className="w-full flex items-center justify-between p-4 rounded-xl bg-bg border border-border hover:border-white/20 transition-all"
@@ -1580,6 +1747,30 @@ export default function App() {
                 onUpdate={updateSecurity}
               />
 
+              {/* STL Access Section */}
+              <StlManager 
+                config={config} 
+                onUpdate={updateStlSettings}
+              />
+
+              {/* Social Links Section */}
+              <SocialLinksManager 
+                config={config} 
+                onUpdate={updateSocialLinks}
+              />
+
+              {/* Notice Section */}
+              <NoticeManager 
+                config={config}
+                onUpdate={updateNoticeText}
+              />
+
+              {/* Counselling Section */}
+              <CounsellingManager 
+                config={config}
+                onUpdate={updateCounsellingSettings}
+              />
+
               <button 
                 onClick={logout}
                 className="w-full mt-8 border border-border2 text-muted-main font-bold py-3 rounded-lg text-sm hover:border-red-accent hover:text-red-accent transition-all flex items-center justify-center gap-2"
@@ -1818,6 +2009,48 @@ export default function App() {
             members={trainerRanking}
             onClose={() => setShowTrainerRankingModal(false)}
             isActive={config.trainerRankingActive || false}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showSocialsModal && (
+          <SocialLinksModal 
+            links={config.socialLinks}
+            onClose={() => setShowSocialsModal(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showNoticeModal && (
+          <NoticeModal 
+            text={config.noticeText}
+            onClose={() => setShowNoticeModal(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showStlLoginModal && (
+          <StlLoginModal 
+            onClose={() => setShowStlLoginModal(false)}
+            onSuccess={() => {
+              setShowStlLoginModal(false);
+              setStlAuthenticated(true);
+              localStorage.setItem('stlAuth', 'true');
+              showMsg('STL Login successful');
+            }}
+            config={config}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showCounsellingModal && (
+          <CounsellingScheduleModal 
+            config={config}
+            onClose={() => setShowCounsellingModal(false)}
           />
         )}
       </AnimatePresence>
@@ -2560,6 +2793,251 @@ function SecurityManager({ config, onUpdate }: { config: Config, onUpdate: (pass
   );
 }
 
+function SocialLinksManager({ config, onUpdate }: { config: Config, onUpdate: (links: SocialLinks) => void }) {
+  const [links, setLinks] = useState<SocialLinks>({
+    facebook: config.socialLinks?.facebook || '',
+    youtube: config.socialLinks?.youtube || '',
+    whatsapp: config.socialLinks?.whatsapp || '',
+    telegram: config.socialLinks?.telegram || '',
+    tiktok: config.socialLinks?.tiktok || ''
+  });
+
+  useEffect(() => {
+    setLinks({
+      facebook: config.socialLinks?.facebook || '',
+      youtube: config.socialLinks?.youtube || '',
+      whatsapp: config.socialLinks?.whatsapp || '',
+      telegram: config.socialLinks?.telegram || '',
+      tiktok: config.socialLinks?.tiktok || ''
+    });
+  }, [config.socialLinks]);
+
+  const handleChange = (platform: keyof SocialLinks) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    setLinks(prev => ({ ...prev, [platform]: e.target.value }));
+  };
+
+  return (
+    <div className="bg-bg border border-border rounded-xl p-4 mb-8">
+      <div className="flex items-center gap-2 mb-4">
+        <Globe size={14} className="text-blue-accent" />
+        <h4 className="text-[10px] text-muted-main tracking-[2px] uppercase">Social Links Control</h4>
+      </div>
+      <div className="space-y-4">
+        {[
+          { key: 'facebook', label: 'Facebook URL', icon: Facebook, color: 'text-[#1877F2]' },
+          { key: 'youtube', label: 'YouTube URL', icon: Youtube, color: 'text-[#FF0000]' },
+          { key: 'whatsapp', label: 'WhatsApp URL (or Number)', icon: MessageCircle, color: 'text-[#25D366]' },
+          { key: 'telegram', label: 'Telegram URL', icon: Send, color: 'text-[#0088cc]' },
+          { key: 'tiktok', label: 'TikTok URL', icon: Music, color: 'text-white' }
+        ].map((platform) => (
+          <div key={platform.key}>
+            <label className={`text-[8px] uppercase font-black tracking-widest block mb-1.5 px-1 ${platform.color}`}>{platform.label}</label>
+            <div className="relative">
+              <platform.icon className={`absolute left-3 top-1/2 -translate-y-1/2 ${platform.color}`} size={16} />
+              <input 
+                type="text"
+                className="w-full bg-surface border border-border2 rounded-lg p-3 pl-10 text-sm outline-none focus:border-blue-accent transition-all"
+                placeholder={`Enter ${platform.label}...`}
+                value={links[platform.key as keyof SocialLinks] || ''}
+                onChange={handleChange(platform.key as keyof SocialLinks)}
+              />
+            </div>
+          </div>
+        ))}
+
+        <button 
+          onClick={() => onUpdate(links)}
+          className="w-full bg-blue-accent text-bg font-black py-2.5 rounded-lg text-[10px] uppercase tracking-widest hover:opacity-90 transition-all flex items-center justify-center gap-2"
+        >
+          <Globe size={12} />
+          Save Social Links
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function StlManager({ config, onUpdate }: { config: Config, onUpdate: (password: string, active: boolean) => void }) {
+  const [password, setPassword] = useState(config.stlPassword || '');
+  const [active, setActive] = useState(!!config.stlLoginActive);
+
+  return (
+    <div className="bg-bg border border-border rounded-3xl p-6">
+      <div className="flex items-center gap-3 mb-6">
+        <div className="p-3 rounded-2xl bg-blue-accent/10">
+          <Users className="text-blue-accent" size={24} />
+        </div>
+        <div>
+          <h3 className="text-xl font-bold font-serif">STL Access Control</h3>
+          <p className="text-xs text-muted-main">Manage STL login and permissions</p>
+        </div>
+      </div>
+
+      <div className="space-y-5">
+        <label className="flex items-center justify-between p-4 bg-surface border border-border2 rounded-2xl cursor-pointer hover:border-gold/30 transition-colors">
+          <div className="flex items-center gap-3">
+            <Lock size={18} className="text-muted-main" />
+            <div>
+              <div className="font-bold text-white text-sm">Enable STL Login</div>
+              <div className="text-[10px] text-muted-main mt-0.5">Allow STL users to access Demo and STL Meeting</div>
+            </div>
+          </div>
+          <div className={`w-10 h-6 rounded-full transition-colors relative ${active ? 'bg-green-500' : 'bg-surface border border-border2'}`}>
+            <div className={`absolute top-1 bottom-1 w-4 rounded-full bg-white transition-all ${active ? 'left-5' : 'left-1'}`} />
+          </div>
+          <input 
+            type="checkbox" 
+            checked={active}
+            onChange={(e) => setActive(e.target.checked)}
+            className="hidden"
+          />
+        </label>
+
+        <div>
+           <label className="block text-xs font-bold text-muted-main uppercase tracking-widest mb-2 pl-2">STL Password</label>
+           <input 
+             type="text" 
+             value={password}
+             onChange={(e) => setPassword(e.target.value)}
+             className="w-full bg-surface border border-border2 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-accent/50"
+             placeholder="Enter STL password"
+           />
+        </div>
+
+        <button 
+          onClick={() => onUpdate(password, active)}
+          className="w-full py-4 rounded-xl bg-blue-accent text-bg font-bold shadow-[0_0_20px_rgba(59,130,246,0.2)] hover:shadow-[0_0_30px_rgba(59,130,246,0.3)] active:scale-95 transition-all"
+        >
+          Save STL Settings
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CounsellingManager({ config, onUpdate }: { config: Config, onUpdate: (schedules: CounsellingSchedule[], methods: PaymentMethods) => void }) {
+  const [schedules, setSchedules] = useState<CounsellingSchedule[]>(config.counsellingSchedules || []);
+  const [methods, setMethods] = useState<PaymentMethods>(config.paymentMethods || { bkash: '', nagad: '', rocket: '', upay: '' });
+  const [newSchedule, setNewSchedule] = useState('');
+
+  const handleAddSchedule = () => {
+    if (newSchedule.trim()) {
+      setSchedules([...schedules, { id: Date.now().toString(), text: newSchedule.trim() }]);
+      setNewSchedule('');
+    }
+  };
+
+  const handleRemoveSchedule = (id: string) => {
+    setSchedules(schedules.filter(s => s.id !== id));
+  };
+
+  return (
+    <div className="bg-bg border border-border rounded-xl p-4 mb-8">
+      <div className="flex items-center gap-2 mb-6">
+        <Clock size={16} className="text-indigo-400" />
+        <h4 className="text-[12px] text-white font-bold tracking-[1px] uppercase">Counselling & Payments</h4>
+      </div>
+      
+      {/* Schedules */}
+      <div className="mb-6">
+        <label className="text-[10px] uppercase font-black tracking-widest text-muted-main block mb-2 px-1">Meeting Times</label>
+        <div className="space-y-2 mb-3">
+          {schedules.map((schedule, idx) => (
+            <div key={schedule.id} className="flex items-center justify-between bg-surface border border-border2 rounded-lg p-3">
+              <span className="text-sm text-white">
+                <span className="text-indigo-400 font-bold mr-2">{idx + 1}.</span>
+                {schedule.text}
+              </span>
+              <button onClick={() => handleRemoveSchedule(schedule.id)} className="text-red-400 hover:text-red-300">
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+          {schedules.length === 0 && <div className="text-xs text-muted-main italic">No schedules added yet.</div>}
+        </div>
+        <div className="flex gap-2">
+          <input 
+            type="text"
+            className="flex-1 bg-surface border border-border2 rounded-lg p-3 text-sm outline-none focus:border-indigo-400 transition-all text-white"
+            placeholder="Add new meeting time..."
+            value={newSchedule}
+            onChange={(e) => setNewSchedule(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleAddSchedule()}
+          />
+          <button onClick={handleAddSchedule} className="bg-indigo-500/20 text-indigo-400 px-4 rounded-lg hover:bg-indigo-500/30 font-bold">
+            Add
+          </button>
+        </div>
+      </div>
+
+      {/* Payment Methods */}
+      <div className="space-y-4 mb-6">
+        <label className="text-[10px] uppercase font-black tracking-widest text-muted-main block mb-1 px-1">Payment Methods</label>
+        {[
+          { key: 'bkash', label: 'bKash Number', color: 'text-pink-500' },
+          { key: 'nagad', label: 'Nagad Number', color: 'text-orange-500' },
+          { key: 'rocket', label: 'Rocket Number', color: 'text-purple-500' },
+          { key: 'upay', label: 'Upay Number', color: 'text-blue-500' }
+        ].map((method) => (
+          <div key={method.key}>
+            <label className={`text-[9px] uppercase font-bold tracking-widest block mb-1.5 px-1 ${method.color}`}>{method.label}</label>
+            <input 
+              type="text"
+              className="w-full bg-surface border border-border2 rounded-lg p-3 text-sm outline-none focus:border-white/20 transition-all text-white"
+              placeholder={`Enter ${method.label}...`}
+              value={methods[method.key as keyof PaymentMethods] || ''}
+              onChange={(e) => setMethods({ ...methods, [method.key]: e.target.value })}
+            />
+          </div>
+        ))}
+      </div>
+
+      <button 
+        onClick={() => onUpdate(schedules, methods)}
+        className="w-full bg-indigo-500 text-bg font-black py-3 rounded-lg text-[10px] uppercase tracking-widest hover:opacity-90 transition-all flex items-center justify-center gap-2"
+      >
+        <Clock size={14} />
+        Save Settings
+      </button>
+    </div>
+  );
+}
+
+function NoticeManager({ config, onUpdate }: { config: Config, onUpdate: (text: string) => void }) {
+  const [text, setText] = useState(config.noticeText || '');
+
+  useEffect(() => {
+    setText(config.noticeText || '');
+  }, [config.noticeText]);
+
+  return (
+    <div className="bg-bg border border-border rounded-xl p-4 mb-8">
+      <div className="flex items-center gap-2 mb-4">
+        <Megaphone size={14} className="text-orange-400" />
+        <h4 className="text-[10px] text-muted-main tracking-[2px] uppercase">Notice Control</h4>
+      </div>
+      <div className="space-y-4">
+        <div>
+          <label className="text-[8px] text-muted-main uppercase font-black tracking-widest block mb-1.5 px-1">Notice Text</label>
+          <textarea 
+            className="w-full bg-surface border border-border2 rounded-lg p-3 text-sm outline-none focus:border-orange-400 transition-all min-h-[100px] resize-none"
+            placeholder="Write your notice here..."
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+          />
+        </div>
+        <button 
+          onClick={() => onUpdate(text)}
+          className="w-full bg-orange-400 text-bg font-black py-2.5 rounded-lg text-[10px] uppercase tracking-widest hover:opacity-90 transition-all flex items-center justify-center gap-2"
+        >
+          <Megaphone size={12} />
+          Publish Notice
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function SimpleManagementSection({ 
   title, 
   icon: Icon, 
@@ -3017,7 +3495,7 @@ function RankingBoardModal({
                      <div className={`text-xl sm:text-2xl font-serif font-black ${isTop1 ? 'text-gold' : 'text-white'}`}>
                        {m.score.toLocaleString()}
                      </div>
-                     <div className="text-[8px] sm:text-[9px] text-muted-main uppercase font-black tracking-[2px] opacity-40">Points</div>
+                     <div className="text-[8px] sm:text-[9px] text-muted-main uppercase font-black tracking-[2px] opacity-40">Convert</div>
                    </div>
                  </motion.div>
                );
@@ -3031,6 +3509,225 @@ function RankingBoardModal({
         >
           Confirm View
         </button>
+      </motion.div>
+    </div>
+  );
+}
+
+function StlLoginModal({ onClose, onSuccess, config }: { onClose: () => void, onSuccess: () => void, config: Config }) {
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState(false);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password === config.stlPassword) {
+      onSuccess();
+    } else {
+      setError(true);
+      setTimeout(() => setError(false), 2000);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 sm:p-10">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} onClick={onClose} className="absolute inset-0 bg-black/80 backdrop-blur-md" />
+      <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="relative bg-surface border border-border2 p-6 sm:p-8 rounded-[40px] max-w-[400px] w-full overflow-hidden shadow-[0_30px_100px_rgba(0,0,0,0.8)]">
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h3 className="text-2xl font-serif font-black text-white">STL Access</h3>
+            <p className="text-xs text-muted-main uppercase tracking-widest mt-1">STL Identity Required</p>
+          </div>
+          <button onClick={onClose} className="p-2 bg-white/5 rounded-full hover:bg-white/10 transition-all text-muted-main hover:text-white">
+            <X size={20} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div>
+            <label className="block text-[10px] font-black uppercase tracking-[2px] text-muted-main mb-2 pl-2">STL Password</label>
+            <input 
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className={`w-full bg-bg border ${error ? 'border-red-500' : 'border-border2'} rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-blue-accent/50 transition-colors shadow-inner font-mono`}
+              placeholder="••••••••"
+              autoFocus
+            />
+            {error && <div className="text-xs text-red-500 mt-2 pl-2">Invalid code</div>}
+          </div>
+          
+          <button 
+            type="submit"
+            className="w-full bg-blue-accent hover:bg-blue-accent/90 text-bg py-4 rounded-2xl font-bold transition-all shadow-[0_0_20px_rgba(59,130,246,0.3)] hover:shadow-[0_0_30px_rgba(59,130,246,0.5)] active:scale-[0.98]"
+          >
+            Access System
+          </button>
+        </form>
+      </motion.div>
+    </div>
+  );
+}
+
+function CounsellingScheduleModal({ config, onClose }: { config: Config, onClose: () => void }) {
+  const [showPayment, setShowPayment] = useState(false);
+  const schedules = config.counsellingSchedules || [];
+  const methods = config.paymentMethods || {};
+
+  return (
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 sm:p-10">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} onClick={onClose} className="absolute inset-0 bg-black/80 backdrop-blur-md" />
+      <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="relative bg-surface border border-border2 p-6 sm:p-8 rounded-[40px] max-w-[400px] w-full overflow-hidden shadow-[0_30px_100px_rgba(0,0,0,0.8)]">
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h3 className="text-xl sm:text-2xl font-serif font-black text-indigo-400">Counselling</h3>
+            <p className="text-[10px] text-muted-main uppercase tracking-widest mt-1">Schedule & Payments</p>
+          </div>
+          <button onClick={onClose} className="p-2 bg-white/5 rounded-full hover:bg-white/10 transition-all text-muted-main hover:text-white">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="space-y-6">
+          {/* Schedules Section */}
+          <div>
+            <h4 className="text-xs uppercase font-black tracking-[2px] text-white flex items-center gap-2 mb-4">
+              <Clock size={14} className="text-indigo-400" />
+              Meeting Schedule
+            </h4>
+            
+            {schedules.length === 0 ? (
+              <div className="text-center py-6 border border-dashed border-border2 rounded-2xl text-muted-main text-xs italic">
+                No schedule available
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {schedules.map((schedule, idx) => (
+                  <motion.div 
+                    initial={{ x: -10, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: idx * 0.1 }}
+                    key={schedule.id} className="flex items-start gap-4 p-4 rounded-2xl bg-bg border border-border"
+                  >
+                    <div className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center font-black text-sm shrink-0">
+                      {idx + 1}
+                    </div>
+                    <div className="text-sm text-white pt-1.5">{schedule.text}</div>
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Payment Method Toggle */}
+          <button 
+            onClick={() => setShowPayment(!showPayment)}
+            className="w-full flex items-center justify-between p-4 rounded-2xl bg-surface border border-border2 hover:border-indigo-400/50 transition-all group"
+          >
+            <span className="text-sm font-bold text-white flex items-center gap-2">
+              Payment Method
+            </span>
+            <ChevronRight size={18} className={`text-muted-main transition-transform ${showPayment ? 'rotate-90 text-indigo-400' : ''}`} />
+          </button>
+
+          {/* Payment Methods */}
+          {showPayment && (
+            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} className="space-y-3 pt-2">
+              {[
+                { name: 'bKash', number: methods.bkash, color: 'text-pink-500', bg: 'bg-pink-500/10', border: 'border-pink-500/30' },
+                { name: 'Nagad', number: methods.nagad, color: 'text-orange-500', bg: 'bg-orange-500/10', border: 'border-orange-500/30' },
+                { name: 'Rocket', number: methods.rocket, color: 'text-purple-500', bg: 'bg-purple-500/10', border: 'border-purple-500/30' },
+                { name: 'Upay', number: methods.upay, color: 'text-blue-500', bg: 'bg-blue-500/10', border: 'border-blue-500/30' }
+              ].filter(m => m.number).map((method, idx) => (
+                <div key={idx} className={`flex items-center justify-between p-4 rounded-2xl ${method.bg} border ${method.border}`}>
+                  <span className={`text-sm font-black ${method.color}`}>{method.name}</span>
+                  <span className="text-white font-mono font-bold tracking-wider">{method.number}</span>
+                </div>
+              ))}
+              
+              {!methods.bkash && !methods.nagad && !methods.rocket && !methods.upay && (
+                <div className="text-center py-4 border border-dashed border-border2 rounded-xl text-muted-main text-xs italic">
+                  No payment methods added
+                </div>
+              )}
+            </motion.div>
+          )}
+
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+function NoticeModal({ text, onClose }: { text?: string, onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 text-center">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} onClick={onClose} className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
+      <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="relative bg-surface border border-border2 p-8 rounded-3xl max-w-sm w-full">
+         <div className="flex items-center justify-center mb-6">
+            <div className="w-16 h-16 bg-orange-400/10 border border-orange-400/20 text-orange-400 rounded-full flex items-center justify-center shadow-[0_0_20px_rgba(251,146,60,0.2)]">
+               <Megaphone size={32} />
+            </div>
+         </div>
+         <h3 className="text-xl font-serif font-black text-white mb-4 tracking-wide">Important Notice</h3>
+         <div className="text-left text-sm text-gray-300 bg-bg/50 border border-border2 p-4 rounded-xl min-h-[100px] whitespace-pre-wrap leading-relaxed max-h-[40vh] overflow-y-auto custom-scrollbar mb-8">
+           {text ? text : <span className="text-muted-main2 italic">No notice available at the moment.</span>}
+         </div>
+         <button onClick={onClose} className="w-full py-3.5 bg-white/10 rounded-xl text-white text-sm font-bold tracking-wider hover:bg-white/20 transition-colors uppercase">Close Panel</button>
+      </motion.div>
+    </div>
+  );
+}
+
+function SocialLinksModal({ 
+  links, 
+  onClose 
+}: {
+  links?: SocialLinks,
+  onClose: () => void
+}) {
+  const handleLinkClick = (url: string | undefined) => {
+    if (url) {
+      // Ensure URL is absolute
+      const absoluteUrl = url.startsWith('http://') || url.startsWith('https://') ? url : `https://${url}`;
+      window.open(absoluteUrl, '_blank', 'noreferrer');
+    }
+  };
+
+  const platforms = [
+    { key: 'facebook', label: 'Facebook', icon: Facebook, color: 'text-white', bg: 'bg-[#1877F2]' },
+    { key: 'youtube', label: 'YouTube', icon: Youtube, color: 'text-white', bg: 'bg-[#FF0000]' },
+    { key: 'whatsapp', label: 'WhatsApp', icon: MessageCircle, color: 'text-white', bg: 'bg-[#25D366]' },
+    { key: 'telegram', label: 'Telegram', icon: Send, color: 'text-white', bg: 'bg-[#0088cc]' },
+    { key: 'tiktok', label: 'TikTok', icon: Music, color: 'text-white', bg: 'bg-[#000000] border border-white/20' }
+  ];
+
+  return (
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 text-center">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} onClick={onClose} className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
+      <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="relative bg-surface border border-border2 p-8 rounded-3xl max-w-sm w-full">
+         <div className="flex items-center justify-center mb-6">
+            <div className="w-16 h-16 bg-blue-accent/10 border border-blue-accent/20 text-blue-accent rounded-full flex items-center justify-center shadow-[0_0_20px_rgba(45,136,255,0.2)]">
+               <Globe size={32} />
+            </div>
+         </div>
+         <h3 className="text-xl font-serif font-black text-white mb-2 tracking-wide">Our Social Links</h3>
+         <p className="text-muted-main text-xs mb-8 tracking-wide">Stay connected with us across all platforms.</p>
+         
+         <div className="flex flex-wrap justify-center gap-4 mb-8">
+           {platforms.map(platform => {
+             const url = links?.[platform.key as keyof SocialLinks];
+             return (
+               <button
+                 key={platform.key}
+                 onClick={() => handleLinkClick(url)}
+                 className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg transition-all hover:scale-110 active:scale-95 group ${platform.bg} ${!url ? 'opacity-50 cursor-not-allowed grayscale' : 'hover:shadow-[0_0_20px_rgba(255,255,255,0.2)]'}`}
+                 title={url ? `${platform.label}` : `${platform.label} (Not Added)`}
+               >
+                 <platform.icon className={platform.color} size={24} />
+               </button>
+             );
+           })}
+         </div>
+
+         <button onClick={onClose} className="w-full py-3.5 bg-white/10 rounded-xl text-white text-sm font-bold tracking-wider hover:bg-white/20 transition-colors uppercase">Close Panel</button>
       </motion.div>
     </div>
   );
@@ -3320,352 +4017,67 @@ function TeacherHistoryModal({ teacher, records, onClose, onDeleteRecord }: {
   );
 }
 
-function SiteLock({ correctPassword, onUnlock }: { correctPassword: string, onUnlock: () => void }) {
+function SiteLock({ correctPassword, onUnlock, onAdminLogin }: { correctPassword: string, onUnlock: () => void, onAdminLogin?: () => void }) {
   const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [isSuccess, setIsSuccess] = useState(false);
-  const [isShake, setIsShake] = useState(false);
-  const [strength, setStrength] = useState(0);
+  const [error, setError] = useState(false);
 
-  const checkStrength = (val: string) => {
-    let score = 0;
-    if (val.length >= 6) score++;
-    if (val.length >= 10) score++;
-    if (/[A-Z]/.test(val) && /[0-9]/.test(val)) score++;
-    if (/[^A-Za-z0-9]/.test(val)) score++;
-    setStrength(score);
-  };
-
-  const handleLogin = () => {
-    if (!password) {
-      setIsShake(true);
-      setTimeout(() => setIsShake(false), 400);
-      return;
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password === correctPassword) {
+      onUnlock();
+    } else {
+      setError(true);
+      setTimeout(() => setError(false), 2000);
     }
-
-    setIsVerifying(true);
-    setTimeout(() => {
-      if (password === correctPassword) {
-        setIsSuccess(true);
-        setTimeout(onUnlock, 1500);
-      } else {
-        setIsVerifying(false);
-        setIsShake(true);
-        setTimeout(() => {
-          setIsShake(false);
-        }, 400);
-      }
-    }, 1200);
   };
-
-  const colors = ['#ef4444', '#f97316', '#eab308', '#22c55e'];
-  const labels = ['দুর্বল', 'মোটামুটি', 'ভালো', 'শক্তিশালী'];
-
-  const eyeIcon = (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-      <circle cx="12" cy="12" r="3"/>
-    </svg>
-  );
-
-  const eyeOffIcon = (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>
-    </svg>
-  );
 
   return (
-    <div className="fixed inset-0 z-[99999] bg-[#0A0A0F] text-[#F0EAD6] font-['DM_Sans',_sans-serif] overflow-hidden">
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;1,300&display=swap');
-        
-        .sitelock-bg {
-          position: fixed; inset: 0; z-index: 0;
-          background:
-            radial-gradient(ellipse 80% 60% at 20% 80%, rgba(245,200,66,0.07) 0%, transparent 60%),
-            radial-gradient(ellipse 60% 50% at 80% 10%, rgba(245,200,66,0.05) 0%, transparent 55%),
-            radial-gradient(ellipse 100% 100% at 50% 50%, #0A0A0F 60%, #0D0D15 100%);
-        }
-
-        .sitelock-orb {
-          position: fixed;
-          border-radius: 50%;
-          filter: blur(80px);
-          animation: floatOrb 12s ease-in-out infinite;
-          pointer-events: none;
-          z-index: 0;
-        }
-        .sitelock-orb-1 {
-          width: 500px; height: 500px;
-          background: radial-gradient(circle, rgba(245,200,66,0.12) 0%, transparent 70%);
-          top: -150px; left: -100px;
-          animation-delay: 0s;
-        }
-        .sitelock-orb-2 {
-          width: 400px; height: 400px;
-          background: radial-gradient(circle, rgba(245,200,66,0.08) 0%, transparent 70%);
-          bottom: -100px; right: -80px;
-          animation-delay: -6s;
-        }
-        @keyframes floatOrb {
-          0%, 100% { transform: translate(0, 0) scale(1); }
-          33% { transform: translate(30px, -40px) scale(1.05); }
-          66% { transform: translate(-20px, 20px) scale(0.95); }
-        }
-
-        .sitelock-grid {
-          position: fixed; inset: 0; z-index: 0; pointer-events: none;
-          background-image:
-            linear-gradient(rgba(245,200,66,0.03) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(245,200,66,0.03) 1px, transparent 1px);
-          background-size: 60px 60px;
-          mask-image: radial-gradient(ellipse 70% 70% at 50% 50%, black 30%, transparent 100%);
-        }
-
-        .sitelock-shake { animation: sitelock-shake-anim 0.4s ease; }
-        @keyframes sitelock-shake-anim {
-          0%, 100% { transform: translateX(0); }
-          20% { transform: translateX(-8px); }
-          40% { transform: translateX(8px); }
-          60% { transform: translateX(-6px); }
-          80% { transform: translateX(6px); }
-        }
-
-        .hero-heading .line-gold::after {
-          content: '';
-          position: absolute;
-          bottom: -4px; left: 0;
-          width: 100%; height: 2px;
-          background: linear-gradient(90deg, #F5C842, transparent);
-        }
-
-        .deco-ring {
-          position: absolute;
-          bottom: -80px; left: -80px;
-          width: 350px; height: 350px;
-          border-radius: 50%;
-          border: 1px solid rgba(245,200,66,0.08);
-          animation: sitelock-rotate 30s linear infinite;
-        }
-        @keyframes sitelock-rotate {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-
-        .login-btn-shine:hover::after {
-          animation: shine-sweep 0.6s ease forwards;
-        }
-        @keyframes shine-sweep {
-          to { left: 150%; }
-        }
-        
-        .brand-tag-glow::before {
-          content: '';
-          width: 6px; height: 6px;
-          background: #F5C842;
-          border-radius: 50%;
-          animation: pulse-glow 2s ease-in-out infinite;
-        }
-        @keyframes pulse-glow {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50% { opacity: 0.4; transform: scale(0.7); }
-        }
-      `}</style>
-
-      <div className="sitelock-bg"></div>
-      <div className="sitelock-grid"></div>
-      <div className="sitelock-orb sitelock-orb-1"></div>
-      <div className="sitelock-orb sitelock-orb-2"></div>
-
-      <div className="relative z-10 h-full grid grid-cols-1 md:grid-cols-2">
-        {/* LEFT PANEL */}
-        <div className="hidden md:flex flex-col justify-center p-[60px_70px] relative overflow-hidden border-r border-[#F5C842]/20">
-          <div className="deco-ring"><div className="absolute w-[10px] h-[10px] bg-[#F5C842] rounded-full top-1/2 -left-[5px] -mt-[5px] shadow-[0_0_12px_#F5C842]"></div></div>
-
-          <motion.span 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="inline-flex items-center gap-2 bg-[#F5C842]/10 border border-[#F5C842]/20 rounded-full p-[6px_14px] text-[11px] tracking-[0.12em] uppercase text-[#F5C842] mb-10 w-fit brand-tag-glow"
-          >
-            E-Learning Platform
-          </motion.span>
-
-          <motion.h1 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
-            className="font-['Syne'] font-extrabold text-[clamp(36px,4vw,56px)] leading-[1.05] mb-6 hero-heading"
-          >
-            Invest in
-            <span className="text-[#F5C842] block relative line-gold">Your Knowledge.</span>
-            Earn Your Future.
-          </motion.h1>
-
-          <motion.p 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.6 }}
-            className="text-[15px] leading-[1.75] text-[#F0EAD6]/45 max-w-[380px] mb-12"
-          >
-            Unity Earning দিচ্ছে বিশ্বমানের শিক্ষা, রিয়েল-টাইম আর্নিং সুযোগ এবং একটি শক্তিশালী কমিউনিটি — একসাথে।
-          </motion.p>
-
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.8 }}
-            className="flex gap-10"
-          >
-            <div className="flex flex-col gap-1">
-              <span className="font-['Syne'] font-bold text-2xl text-[#F5C842]">50K+</span>
-              <span className="text-[12px] text-[#F0EAD6]/45 tracking-[0.06em] uppercase">শিক্ষার্থী</span>
-            </div>
-            <div className="flex flex-col gap-1">
-              <span className="font-['Syne'] font-bold text-2xl text-[#F5C842]">200+</span>
-              <span className="text-[12px] text-[#F0EAD6]/45 tracking-[0.06em] uppercase">কোর্স</span>
-            </div>
-            <div className="flex flex-col gap-1">
-              <span className="font-['Syne'] font-bold text-2xl text-[#F5C842]">৳4.8Cr</span>
-              <span className="text-[12px] text-[#F0EAD6]/45 tracking-[0.06em] uppercase">আর্নিং</span>
-            </div>
-          </motion.div>
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-6 sm:p-10 bg-[#0A0A0F]">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 bg-black/80 backdrop-blur-md" />
+      
+      <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="relative bg-[#1A1A24] border border-[#F5C842]/20 p-6 sm:p-8 rounded-[40px] max-w-[400px] w-full overflow-hidden shadow-[0_30px_100px_rgba(245,200,66,0.15)]">
+        <div className="text-center mb-8">
+          <div className="w-[50px] h-[50px] bg-gradient-to-br from-[#F5C842] to-[#C49A00] rounded-2xl flex items-center justify-center font-['Syne'] font-extrabold text-xl text-[#0A0A0F] shadow-[0_8px_24px_rgba(245,200,66,0.3)] mx-auto mb-4">
+            UE
+          </div>
+          <h2 className="text-2xl font-serif font-black text-white">স্বাগতম 👋</h2>
+          <p className="text-xs text-white/50 uppercase tracking-widest mt-2">আপনার পাসওয়ার্ড দিয়ে প্রবেশ করুন</p>
         </div>
 
-        {/* RIGHT PANEL */}
-        <div className="flex items-center justify-center p-10 md:p-[60px_70px]">
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="w-full max-w-[400px]"
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div>
+            <label className="block text-[10px] font-black uppercase tracking-[2px] text-[#F5C842] mb-2 pl-2">Access Password</label>
+            <input 
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className={`w-full bg-black/40 border ${error ? 'border-red-500' : 'border-[#F5C842]/30'} rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-[#F5C842] transition-colors shadow-inner font-mono tracking-widest text-center`}
+              placeholder="••••••••"
+              autoFocus
+            />
+            {error && <div className="text-xs text-red-500 mt-2 text-center">পাসওয়ার্ড ভুল হয়েছে</div>}
+          </div>
+          
+          <button 
+            type="submit"
+            className="w-full bg-gradient-to-r from-[#F5C842] to-[#C49A00] text-[#0A0A0F] py-4 rounded-2xl font-bold transition-all shadow-[0_0_20px_rgba(245,200,66,0.3)] hover:shadow-[0_0_30px_rgba(245,200,66,0.5)] active:scale-[0.98] tracking-widest uppercase text-sm"
           >
-            {/* Logo */}
-            <div className="flex items-center gap-3 mb-10">
-              <div className="w-[46px] h-[46px] bg-gradient-to-br from-[#F5C842] to-[#C49A00] rounded-[14px] flex items-center justify-center font-['Syne'] font-extrabold text-lg text-[#0A0A0F] shadow-[0_8px_24px_rgba(245,200,66,0.3)]">UE</div>
-              <div className="flex flex-col">
-                <span className="font-['Syne'] font-bold text-[15px] leading-[1.2] text-[#F0EAD6]">Unity Earning</span>
-                <span className="text-[11px] text-[#F0EAD6]/45 tracking-[0.08em] uppercase">E-Learning Platform</span>
-              </div>
-            </div>
+            প্রবেশ করুন
+          </button>
+        </form>
 
-            <h2 className="font-['Syne'] font-bold text-3xl mb-2">স্বাগতম 👋</h2>
-            <p className="text-sm text-[#F0EAD6]/45 mb-9">আপনার পাসওয়ার্ড দিয়ে প্রবেশ করুন</p>
-
-            <div className={`space-y-7 ${isShake ? 'sitelock-shake' : ''}`}>
-              <div className="space-y-2.5">
-                <label className="block text-[12px] tracking-[0.1em] uppercase text-[#F0EAD6]/45 pl-1">🔐 Access Password</label>
-                <div className="relative">
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    className="w-full bg-white/5 border border-[#F5C842]/15 rounded-[14px] p-[16px_52px_16px_20px] font-['DM_Sans'] text-[15px] text-[#F0EAD6] outline-none transition-all focus:border-[#F5C842]/50 focus:bg-[#F5C842]/5 focus:shadow-[0_0_0_4px_rgba(245,200,66,0.06)]"
-                    placeholder="••••••••••"
-                    value={password}
-                    onChange={(e) => {
-                      setPassword(e.target.value);
-                      checkStrength(e.target.value);
-                    }}
-                    onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
-                  />
-                  <button 
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-[#F0EAD6]/45 hover:text-[#F5C842] transition-colors p-1"
-                  >
-                    {showPassword ? eyeOffIcon : eyeIcon}
-                  </button>
-                </div>
-                {password && (
-                  <div className="mt-3 flex gap-1.5 items-center pl-1">
-                    {[0, 1, 2, 3].map(i => (
-                      <div 
-                        key={i} 
-                        className="flex-1 h-[3px] rounded-full transition-all duration-500"
-                        style={{ background: i < strength ? colors[strength-1] : 'rgba(255,255,255,0.07)' }}
-                      ></div>
-                    ))}
-                    <span className="text-[11px] text-[#F0EAD6]/45 ml-1.5 min-w-[50px]" style={{ color: strength > 0 ? colors[strength-1] : 'inherit' }}>
-                      {strength > 0 ? labels[strength-1] : ''}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              <button 
-                onClick={handleLogin}
-                disabled={isVerifying}
-                className="w-full relative bg-gradient-to-br from-[#F5C842] to-[#E8B800] rounded-[14px] p-[17px] font-['Syne'] text-[15px] font-bold text-[#0A0A0F] tracking-[0.05em] shadow-[0_8px_32px_rgba(245,200,66,0.25)] hover:-translate-y-0.5 hover:shadow-[0_12px_40px_rgba(245,200,66,0.4)] active:translate-y-0 transition-all overflow-hidden group disabled:opacity-70 login-btn-shine"
-              >
-                <div className="absolute inset-0 bg-gradient-to-br from-white/15 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                <div className="absolute top-0 -left-full w-3/5 h-full bg-gradient-to-r from-transparent via-white/20 to-transparent skew-x-[-20deg]"></div>
-                
-                <div className="relative z-10 flex items-center justify-center gap-2.5">
-                  <span>{isVerifying ? 'যাচাই হচ্ছে...' : 'প্রবেশ করুন'}</span>
-                  {!isVerifying && (
-                    <div className="group-hover:translate-x-1 transition-transform">
-                      <ChevronRight size={18} strokeWidth={2.5} />
-                    </div>
-                  )}
-                </div>
-              </button>
-            </div>
-
-            <div className="flex items-center gap-3.5 my-5 text-[12px] text-[#F0EAD6]/20">
-              <div className="flex-1 h-px bg-[#F5C842]/10"></div>
-              <span>secured access</span>
-              <div className="flex-1 h-px bg-[#F5C842]/10"></div>
-            </div>
-
-            <div className="flex items-center justify-center gap-2 p-3 rounded-xl bg-[#F5C842]/5 border border-[#F5C842]/10 text-[12px] text-[#F0EAD6]/45">
-              <Shield size={14} className="text-[#F5C842]" />
-              256-bit SSL Encrypted · Fully Secure Access
-            </div>
-
-            <button 
-              onClick={() => alert('📧 পাসওয়ার্ড রিসেট লিংক আপনার ইমেইলে পাঠানো হবে।\nSupport: support@unityearning.com')}
-              className="w-full text-center mt-5 text-[13px] text-[#F0EAD6]/45 hover:text-[#F5C842] transition-colors"
+        {onAdminLogin && (
+          <div className="mt-8 pt-6 border-t border-white/10">
+            <button
+              onClick={onAdminLogin}
+              className="w-full flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 text-white py-3 rounded-xl transition-all text-sm font-bold border border-white/10"
             >
-              পাসওয়ার্ড ভুলে গেছেন?
+              <Shield size={16} className="text-[#F5C842]" />
+              Admin Login 
             </button>
-          </motion.div>
-        </div>
-      </div>
-
-      <AnimatePresence>
-        {isSuccess && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] bg-[#0A0A0F]/95 flex flex-col items-center justify-center gap-5"
-          >
-            <motion.div 
-              initial={{ scale: 0, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ type: 'spring', damping: 12 }}
-              className="w-20 h-20 rounded-full bg-gradient-to-br from-[#F5C842] to-[#C49A00] flex items-center justify-center text-4xl shadow-[0_0_60px_rgba(245,200,66,0.4)]"
-            >
-              ✓
-            </motion.div>
-            <motion.div 
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 }}
-              className="font-['Syne'] text-2xl font-bold"
-            >
-              লগইন সফল হয়েছে!
-            </motion.div>
-            <motion.div 
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.5 }}
-              className="text-sm text-[#F0EAD6]/45"
-            >
-              Unity Earning-এ আপনাকে স্বাগতম 🎉
-            </motion.div>
-          </motion.div>
+          </div>
         )}
-      </AnimatePresence>
+      </motion.div>
     </div>
   );
 }
