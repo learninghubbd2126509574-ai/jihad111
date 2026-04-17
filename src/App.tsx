@@ -302,7 +302,13 @@ export default function App() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
   const [results, setResults] = useState<Record<string, Result>>({});
-  const [config, setConfig] = useState<Config>({ timerActive: false, timerEndTime: 0, timerDuration: 1800 });
+  const [config, setConfig] = useState<Config>({ 
+    timerActive: false, 
+    timerEndTime: 0, 
+    timerDuration: 1800,
+    isLocked: true, 
+    securityPassword: 'unity2024'
+  });
   const [timeLeft, setTimeLeft] = useState(0);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [isConfigReady, setIsConfigReady] = useState(false);
@@ -348,6 +354,15 @@ export default function App() {
   const adminEmail = "learninghubbd2126509574@gmail.com";
   const hasStlAccess = isAdmin || stlAuthenticated;
 
+  useEffect(() => {
+    // Force loading screen to disappear after 1 second for better UX
+    const timer = setTimeout(() => {
+      setIsAuthReady(true);
+      setIsConfigReady(true);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, []);
+
   const COURSES = [
     "Photo Edit",
     "Video Edit", 
@@ -360,8 +375,12 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
-      // Simplified admin check
-      setIsAdmin(u?.email === adminEmail);
+      const isAdm = u?.email === adminEmail;
+      setIsAdmin(isAdm);
+      // Automatically unlock site if user is admin
+      if (isAdm) {
+        setSiteAuthenticated(true);
+      }
       setIsAuthReady(true);
     });
     return () => unsubscribe();
@@ -429,18 +448,36 @@ export default function App() {
       setTrainerRanking(list);
     }, (err) => handleFirestoreError(err, OperationType.GET, 'trainerRanking', showMsg));
 
+    // Listen to Teachers
+    const unsubTeachers = onSnapshot(query(collection(db, 'teachers'), orderBy('createdAt', 'asc')), (snapshot) => {
+      const tList: Teacher[] = [];
+      snapshot.forEach(d => tList.push({ id: d.id, ...d.data() } as Teacher));
+      setTeachers(tList);
+    }, (err) => handleFirestoreError(err, OperationType.GET, 'teachers', showMsg));
+
+    // Listen to STL Members
+    const unsubStlMembers = onSnapshot(query(collection(db, 'stlMembers'), orderBy('createdAt', 'asc')), (snapshot) => {
+      const list: STLMember[] = [];
+      snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as STLMember));
+      setStlMembers(list);
+    }, (err) => handleFirestoreError(err, OperationType.GET, 'stlMembers', showMsg));
+
+    // Listen to Demo Members
+    const unsubDemoMembers = onSnapshot(query(collection(db, 'demoMembers'), orderBy('createdAt', 'asc')), (snapshot) => {
+      const list: DemoMember[] = [];
+      snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as DemoMember));
+      setDemoMembers(list);
+    }, (err) => handleFirestoreError(err, OperationType.GET, 'demoMembers', showMsg));
+
     // ---------------------------------------------------------
-    // AUTH DEPENDENT LISTENERS
+    // AUTH DEPENDENT LISTENERS (Admin / Authed only)
     // ---------------------------------------------------------
     let unsubApps = () => {};
-    let unsubTeachers = () => {};
     let unsubAttendance = () => {};
-    let unsubStlMembers = () => {};
     let unsubStlAttendance = () => {};
-    let unsubDemoMembers = () => {};
     let unsubDemoAttendance = () => {};
 
-    if (isAuthReady) {
+    if (isAuthReady && user) {
       if (isAdmin) {
         unsubApps = onSnapshot(query(collection(db, 'applications'), orderBy('createdAt', 'desc')), (snapshot) => {
           const aList: Application[] = [];
@@ -466,26 +503,6 @@ export default function App() {
           setDemoAttendance(list);
         }, (err) => handleFirestoreError(err, OperationType.GET, 'demoAttendance', showMsg));
       }
-
-      // Teachers/Members might need auth but not necessarily admin (based on rules context)
-      // Actually rules said teachers allow read: if auth
-      unsubTeachers = onSnapshot(query(collection(db, 'teachers'), orderBy('createdAt', 'asc')), (snapshot) => {
-        const tList: Teacher[] = [];
-        snapshot.forEach(d => tList.push({ id: d.id, ...d.data() } as Teacher));
-        setTeachers(tList);
-      }, (err) => handleFirestoreError(err, OperationType.GET, 'teachers', showMsg));
-
-      unsubStlMembers = onSnapshot(query(collection(db, 'stlMembers'), orderBy('createdAt', 'asc')), (snapshot) => {
-        const list: STLMember[] = [];
-        snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as STLMember));
-        setStlMembers(list);
-      }, (err) => handleFirestoreError(err, OperationType.GET, 'stlMembers', showMsg));
-
-      unsubDemoMembers = onSnapshot(query(collection(db, 'demoMembers'), orderBy('createdAt', 'asc')), (snapshot) => {
-        const list: DemoMember[] = [];
-        snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as DemoMember));
-        setDemoMembers(list);
-      }, (err) => handleFirestoreError(err, OperationType.GET, 'demoMembers', showMsg));
     }
 
     return () => {
@@ -495,15 +512,15 @@ export default function App() {
       unsubPicking();
       unsubLeaderRanking();
       unsubTrainerRanking();
-      unsubApps();
       unsubTeachers();
-      unsubAttendance();
       unsubStlMembers();
-      unsubStlAttendance();
       unsubDemoMembers();
+      unsubApps();
+      unsubAttendance();
+      unsubStlAttendance();
       unsubDemoAttendance();
     };
-  }, [isAuthReady, isAdmin]);
+  }, [isAuthReady, isAdmin, user]);
 
   // Timer Logic
   useEffect(() => {
@@ -561,10 +578,20 @@ export default function App() {
   };
 
   const logout = async () => {
-    await signOut(auth);
-    setShowAdminPanel(false);
-    setSiteAuthenticated(false);
-    showMsg('Logged out');
+    try {
+      await signOut(auth);
+      setShowAdminPanel(false);
+      setSiteAuthenticated(false);
+      // Ensure we clear any possible local flags
+      localStorage.removeItem('stlAuth');
+      showMsg('Logged out successfully');
+      // Force a small delay to ensure state updates before any background listeners trigger
+      setTimeout(() => {
+        window.location.reload(); // Hard reset to ensure password screen is shown
+      }, 500);
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
   };
 
   const addMember = async (name: string, type: 'leader' | 'trainer') => {
@@ -600,6 +627,7 @@ export default function App() {
     try {
       const duration = 1800; // 30 mins
       await setDoc(doc(db, 'config', 'global'), {
+        ...config,
         timerActive: true,
         timerEndTime: Date.now() + duration * 1000,
         timerDuration: duration
@@ -1077,9 +1105,13 @@ export default function App() {
   }
 
   if (config.isLocked && !siteAuthenticated) {
+    const pass = (config.securityPassword && config.securityPassword.trim() !== '') 
+      ? config.securityPassword 
+      : 'unity2024';
+      
     return (
       <SiteLock 
-        correctPassword={config.securityPassword || 'unity2024'} 
+        correctPassword={pass} 
         onUnlock={() => {
           setSiteAuthenticated(true);
         }} 
@@ -1389,7 +1421,7 @@ export default function App() {
 
                   <button 
                     onClick={() => { setShowMenu(false); user ? setShowAdminPanel(true) : login(); }}
-                    className="w-full flex items-center justify-between p-4 rounded-xl bg-bg border border-border hover:border-white/20 transition-all"
+                    className="w-full flex items-center justify-between p-4 rounded-xl bg-bg border border-border hover:border-white/20 transition-all mb-3"
                   >
                     <div className="flex items-center gap-3">
                       <Shield className={user ? "text-gold" : "text-muted-main"} size={18} />
@@ -1397,6 +1429,19 @@ export default function App() {
                     </div>
                     <ChevronRight size={16} className="text-muted-main" />
                   </button>
+
+                  {user && (
+                    <button 
+                      onClick={() => { setShowMenu(false); logout(); }}
+                      className="w-full flex items-center justify-between p-4 rounded-xl bg-red-500/5 border border-red-500/20 hover:border-red-500/40 transition-all mb-3"
+                    >
+                      <div className="flex items-center gap-3">
+                        <LogOut className="text-red-500" size={18} />
+                        <span className="text-sm font-bold text-white">Log Out</span>
+                      </div>
+                      <ChevronRight size={16} className="text-red-500" />
+                    </button>
+                  )}
                 </div>
               </div>
               
@@ -3559,7 +3604,7 @@ function StlLoginModal({ onClose, onSuccess, config }: { onClose: () => void, on
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === config.stlPassword) {
+    if (password.trim() === (config.stlPassword || '').trim()) {
       onSuccess();
     } else {
       setError(true);
@@ -4148,7 +4193,7 @@ function SiteLock({ correctPassword, onUnlock, onAdminLogin }: { correctPassword
 
     setIsVerifying(true);
     setTimeout(() => {
-      if (password === correctPassword) {
+      if (password.trim() === correctPassword.trim()) {
         setIsSuccess(true);
         setTimeout(onUnlock, 1500);
       } else {

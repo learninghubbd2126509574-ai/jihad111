@@ -1,4 +1,5 @@
 rules_version = '2';
+// Last Updated: 2026-04-17
 service cloud.firestore {
   match /databases/{database}/documents {
     // ===============================================================
@@ -57,20 +58,23 @@ service cloud.firestore {
     }
 
     function isValidResult(data) {
-      return data.keys().hasAll(['memberId', 'lead', 'convert', 'submitted']) &&
-             data.memberId is string &&
-             data.lead is number && data.lead >= 0 &&
-             data.convert is number && data.convert >= 0 &&
+      return data.keys().hasAll(['memberId', 'lead', 'convert', 'submitted', 'updatedAt']) &&
+             data.keys().hasOnly(['memberId', 'lead', 'convert', 'submitted', 'updatedAt', 'personalLead']) &&
+             data.memberId is string && data.memberId.size() < 100 &&
+             data.lead is number && data.lead >= 0 && data.lead < 1000 &&
+             data.convert is number && data.convert >= 0 && data.convert < 1000 &&
              data.submitted is bool;
     }
 
     function isValidTeacher(data) {
       return data.keys().hasAll(['name', 'createdAt']) &&
+             data.keys().hasOnly(['name', 'createdAt']) &&
              data.name is string && data.name.size() > 0 && data.name.size() < 100;
     }
 
     function isValidAttendance(data) {
       return data.keys().hasAll(['teacherId', 'teacherName', 'course', 'date', 'submittedAt']) &&
+             data.keys().hasOnly(['teacherId', 'teacherName', 'course', 'date', 'submittedAt']) &&
              data.teacherId is string && data.teacherId.size() < 100 &&
              data.teacherName is string && data.teacherName.size() < 100 &&
              data.course is string && data.course.size() < 100 &&
@@ -123,36 +127,36 @@ service cloud.firestore {
     }
 
     match /teachers/{teacherId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow create, update: if isAdmin() && isValidTeacher(request.resource.data);
       allow delete: if isAdmin();
     }
 
     match /teacherAttendance/{recordId} {
       allow read, delete: if isAdmin();
-      allow create: if isAuthenticated() && isValidAttendance(request.resource.data);
+      allow create: if isValidAttendance(request.resource.data);
     }
 
     match /stlMembers/{id} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow create, update: if isAdmin() && isValidSimpleMember(request.resource.data);
       allow delete: if isAdmin();
     }
 
     match /stlAttendance/{id} {
       allow read, delete: if isAdmin();
-      allow create: if isAuthenticated() && isValidSimpleAttendance(request.resource.data);
+      allow create: if isValidSimpleAttendance(request.resource.data);
     }
 
     match /demoMembers/{id} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow create, update: if isAdmin() && isValidSimpleMember(request.resource.data);
       allow delete: if isAdmin();
     }
 
     match /demoAttendance/{id} {
       allow read, delete: if isAdmin();
-      allow create: if isAuthenticated() && isValidSimpleAttendance(request.resource.data);
+      allow create: if isValidSimpleAttendance(request.resource.data);
     }
 
     match /leaderRanking/{id} {
