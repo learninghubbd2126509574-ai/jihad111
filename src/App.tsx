@@ -566,6 +566,7 @@ export default function App() {
   const logout = async () => {
     await signOut(auth);
     setShowAdminPanel(false);
+    setSiteAuthenticated(false);
     showMsg('Logged out');
   };
 
@@ -1055,7 +1056,7 @@ export default function App() {
     );
   }
 
-  if (config.isLocked && !siteAuthenticated && (!user || user.email !== adminEmail)) {
+  if (config.isLocked && !siteAuthenticated) {
     return (
       <SiteLock 
         correctPassword={config.securityPassword || 'unity2024'} 
@@ -4019,65 +4020,361 @@ function TeacherHistoryModal({ teacher, records, onClose, onDeleteRecord }: {
 
 function SiteLock({ correctPassword, onUnlock, onAdminLogin }: { correctPassword: string, onUnlock: () => void, onAdminLogin?: () => void }) {
   const [password, setPassword] = useState('');
-  const [error, setError] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [isShake, setIsShake] = useState(false);
+  const [strength, setStrength] = useState(0);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (password === correctPassword) {
-      onUnlock();
-    } else {
-      setError(true);
-      setTimeout(() => setError(false), 2000);
-    }
+  const checkStrength = (val: string) => {
+    let score = 0;
+    if (val.length >= 6) score++;
+    if (val.length >= 10) score++;
+    if (/[A-Z]/.test(val) && /[0-9]/.test(val)) score++;
+    if (/[^A-Za-z0-9]/.test(val)) score++;
+    setStrength(score);
   };
 
+  const handleLogin = () => {
+    if (!password) {
+      setIsShake(true);
+      setTimeout(() => setIsShake(false), 400);
+      return;
+    }
+
+    setIsVerifying(true);
+    setTimeout(() => {
+      if (password === correctPassword) {
+        setIsSuccess(true);
+        setTimeout(onUnlock, 1500);
+      } else {
+        setIsVerifying(false);
+        setIsShake(true);
+        setTimeout(() => {
+          setIsShake(false);
+        }, 400);
+      }
+    }, 1200);
+  };
+
+  const colors = ['#ef4444', '#f97316', '#eab308', '#22c55e'];
+  const labels = ['দুর্বল', 'মোটামুটি', 'ভালো', 'শক্তিশালী'];
+
+  const eyeIcon = (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+      <circle cx="12" cy="12" r="3"/>
+    </svg>
+  );
+
+  const eyeOffIcon = (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>
+    </svg>
+  );
+
   return (
-    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-6 sm:p-10 bg-[#0A0A0F]">
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="absolute inset-0 bg-black/80 backdrop-blur-md" />
-      
-      <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="relative bg-[#1A1A24] border border-[#F5C842]/20 p-6 sm:p-8 rounded-[40px] max-w-[400px] w-full overflow-hidden shadow-[0_30px_100px_rgba(245,200,66,0.15)]">
-        <div className="text-center mb-8">
-          <div className="w-[50px] h-[50px] bg-gradient-to-br from-[#F5C842] to-[#C49A00] rounded-2xl flex items-center justify-center font-['Syne'] font-extrabold text-xl text-[#0A0A0F] shadow-[0_8px_24px_rgba(245,200,66,0.3)] mx-auto mb-4">
-            UE
-          </div>
-          <h2 className="text-2xl font-serif font-black text-white">স্বাগতম 👋</h2>
-          <p className="text-xs text-white/50 uppercase tracking-widest mt-2">আপনার পাসওয়ার্ড দিয়ে প্রবেশ করুন</p>
+    <div className="fixed inset-0 z-[99999] bg-[#0A0A0F] text-[#F0EAD6] font-['DM_Sans',_sans-serif] overflow-hidden">
+      {onAdminLogin && (
+        <div className="absolute top-6 right-6 z-[200]">
+          <button
+            onClick={onAdminLogin}
+            className="w-10 h-10 flex flex-col items-center justify-center bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-[#F0EAD6]/50 hover:text-[#F5C842] transition-colors shadow-[0_0_15px_rgba(245,200,66,0.05)] active:scale-95"
+            title="Admin Login"
+          >
+            <Shield size={18} />
+          </button>
+        </div>
+      )}
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;1,300&display=swap');
+        
+        .sitelock-bg {
+          position: fixed; inset: 0; z-index: 0;
+          background:
+            radial-gradient(ellipse 80% 60% at 20% 80%, rgba(245,200,66,0.07) 0%, transparent 60%),
+            radial-gradient(ellipse 60% 50% at 80% 10%, rgba(245,200,66,0.05) 0%, transparent 55%),
+            radial-gradient(ellipse 100% 100% at 50% 50%, #0A0A0F 60%, #0D0D15 100%);
+        }
+
+        .sitelock-orb {
+          position: fixed;
+          border-radius: 50%;
+          filter: blur(80px);
+          animation: floatOrb 12s ease-in-out infinite;
+          pointer-events: none;
+          z-index: 0;
+        }
+        .sitelock-orb-1 {
+          width: 500px; height: 500px;
+          background: radial-gradient(circle, rgba(245,200,66,0.12) 0%, transparent 70%);
+          top: -150px; left: -100px;
+          animation-delay: 0s;
+        }
+        .sitelock-orb-2 {
+          width: 400px; height: 400px;
+          background: radial-gradient(circle, rgba(245,200,66,0.08) 0%, transparent 70%);
+          bottom: -100px; right: -80px;
+          animation-delay: -6s;
+        }
+        @keyframes floatOrb {
+          0%, 100% { transform: translate(0, 0) scale(1); }
+          33% { transform: translate(30px, -40px) scale(1.05); }
+          66% { transform: translate(-20px, 20px) scale(0.95); }
+        }
+
+        .sitelock-grid {
+          position: fixed; inset: 0; z-index: 0; pointer-events: none;
+          background-image:
+            linear-gradient(rgba(245,200,66,0.03) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(245,200,66,0.03) 1px, transparent 1px);
+          background-size: 60px 60px;
+          mask-image: radial-gradient(ellipse 70% 70% at 50% 50%, black 30%, transparent 100%);
+        }
+
+        .sitelock-shake { animation: sitelock-shake-anim 0.4s ease; }
+        @keyframes sitelock-shake-anim {
+          0%, 100% { transform: translateX(0); }
+          20% { transform: translateX(-8px); }
+          40% { transform: translateX(8px); }
+          60% { transform: translateX(-6px); }
+          80% { transform: translateX(6px); }
+        }
+
+        .hero-heading .line-gold::after {
+          content: '';
+          position: absolute;
+          bottom: -4px; left: 0;
+          width: 100%; height: 2px;
+          background: linear-gradient(90deg, #F5C842, transparent);
+        }
+
+        .deco-ring {
+          position: absolute;
+          bottom: -80px; left: -80px;
+          width: 350px; height: 350px;
+          border-radius: 50%;
+          border: 1px solid rgba(245,200,66,0.08);
+          animation: sitelock-rotate 30s linear infinite;
+        }
+        @keyframes sitelock-rotate {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+
+        .login-btn-shine:hover::after {
+          animation: shine-sweep 0.6s ease forwards;
+        }
+        @keyframes shine-sweep {
+          to { left: 150%; }
+        }
+        
+        .brand-tag-glow::before {
+          content: '';
+          width: 6px; height: 6px;
+          background: #F5C842;
+          border-radius: 50%;
+          animation: pulse-glow 2s ease-in-out infinite;
+        }
+        @keyframes pulse-glow {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.4; transform: scale(0.7); }
+        }
+      `}</style>
+
+      <div className="sitelock-bg"></div>
+      <div className="sitelock-grid"></div>
+      <div className="sitelock-orb sitelock-orb-1"></div>
+      <div className="sitelock-orb sitelock-orb-2"></div>
+
+      <div className="relative z-10 h-full grid grid-cols-1 md:grid-cols-2">
+        {/* LEFT PANEL */}
+        <div className="hidden md:flex flex-col justify-center p-[60px_70px] relative overflow-hidden border-r border-[#F5C842]/20">
+          <div className="deco-ring"><div className="absolute w-[10px] h-[10px] bg-[#F5C842] rounded-full top-1/2 -left-[5px] -mt-[5px] shadow-[0_0_12px_#F5C842]"></div></div>
+
+          <motion.span 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="inline-flex items-center gap-2 bg-[#F5C842]/10 border border-[#F5C842]/20 rounded-full p-[6px_14px] text-[11px] tracking-[0.12em] uppercase text-[#F5C842] mb-10 w-fit brand-tag-glow"
+          >
+            E-Learning Platform
+          </motion.span>
+
+          <motion.h1 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+            className="font-['Syne'] font-extrabold text-[clamp(36px,4vw,56px)] leading-[1.05] mb-6 hero-heading"
+          >
+            Invest in
+            <span className="text-[#F5C842] block relative line-gold">Your Knowledge.</span>
+            Earn Your Future.
+          </motion.h1>
+
+          <motion.p 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.6 }}
+            className="text-[15px] leading-[1.75] text-[#F0EAD6]/45 max-w-[380px] mb-12"
+          >
+            Unity Earning দিচ্ছে বিশ্বমানের শিক্ষা, রিয়েল-টাইম আর্নিং সুযোগ এবং একটি শক্তিশালী কমিউনিটি — একসাথে।
+          </motion.p>
+
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.8 }}
+            className="flex gap-10"
+          >
+            <div className="flex flex-col gap-1">
+              <span className="font-['Syne'] font-bold text-2xl text-[#F5C842]">50K+</span>
+              <span className="text-[12px] text-[#F0EAD6]/45 tracking-[0.06em] uppercase">শিক্ষার্থী</span>
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="font-['Syne'] font-bold text-2xl text-[#F5C842]">200+</span>
+              <span className="text-[12px] text-[#F0EAD6]/45 tracking-[0.06em] uppercase">কোর্স</span>
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="font-['Syne'] font-bold text-2xl text-[#F5C842]">৳4.8Cr</span>
+              <span className="text-[12px] text-[#F0EAD6]/45 tracking-[0.06em] uppercase">আর্নিং</span>
+            </div>
+          </motion.div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div>
-            <label className="block text-[10px] font-black uppercase tracking-[2px] text-[#F5C842] mb-2 pl-2">Access Password</label>
-            <input 
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className={`w-full bg-black/40 border ${error ? 'border-red-500' : 'border-[#F5C842]/30'} rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-[#F5C842] transition-colors shadow-inner font-mono tracking-widest text-center`}
-              placeholder="••••••••"
-              autoFocus
-            />
-            {error && <div className="text-xs text-red-500 mt-2 text-center">পাসওয়ার্ড ভুল হয়েছে</div>}
-          </div>
-          
-          <button 
-            type="submit"
-            className="w-full bg-gradient-to-r from-[#F5C842] to-[#C49A00] text-[#0A0A0F] py-4 rounded-2xl font-bold transition-all shadow-[0_0_20px_rgba(245,200,66,0.3)] hover:shadow-[0_0_30px_rgba(245,200,66,0.5)] active:scale-[0.98] tracking-widest uppercase text-sm"
+        {/* RIGHT PANEL */}
+        <div className="flex items-center justify-center p-10 md:p-[60px_70px]">
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="w-full max-w-[400px]"
           >
-            প্রবেশ করুন
-          </button>
-        </form>
+            {/* Logo */}
+            <div className="flex items-center gap-3 mb-10">
+              <div className="w-[46px] h-[46px] bg-gradient-to-br from-[#F5C842] to-[#C49A00] rounded-[14px] flex items-center justify-center font-['Syne'] font-extrabold text-lg text-[#0A0A0F] shadow-[0_8px_24px_rgba(245,200,66,0.3)]">UE</div>
+              <div className="flex flex-col">
+                <span className="font-['Syne'] font-bold text-[15px] leading-[1.2] text-[#F0EAD6]">Unity Earning</span>
+                <span className="text-[11px] text-[#F0EAD6]/45 tracking-[0.08em] uppercase">E-Learning Platform</span>
+              </div>
+            </div>
 
-        {onAdminLogin && (
-          <div className="mt-8 pt-6 border-t border-white/10">
-            <button
-              onClick={onAdminLogin}
-              className="w-full flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 text-white py-3 rounded-xl transition-all text-sm font-bold border border-white/10"
+            <h2 className="font-['Syne'] font-bold text-3xl mb-2">স্বাগতম 👋</h2>
+            <p className="text-sm text-[#F0EAD6]/45 mb-9">আপনার পাসওয়ার্ড দিয়ে প্রবেশ করুন</p>
+
+            <div className={`space-y-7 ${isShake ? 'sitelock-shake' : ''}`}>
+              <div className="space-y-2.5">
+                <label className="block text-[12px] tracking-[0.1em] uppercase text-[#F0EAD6]/45 pl-1">🔐 Access Password</label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    className="w-full bg-white/5 border border-[#F5C842]/15 rounded-[14px] p-[16px_52px_16px_20px] font-['DM_Sans'] text-[15px] text-[#F0EAD6] outline-none transition-all focus:border-[#F5C842]/50 focus:bg-[#F5C842]/5 focus:shadow-[0_0_0_4px_rgba(245,200,66,0.06)]"
+                    placeholder="••••••••••"
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      checkStrength(e.target.value);
+                    }}
+                    onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+                  />
+                  <button 
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-[#F0EAD6]/45 hover:text-[#F5C842] transition-colors p-1"
+                  >
+                    {showPassword ? eyeOffIcon : eyeIcon}
+                  </button>
+                </div>
+                {password && (
+                  <div className="mt-3 flex gap-1.5 items-center pl-1">
+                    {[0, 1, 2, 3].map(i => (
+                      <div 
+                        key={i} 
+                        className="flex-1 h-[3px] rounded-full transition-all duration-500"
+                        style={{ background: i < strength ? colors[strength-1] : 'rgba(255,255,255,0.07)' }}
+                      ></div>
+                    ))}
+                    <span className="text-[11px] text-[#F0EAD6]/45 ml-1.5 min-w-[50px]" style={{ color: strength > 0 ? colors[strength-1] : 'inherit' }}>
+                      {strength > 0 ? labels[strength-1] : ''}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <button 
+                onClick={handleLogin}
+                disabled={isVerifying}
+                className="w-full relative bg-gradient-to-br from-[#F5C842] to-[#E8B800] rounded-[14px] p-[17px] font-['Syne'] text-[15px] font-bold text-[#0A0A0F] tracking-[0.05em] shadow-[0_8px_32px_rgba(245,200,66,0.25)] hover:-translate-y-0.5 hover:shadow-[0_12px_40px_rgba(245,200,66,0.4)] active:translate-y-0 transition-all overflow-hidden group disabled:opacity-70 login-btn-shine"
+              >
+                <div className="absolute inset-0 bg-gradient-to-br from-white/15 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                <div className="absolute top-0 -left-full w-3/5 h-full bg-gradient-to-r from-transparent via-white/20 to-transparent skew-x-[-20deg]"></div>
+                
+                <div className="relative z-10 flex items-center justify-center gap-2.5">
+                  <span>{isVerifying ? 'যাচাই হচ্ছে...' : 'প্রবেশ করুন'}</span>
+                  {!isVerifying && (
+                    <div className="group-hover:translate-x-1 transition-transform">
+                      <ChevronRight size={18} strokeWidth={2.5} />
+                    </div>
+                  )}
+                </div>
+              </button>
+            </div>
+
+            <div className="flex items-center gap-3.5 my-5 text-[12px] text-[#F0EAD6]/20">
+              <div className="flex-1 h-px bg-[#F5C842]/10"></div>
+              <span>secured access</span>
+              <div className="flex-1 h-px bg-[#F5C842]/10"></div>
+            </div>
+
+            <div className="flex items-center justify-center gap-2 p-3 rounded-xl bg-[#F5C842]/5 border border-[#F5C842]/10 text-[12px] text-[#F0EAD6]/45">
+              <Shield size={14} className="text-[#F5C842]" />
+              256-bit SSL Encrypted · Fully Secure Access
+            </div>
+
+            <button 
+              onClick={() => alert('📧 পাসওয়ার্ড রিসেট লিংক আপনার ইমেইলে পাঠানো হবে।\nSupport: support@unityearning.com')}
+              className="w-full text-center mt-5 text-[13px] text-[#F0EAD6]/45 hover:text-[#F5C842] transition-colors"
             >
-              <Shield size={16} className="text-[#F5C842]" />
-              Admin Login 
+              পাসওয়ার্ড ভুলে গেছেন?
             </button>
-          </div>
+          </motion.div>
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {isSuccess && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-[#0A0A0F]/95 flex flex-col items-center justify-center gap-5"
+          >
+            <motion.div 
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: 'spring', damping: 12 }}
+              className="w-20 h-20 rounded-full bg-gradient-to-br from-[#F5C842] to-[#C49A00] flex items-center justify-center text-4xl shadow-[0_0_60px_rgba(245,200,66,0.4)]"
+            >
+              ✓
+            </motion.div>
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+              className="font-['Syne'] text-2xl font-bold"
+            >
+              লগইন সফল হয়েছে!
+            </motion.div>
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5 }}
+              className="text-sm text-[#F0EAD6]/45"
+            >
+              Unity Earning-এ আপনাকে স্বাগতম 🎉
+            </motion.div>
+          </motion.div>
         )}
-      </motion.div>
+      </AnimatePresence>
     </div>
   );
 }
