@@ -16,6 +16,7 @@ import {
   writeBatch,
   query, 
   orderBy, 
+  limit,
   serverTimestamp,
   getDocFromServer
 } from 'firebase/firestore';
@@ -272,7 +273,6 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
       showMsg('An error occurred with the database.', 'error');
     }
   }
-  throw new Error(JSON.stringify(errInfo));
 }
 
 // --- Components ---
@@ -369,22 +369,13 @@ export default function App() {
 
   // Real-time Listeners
   useEffect(() => {
-    if (!isAuthReady) return;
-
-    // Test connection
-    const testConnection = async () => {
-      try {
-        await getDocFromServer(doc(db, 'config', 'global'));
-      } catch (error) {
-        if (error instanceof Error && error.message.includes('the client is offline')) {
-          console.error("Please check your Firebase configuration.");
-        }
-      }
-    };
-    testConnection();
-
+    // ---------------------------------------------------------
+    // PUBLIC LISTENERS (Available even if not auth ready)
+    // ---------------------------------------------------------
+    
     // Listen to Config
     const unsubConfig = onSnapshot(doc(db, 'config', 'global'), (snapshot) => {
+      console.log('Config Snapshot received');
       if (snapshot.exists()) {
         const newConfig = snapshot.data() as Config;
         setConfig(prev => {
@@ -395,7 +386,11 @@ export default function App() {
         });
       }
       setIsConfigReady(true);
-    }, (err) => handleFirestoreError(err, OperationType.GET, 'config/global', showMsg));
+    }, (err) => {
+      console.error('Config Listener Error:', err);
+      setIsConfigReady(true); // Fallback to let app load even if config fails
+      handleFirestoreError(err, OperationType.GET, 'config/global', showMsg);
+    });
 
     // Listen to Members
     const unsubMembers = onSnapshot(query(collection(db, 'members'), orderBy('createdAt', 'desc')), (snapshot) => {
@@ -421,66 +416,7 @@ export default function App() {
       setPickingSchedule(pList);
     }, (err) => handleFirestoreError(err, OperationType.GET, 'pickingSchedule', showMsg));
 
-    // Listen to Applications (Admin Only ideally, but we'll guard in component)
-    let unsubApps = () => {};
-    if (isAdmin) {
-      unsubApps = onSnapshot(query(collection(db, 'applications'), orderBy('createdAt', 'desc')), (snapshot) => {
-        const aList: Application[] = [];
-        snapshot.forEach(d => aList.push({ id: d.id, ...d.data() } as Application));
-        setApplications(aList);
-      }, (err) => handleFirestoreError(err, OperationType.GET, 'applications', showMsg));
-    }
-
-    // Listen to Teachers
-    const unsubTeachers = onSnapshot(query(collection(db, 'teachers'), orderBy('createdAt', 'asc')), (snapshot) => {
-      const tList: Teacher[] = [];
-      snapshot.forEach(d => tList.push({ id: d.id, ...d.data() } as Teacher));
-      setTeachers(tList);
-    }, (err) => handleFirestoreError(err, OperationType.GET, 'teachers', showMsg));
-
-    // Listen to Teacher Attendance (Admin Only)
-    let unsubAttendance = () => {};
-    if (isAdmin) {
-      unsubAttendance = onSnapshot(query(collection(db, 'teacherAttendance'), orderBy('submittedAt', 'desc')), (snapshot) => {
-        const rList: AttendanceRecord[] = [];
-        snapshot.forEach(d => rList.push({ id: d.id, ...d.data() } as AttendanceRecord));
-        setAttendanceRecords(rList);
-      }, (err) => handleFirestoreError(err, OperationType.GET, 'teacherAttendance', showMsg));
-    }
-
-    // Listen to STL
-    const unsubStlMembers = onSnapshot(query(collection(db, 'stlMembers'), orderBy('createdAt', 'asc')), (snapshot) => {
-      const list: STLMember[] = [];
-      snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as STLMember));
-      setStlMembers(list);
-    }, (err) => handleFirestoreError(err, OperationType.GET, 'stlMembers', showMsg));
-
-    let unsubStlAttendance = () => {};
-    if (isAdmin) {
-      unsubStlAttendance = onSnapshot(query(collection(db, 'stlAttendance'), orderBy('submittedAt', 'desc')), (snapshot) => {
-        const list: STLAttendance[] = [];
-        snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as STLAttendance));
-        setStlAttendance(list);
-      }, (err) => handleFirestoreError(err, OperationType.GET, 'stlAttendance', showMsg));
-    }
-
-    // Listen to Demo
-    const unsubDemoMembers = onSnapshot(query(collection(db, 'demoMembers'), orderBy('createdAt', 'asc')), (snapshot) => {
-      const list: DemoMember[] = [];
-      snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as DemoMember));
-      setDemoMembers(list);
-    }, (err) => handleFirestoreError(err, OperationType.GET, 'demoMembers', showMsg));
-
-    let unsubDemoAttendance = () => {};
-    if (isAdmin) {
-      unsubDemoAttendance = onSnapshot(query(collection(db, 'demoAttendance'), orderBy('submittedAt', 'desc')), (snapshot) => {
-        const list: DemoAttendance[] = [];
-        snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as DemoAttendance));
-        setDemoAttendance(list);
-      }, (err) => handleFirestoreError(err, OperationType.GET, 'demoAttendance', showMsg));
-    }
-
-    // Listen to Rankings (Sorted by score DESC)
+    // Listen to Rankings
     const unsubLeaderRanking = onSnapshot(query(collection(db, 'leaderRanking'), orderBy('score', 'desc')), (snapshot) => {
       const list: RankingMember[] = [];
       snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as RankingMember));
@@ -493,11 +429,72 @@ export default function App() {
       setTrainerRanking(list);
     }, (err) => handleFirestoreError(err, OperationType.GET, 'trainerRanking', showMsg));
 
+    // ---------------------------------------------------------
+    // AUTH DEPENDENT LISTENERS
+    // ---------------------------------------------------------
+    let unsubApps = () => {};
+    let unsubTeachers = () => {};
+    let unsubAttendance = () => {};
+    let unsubStlMembers = () => {};
+    let unsubStlAttendance = () => {};
+    let unsubDemoMembers = () => {};
+    let unsubDemoAttendance = () => {};
+
+    if (isAuthReady) {
+      if (isAdmin) {
+        unsubApps = onSnapshot(query(collection(db, 'applications'), orderBy('createdAt', 'desc')), (snapshot) => {
+          const aList: Application[] = [];
+          snapshot.forEach(d => aList.push({ id: d.id, ...d.data() } as Application));
+          setApplications(aList);
+        }, (err) => handleFirestoreError(err, OperationType.GET, 'applications', showMsg));
+
+        unsubAttendance = onSnapshot(query(collection(db, 'teacherAttendance'), orderBy('submittedAt', 'desc'), limit(100)), (snapshot) => {
+          const rList: AttendanceRecord[] = [];
+          snapshot.forEach(d => rList.push({ id: d.id, ...d.data() } as AttendanceRecord));
+          setAttendanceRecords(rList);
+        }, (err) => handleFirestoreError(err, OperationType.GET, 'teacherAttendance', showMsg));
+
+        unsubStlAttendance = onSnapshot(query(collection(db, 'stlAttendance'), orderBy('submittedAt', 'desc'), limit(50)), (snapshot) => {
+          const list: STLAttendance[] = [];
+          snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as STLAttendance));
+          setStlAttendance(list);
+        }, (err) => handleFirestoreError(err, OperationType.GET, 'stlAttendance', showMsg));
+
+        unsubDemoAttendance = onSnapshot(query(collection(db, 'demoAttendance'), orderBy('submittedAt', 'desc'), limit(50)), (snapshot) => {
+          const list: DemoAttendance[] = [];
+          snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as DemoAttendance));
+          setDemoAttendance(list);
+        }, (err) => handleFirestoreError(err, OperationType.GET, 'demoAttendance', showMsg));
+      }
+
+      // Teachers/Members might need auth but not necessarily admin (based on rules context)
+      // Actually rules said teachers allow read: if auth
+      unsubTeachers = onSnapshot(query(collection(db, 'teachers'), orderBy('createdAt', 'asc')), (snapshot) => {
+        const tList: Teacher[] = [];
+        snapshot.forEach(d => tList.push({ id: d.id, ...d.data() } as Teacher));
+        setTeachers(tList);
+      }, (err) => handleFirestoreError(err, OperationType.GET, 'teachers', showMsg));
+
+      unsubStlMembers = onSnapshot(query(collection(db, 'stlMembers'), orderBy('createdAt', 'asc')), (snapshot) => {
+        const list: STLMember[] = [];
+        snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as STLMember));
+        setStlMembers(list);
+      }, (err) => handleFirestoreError(err, OperationType.GET, 'stlMembers', showMsg));
+
+      unsubDemoMembers = onSnapshot(query(collection(db, 'demoMembers'), orderBy('createdAt', 'asc')), (snapshot) => {
+        const list: DemoMember[] = [];
+        snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as DemoMember));
+        setDemoMembers(list);
+      }, (err) => handleFirestoreError(err, OperationType.GET, 'demoMembers', showMsg));
+    }
+
     return () => {
       unsubConfig();
       unsubMembers();
       unsubResults();
       unsubPicking();
+      unsubLeaderRanking();
+      unsubTrainerRanking();
       unsubApps();
       unsubTeachers();
       unsubAttendance();
@@ -505,8 +502,6 @@ export default function App() {
       unsubStlAttendance();
       unsubDemoMembers();
       unsubDemoAttendance();
-      unsubLeaderRanking();
-      unsubTrainerRanking();
     };
   }, [isAuthReady, isAdmin]);
 
@@ -1049,8 +1044,31 @@ export default function App() {
 
   if (!isAuthReady || !isConfigReady) {
     return (
-      <div className="min-h-screen bg-bg flex items-center justify-center">
-        <div className="w-16 h-16 border-4 border-blue-accent/20 border-t-blue-accent rounded-full animate-spin"></div>
+      <div className="min-h-screen bg-[#0A0A0F] flex flex-col items-center justify-center p-6">
+        <motion.div 
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          className="relative"
+        >
+          <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-gold to-gold2 flex items-center justify-center font-serif font-black text-bg text-4xl shadow-[0_0_50px_rgba(245,200,66,0.3)] animate-pulse">
+            U
+          </div>
+          <div className="absolute inset-x-0 -bottom-12 flex flex-col items-center gap-2">
+            <div className="text-white font-serif font-bold tracking-widest text-lg animate-pulse">
+              UNITY <span className="text-gold">EARNING</span>
+            </div>
+            <div className="flex gap-1.5">
+              {[0, 1, 2].map((i) => (
+                <motion.div
+                  key={i}
+                  animate={{ scale: [1, 1.5, 1], opacity: [0.3, 1, 0.3] }}
+                  transition={{ repeat: Infinity, duration: 1, delay: i * 0.2 }}
+                  className="w-1.5 h-1.5 rounded-full bg-gold"
+                />
+              ))}
+            </div>
+          </div>
+        </motion.div>
       </div>
     );
   }
