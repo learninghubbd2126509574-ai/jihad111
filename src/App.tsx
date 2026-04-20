@@ -43,6 +43,7 @@ import {
   Star,
   UserCircle,
   X,
+  Pencil,
   Calendar,
   Check,
   Megaphone,
@@ -2221,15 +2222,16 @@ const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, on
   const [lead, setLead] = useState<string>('');
   const [convert, setConvert] = useState<string>('');
   const [personalLead, setPersonalLead] = useState<string>('');
+  const [isEditing, setIsEditing] = useState(false);
 
-  // Reset local state when result is cleared from DB
+  // Reset local state when result is cleared from DB or initial load
   useEffect(() => {
-    if (!result) {
-      setLead('');
-      setConvert('');
-      setPersonalLead('');
+    if (!result || !isEditing) {
+      setLead(result?.lead.toString() || '');
+      setConvert(result?.convert.toString() || '');
+      setPersonalLead(result?.personalLead.toString() || '');
     }
-  }, [result]);
+  }, [result, isEditing]);
 
   const initials = member.name.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
   const rankIcon = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`;
@@ -2287,26 +2289,33 @@ const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, on
           </div>
         </div>
 
-        {result?.submitted ? (
-          <div className="grid grid-cols-3 sm:flex items-center gap-2">
-            <div className="bg-blue-accent/10 text-blue-accent border border-blue-accent/20 px-3 py-2 rounded-xl text-xs font-black flex flex-col sm:flex-row items-center gap-1 sm:gap-2">
-              <Send size={10} className="opacity-50" /> 
-              <span className="opacity-40 font-bold uppercase text-[8px] sm:text-[10px]">Lead</span>
-              <span className="text-sm">{result.lead}</span>
+        {result?.submitted && !isEditing ? (
+          <div className="flex items-center gap-3">
+            <div className="grid grid-cols-3 sm:flex items-center gap-2">
+              <div className="bg-blue-accent/10 text-blue-accent border border-blue-accent/20 px-3 py-2 rounded-xl text-xs font-black flex flex-col sm:flex-row items-center gap-1 sm:gap-2">
+                <Send size={10} className="opacity-50" /> 
+                <span className="opacity-40 font-bold uppercase text-[8px] sm:text-[10px]">Lead</span>
+                <span className="text-sm">{result.lead}</span>
+              </div>
+              <div className="bg-green-accent/10 text-green-accent border border-green-accent/20 px-3 py-2 rounded-xl text-xs font-black flex flex-col sm:flex-row items-center gap-1 sm:gap-2">
+                <CheckCircle2 size={10} className="opacity-50" /> 
+                <span className="opacity-40 font-bold uppercase text-[8px] sm:text-[10px]">Convert</span>
+                <span className="text-sm">{result.convert}</span>
+              </div>
+              <div className="bg-purple-500/10 text-purple-400 border border-purple-500/20 px-3 py-2 rounded-xl text-xs font-black flex flex-col sm:flex-row items-center gap-1 sm:gap-2">
+                <UserCircle size={10} className="opacity-50" /> 
+                <span className="opacity-40 font-bold uppercase text-[8px] sm:text-[10px]">Personal</span>
+                <span className="text-sm">{result.personalLead}</span>
+              </div>
             </div>
-            <div className="bg-green-accent/10 text-green-accent border border-green-accent/20 px-3 py-2 rounded-xl text-xs font-black flex flex-col sm:flex-row items-center gap-1 sm:gap-2">
-              <CheckCircle2 size={10} className="opacity-50" /> 
-              <span className="opacity-40 font-bold uppercase text-[8px] sm:text-[10px]">Convert</span>
-              <span className="text-sm">{result.convert}</span>
-            </div>
-            <div className="bg-purple-500/10 text-purple-400 border border-purple-500/20 px-3 py-2 rounded-xl text-xs font-black flex flex-col sm:flex-row items-center gap-1 sm:gap-2">
-              <UserCircle size={10} className="opacity-50" /> 
-              <span className="opacity-40 font-bold uppercase text-[8px] sm:text-[10px]">Personal</span>
-              <span className="text-sm">{result.personalLead}</span>
-            </div>
+            {timerActive && (
+              <button onClick={() => setIsEditing(true)} className="p-2 text-muted-main hover:text-gold transition-colors">
+                <Pencil size={18} />
+              </button>
+            )}
           </div>
         ) : (
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
             <div className="grid grid-cols-3 gap-2 flex-1">
               <div className="flex flex-col gap-1">
                 <label className="text-[8px] text-muted-main uppercase font-black tracking-widest ml-1">Lead</label>
@@ -2342,13 +2351,23 @@ const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, on
                 />
               </div>
             </div>
-            <button 
-              onClick={() => onSubmit(member.id, parseInt(lead) || 0, parseInt(convert) || 0, parseInt(personalLead) || 0)}
-              disabled={!timerActive}
-              className="bg-gold text-bg font-black py-2.5 px-6 rounded-xl text-[10px] uppercase tracking-widest shadow-lg hover:scale-105 active:scale-95 disabled:opacity-10 transition-all sm:mt-5"
-            >
-              Submit
-            </button>
+            <div className="flex items-center gap-2">
+              {isEditing && (
+                <button onClick={() => setIsEditing(false)} className="bg-surface border border-border text-white font-black py-2.5 px-4 rounded-xl text-[10px] uppercase tracking-widest shadow-lg hover:scale-105 active:scale-95 transition-all mt-5">
+                  <X size={16} />
+                </button>
+              )}
+              <button 
+                onClick={() => {
+                  onSubmit(member.id, parseInt(lead) || 0, parseInt(convert) || 0, parseInt(personalLead) || 0);
+                  setIsEditing(false);
+                }}
+                disabled={!timerActive}
+                className="bg-gold text-bg font-black py-2.5 px-6 rounded-xl text-[10px] uppercase tracking-widest shadow-lg hover:scale-105 active:scale-95 disabled:opacity-10 transition-all mt-5"
+              >
+                {isEditing ? 'Update' : 'Submit'}
+              </button>
+            </div>
           </div>
         )}
       </div>
