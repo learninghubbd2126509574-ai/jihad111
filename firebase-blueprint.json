@@ -155,6 +155,17 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["name", "score"]
+    },
+    "QuickLink": {
+      "title": "QuickLink",
+      "description": "A dynamic link added by admin for quick access.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Display name of the link" },
+        "url": { "type": "string", "description": "URL the link points to" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "url"]
     }
   },
   "firestore": {
@@ -209,6 +220,10 @@
     "/trainerRanking/{id}": {
       "schema": "RankingMember",
       "description": "Collection of members in the Team Trainer Ranking."
+    },
+    "/quickLinks/{id}": {
+      "schema": "QuickLink",
+      "description": "Collection of quick access links managed by admin."
     }
   }
 }

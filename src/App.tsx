@@ -76,7 +76,10 @@ import {
   RefreshCw,
   AlertTriangle,
   MessageCircle,
-  Music
+  Music,
+  Home,
+  ExternalLink,
+  Link
 } from 'lucide-react';
 
 // --- Types ---
@@ -178,6 +181,13 @@ interface RankingMember {
   id: string;
   name: string;
   score: number;
+  createdAt: any;
+}
+
+interface QuickLink {
+  id: string;
+  name: string;
+  url: string;
   createdAt: any;
 }
 
@@ -305,6 +315,77 @@ const Toast = ({ message, type, onClose }: { message: string, type: 'success' | 
   );
 };
 
+const QuickLinksModal = ({ links, onClose }: { links: QuickLink[], onClose: () => void }) => {
+  return (
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} onClick={onClose} className="absolute inset-0 bg-black/95 backdrop-blur-2xl" />
+      <motion.div 
+        initial={{ y: 50, opacity: 0, scale: 0.9 }} 
+        animate={{ y: 0, opacity: 1, scale: 1 }} 
+        className="relative bg-surface border border-white/10 rounded-[32px] p-8 max-w-xl w-full shadow-[0_0_80px_rgba(37,99,235,0.2)] overflow-hidden"
+      >
+        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500" />
+        
+        <div className="flex justify-between items-center mb-8">
+          <div className="flex items-center gap-3">
+             <div className="p-2.5 rounded-2xl bg-blue-accent/20 text-blue-accent">
+               <Home size={24} />
+             </div>
+             <div>
+               <h3 className="text-2xl font-black text-white tracking-tight">Quick Resources</h3>
+               <p className="text-[10px] text-muted-main uppercase tracking-[2px] font-bold">Important Links & Tools</p>
+             </div>
+          </div>
+          <button onClick={onClose} className="p-3 bg-white/5 rounded-2xl text-muted-main hover:text-white hover:bg-white/10 transition-all">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+          {links.length === 0 ? (
+            <div className="text-center py-20 bg-white/[0.02] rounded-3xl border border-white/5 italic text-muted-main2">
+              No quick links available yet...
+            </div>
+          ) : (
+            links.map((link, idx) => (
+              <motion.a
+                key={link.id}
+                href={link.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: idx * 0.1 }}
+                className="group flex items-center justify-between p-5 rounded-2xl bg-white/[0.03] border border-white/5 hover:border-blue-accent/50 hover:bg-blue-accent/5 transition-all shadow-xl"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-blue-accent/10 flex items-center justify-center text-blue-accent group-hover:scale-110 transition-transform">
+                    <Link size={20} />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-white group-hover:text-blue-accent transition-colors">{link.name}</h4>
+                    <p className="text-[10px] text-muted-main truncate max-w-[200px]">{link.url}</p>
+                  </div>
+                </div>
+                <div className="p-2 rounded-lg bg-white/5 text-muted-main group-hover:text-blue-accent group-hover:bg-blue-accent/20 transition-all">
+                  <ExternalLink size={18} />
+                </div>
+              </motion.a>
+            ))
+          )}
+        </div>
+
+        <button 
+          onClick={onClose}
+          className="w-full mt-8 py-4 bg-white text-bg font-black rounded-2xl uppercase tracking-[2px] text-sm hover:opacity-90 transition-all shadow-xl"
+        >
+          Close
+        </button>
+      </motion.div>
+    </div>
+  );
+};
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -354,6 +435,9 @@ export default function App() {
   const [showNoticeModal, setShowNoticeModal] = useState(false);
   const [showCounsellingModal, setShowCounsellingModal] = useState(false);
 
+  const [quickLinks, setQuickLinks] = useState<QuickLink[]>([]);
+  const [showQuickLinksModal, setShowQuickLinksModal] = useState(false);
+  
   const [showConfirm, setShowConfirm] = useState<{ title: string, onConfirm: () => void } | null>(null);
   const [siteAuthenticated, setSiteAuthenticated] = useState(false);
   const [stlAuthenticated, setStlAuthenticated] = useState(() => localStorage.getItem('stlAuth') === 'true');
@@ -478,6 +562,13 @@ export default function App() {
       setDemoMembers(list);
     }, (err) => handleFirestoreError(err, OperationType.GET, 'demoMembers', showMsg));
 
+    // Listen to Quick Links
+    const unsubQuickLinks = onSnapshot(query(collection(db, 'quickLinks'), orderBy('createdAt', 'desc')), (snapshot) => {
+      const list: QuickLink[] = [];
+      snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as QuickLink));
+      setQuickLinks(list);
+    }, (err) => handleFirestoreError(err, OperationType.GET, 'quickLinks', showMsg));
+
     // ---------------------------------------------------------
     // AUTH DEPENDENT LISTENERS (Admin / Authed only)
     // ---------------------------------------------------------
@@ -535,11 +626,18 @@ export default function App() {
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (config.timerActive && config.timerEndTime > Date.now()) {
-      interval = setInterval(() => {
+      interval = setInterval(async () => {
         const remaining = Math.max(0, Math.floor((config.timerEndTime - Date.now()) / 1000));
         setTimeLeft(remaining);
         if (remaining === 0) {
-          // Timer ended
+          // Timer ended - deactivate in database
+          try {
+            await updateDoc(doc(db, 'config', 'global'), {
+              timerActive: false
+            });
+          } catch (err) {
+            console.error('Failed to auto-deactivate timer:', err);
+          }
         }
       }, 1000);
     } else {
@@ -1050,7 +1148,7 @@ export default function App() {
   };
 
   const submitResult = async (memberId: string, lead: number, convert: number, personalLead: number) => {
-    if (!config.timerActive) {
+    if (!config.timerActive || (config.timerEndTime > 0 && Date.now() >= config.timerEndTime)) {
       showMsg('Submission window is closed!', 'error');
       return;
     }
@@ -1108,6 +1206,28 @@ export default function App() {
       showMsg('Result submitted!');
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'results', showMsg);
+    }
+  };
+
+  const addQuickLink = async (name: string, url: string) => {
+    try {
+      await addDoc(collection(db, 'quickLinks'), {
+        name: name.trim(),
+        url: url.trim(),
+        createdAt: serverTimestamp()
+      });
+      showMsg('Quick link added!', 'success');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'quickLinks', showMsg);
+    }
+  };
+
+  const deleteQuickLink = async (id: string) => {
+    try {
+       await deleteDoc(doc(db, 'quickLinks', id));
+       showMsg('Quick link removed!', 'success');
+    } catch (err) {
+       handleFirestoreError(err, OperationType.DELETE, `quickLinks/${id}`, showMsg);
     }
   };
 
@@ -1234,6 +1354,8 @@ export default function App() {
     );
   }
 
+  const isTimerActive = config.timerActive && (config.timerEndTime > Date.now());
+
   return (
     <div className="min-h-screen pb-20">
       {/* Global Announcement */}
@@ -1307,7 +1429,20 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-3">
-          {config.timerActive && (
+          <button 
+            onClick={() => setShowQuickLinksModal(true)}
+            className="relative w-10 h-10 flex items-center justify-center rounded-xl border border-blue-accent/30 bg-blue-accent/5 text-blue-accent hover:bg-blue-accent hover:text-bg transition-all shadow-[0_0_15px_rgba(37,99,235,0.15)] active:scale-90 overflow-hidden group"
+            title="Quick Links"
+          >
+             <motion.div 
+               animate={{ opacity: [0.3, 0.7, 0.3], scale: [0.9, 1.1, 0.9] }}
+               transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+               className="absolute inset-0 bg-blue-accent/30 blur-md group-hover:bg-blue-accent/40"
+             />
+            <Home size={22} className="relative z-10" />
+          </button>
+
+          {isTimerActive && (
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-green-accent/30 bg-green-accent/5 text-green-accent shadow-[0_0_15px_rgba(31,217,122,0.1)]">
               <Clock size={14} className="animate-pulse" />
               <span className="font-mono font-bold text-sm tracking-tighter">{formatTime(timeLeft)}</span>
@@ -1718,7 +1853,7 @@ export default function App() {
           icon={<Trophy size={18} />} 
           members={sortedLeaders} 
           results={results}
-          timerActive={config.timerActive}
+          timerActive={isTimerActive}
           onSubmit={submitResult}
           accentColor="gold"
         />
@@ -1728,13 +1863,22 @@ export default function App() {
           icon={<GraduationCap size={18} />} 
           members={sortedTrainers} 
           results={results}
-          timerActive={config.timerActive}
+          timerActive={isTimerActive}
           onSubmit={submitResult}
           accentColor="blue"
         />
       </main>
 
       {/* Admin Side Panel */}
+      <AnimatePresence>
+        {showQuickLinksModal && (
+          <QuickLinksModal 
+            links={quickLinks}
+            onClose={() => setShowQuickLinksModal(false)}
+          />
+        )}
+      </AnimatePresence>
+
       <AnimatePresence>
         {showAdminPanel && (
           <>
@@ -1986,6 +2130,13 @@ export default function App() {
                   Demo History ({demoAttendance.length})
                 </button>
               </div>
+
+              {/* Quick Links Manager */}
+              <QuickLinksManagementSection 
+                links={quickLinks}
+                onAdd={addQuickLink}
+                onDelete={deleteQuickLink}
+              />
 
               {/* Applications Section */}
               <div className="mb-8 p-5 bg-bg border border-border rounded-2xl">
@@ -3112,6 +3263,84 @@ function SecurityManager({ config, onUpdate }: { config: Config, onUpdate: (pass
           <Lock size={12} />
           Apply Security Settings
         </button>
+      </div>
+    </div>
+  );
+}
+
+function QuickLinksManagementSection({ links, onAdd, onDelete }: { links: QuickLink[], onAdd: (name: string, url: string) => void, onDelete: (id: string) => void }) {
+  const [lName, setLName] = useState('');
+  const [lUrl, setLUrl] = useState('');
+
+  return (
+    <div className="mb-8 p-6 bg-bg border border-border rounded-2xl shadow-xl overflow-hidden relative">
+      <div className="absolute top-0 left-0 w-1 h-full bg-blue-accent/20" />
+      <div className="flex items-center gap-2 mb-6 border-b border-border pb-4">
+        <div className="p-2 bg-blue-accent/20 rounded-lg text-blue-accent">
+          <Link size={18} />
+        </div>
+        <h4 className="text-[10px] font-black text-white uppercase tracking-widest leading-none">Home Quick Links</h4>
+      </div>
+
+      <div className="space-y-4 mb-6">
+        <div className="grid grid-cols-1 gap-3">
+          <div className="bg-surface border border-border p-3 rounded-xl">
+             <input 
+               placeholder="Link Name (e.g. Google Drive)" 
+               value={lName}
+               onChange={e => setLName(e.target.value)}
+               className="bg-transparent text-white w-full outline-none text-sm font-bold"
+             />
+          </div>
+          <div className="bg-surface border border-border p-3 rounded-xl flex items-center gap-2">
+             <Globe size={14} className="text-muted-main" />
+             <input 
+               placeholder="Target URL (https://...)" 
+               value={lUrl}
+               onChange={e => setLUrl(e.target.value)}
+               className="bg-transparent text-white w-full outline-none text-sm font-bold"
+             />
+          </div>
+        </div>
+        <button 
+          onClick={() => {
+            if (lName && lUrl) {
+              onAdd(lName, lUrl);
+              setLName('');
+              setLUrl('');
+            }
+          }}
+          className="w-full py-3 bg-blue-accent text-bg font-black rounded-xl uppercase text-[10px] tracking-widest hover:opacity-90 transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-accent/20"
+        >
+          <Plus size={16} />
+          Add Quick Link
+        </button>
+      </div>
+
+      <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+        {links.length === 0 ? (
+          <p className="text-center text-muted-main2 italic text-[10px] py-4">No quick links added yet</p>
+        ) : (
+          links.map(link => (
+            <div key={link.id} className="flex items-center justify-between p-3 rounded-xl bg-surface/50 border border-border group hover:border-blue-accent/30 transition-all">
+              <div className="flex items-center gap-3 overflow-hidden">
+                 <div className="text-blue-accent">
+                   <Link size={14} />
+                 </div>
+                 <div className="truncate">
+                    <div className="text-xs font-bold text-white">{link.name}</div>
+                    <div className="text-[10px] text-muted-main italic truncate max-w-[150px]">{link.url}</div>
+                 </div>
+              </div>
+              <button 
+                onClick={() => onDelete(link.id)}
+                className="p-2 text-muted-main hover:text-red-accent transition-colors"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );
