@@ -18,7 +18,8 @@ import {
   orderBy, 
   limit,
   serverTimestamp,
-  getDocFromServer
+  getDocFromServer,
+  increment
 } from 'firebase/firestore';
 import { 
   signInWithPopup, 
@@ -72,6 +73,8 @@ import {
   Globe,
   Facebook,
   Youtube,
+  RefreshCw,
+  AlertTriangle,
   MessageCircle,
   Music
 } from 'lucide-react';
@@ -216,6 +219,10 @@ interface Config {
   stlPassword?: string;
   counsellingSchedules?: CounsellingSchedule[];
   paymentMethods?: PaymentMethods;
+  autoTimerEnabled?: boolean;
+  autoTimerTime?: string;
+  lastAutoStartTime?: string;
+  totalConverts?: number;
 }
 
 enum OperationType {
@@ -342,6 +349,7 @@ export default function App() {
   const [trainerRanking, setTrainerRanking] = useState<RankingMember[]>([]);
   const [showLeaderRankingModal, setShowLeaderRankingModal] = useState(false);
   const [showTrainerRankingModal, setShowTrainerRankingModal] = useState(false);
+  const [showOverallStatsModal, setShowOverallStatsModal] = useState(false);
   const [showSocialsModal, setShowSocialsModal] = useState(false);
   const [showNoticeModal, setShowNoticeModal] = useState(false);
   const [showCounsellingModal, setShowCounsellingModal] = useState(false);
@@ -539,6 +547,36 @@ export default function App() {
     }
     return () => clearInterval(interval);
   }, [config.timerActive, config.timerEndTime]);
+
+  // Auto-timer Logic
+  useEffect(() => {
+    if (!isAdmin || !config.autoTimerEnabled || !config.autoTimerTime) return;
+
+    const interval = setInterval(async () => {
+      const now = new Date();
+      const HH = String(now.getHours()).padStart(2, '0');
+      const mm = String(now.getMinutes()).padStart(2, '0');
+      const currentTime = `${HH}:${mm}`;
+      const today = now.toISOString().split('T')[0];
+
+      if (currentTime === config.autoTimerTime && config.lastAutoStartTime !== today) {
+        const duration = 1800; // 30 mins
+        try {
+          await setDoc(doc(db, 'config', 'global'), {
+            ...config,
+            timerActive: true,
+            timerEndTime: Date.now() + duration * 1000,
+            timerDuration: duration,
+            lastAutoStartTime: today
+          });
+        } catch (err) {
+          console.error('Auto-timer trigger fail:', err);
+        }
+      }
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [isAdmin, config]);
 
   const formatTime = (s: number) => {
     const mins = Math.floor(s / 60).toString().padStart(2, '0');
@@ -803,6 +841,19 @@ export default function App() {
     }
   };
 
+  const updateAutoTimer = async (enabled: boolean, time: string) => {
+    try {
+      await setDoc(doc(db, 'config', 'global'), {
+        ...config,
+        autoTimerEnabled: enabled,
+        autoTimerTime: time
+      });
+      showMsg('Auto-timer settings updated');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'config/global', showMsg);
+    }
+  };
+
   const addSTLMember = async (name: string) => {
     if (!name.trim()) return;
     try {
@@ -1004,6 +1055,10 @@ export default function App() {
       return;
     }
     try {
+      const prevConvert = results[memberId]?.convert || 0;
+      const diff = convert - prevConvert;
+      const member = members.find(m => m.id === memberId);
+
       // Use memberId as the document ID for predictable updates
       const resultRef = doc(db, 'results', memberId);
       const data = {
@@ -1016,6 +1071,40 @@ export default function App() {
       };
       
       await setDoc(resultRef, data);
+
+      // Update global total and individual ranking score
+      if (diff !== 0) {
+        // Update global total (Only for Leaders)
+        if (member?.type === 'leader') {
+          await updateDoc(doc(db, 'config', 'global'), {
+            totalConverts: increment(diff)
+          });
+        }
+
+        // Update individual ranking score if names match
+        if (member) {
+          const rankingList = member.type === 'leader' ? leaderRanking : trainerRanking;
+          const rankingEntry = rankingList.find(r => 
+            r.name.trim().toLowerCase() === member.name.trim().toLowerCase()
+          );
+          
+          const coll = member.type === 'leader' ? 'leaderRanking' : 'trainerRanking';
+
+          if (rankingEntry) {
+            await updateDoc(doc(db, coll, rankingEntry.id), {
+              score: increment(diff)
+            });
+          } else {
+            // Auto-create ranking entry if missing, so their score is tracked
+            await addDoc(collection(db, coll), {
+              name: member.name,
+              score: convert, // Starting score is their current total
+              createdAt: serverTimestamp()
+            });
+          }
+        }
+      }
+
       showMsg('Result submitted!');
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'results', showMsg);
@@ -1023,38 +1112,59 @@ export default function App() {
   };
 
   // Stats & Ranking
-  const { stats, topLeader, topTrainer, sortedLeaders, sortedTrainers } = useMemo(() => {
+  const { stats, topLeader, topTrainer, sortedLeaders, sortedTrainers, sortedLeaderRanking, sortedTrainerRanking } = useMemo(() => {
     let totalLeads = 0;
-    let totalConverts = 0;
-    const resultsList = Object.values(results) as Result[];
+    let todayConverts = 0;
+    let globalTotalConverts = 0;
     
-    const getMemberWithResult = (m: Member) => ({
-      ...m,
-      result: results[m.id] || { lead: 0, convert: 0, personalLead: 0, submitted: false }
+    leaderRanking.forEach(r => {
+      globalTotalConverts += (r.score || 0);
+    });
+    
+    const sortedLR = [...leaderRanking].sort((a, b) => (b.score || 0) - (a.score || 0));
+    const sortedTR = [...trainerRanking].sort((a, b) => (b.score || 0) - (a.score || 0));
+
+    const allLeaders = members.filter(m => m.type === 'leader').map((m) => {
+      const rankingEntry = sortedLR.find(r => 
+        r.name.trim().toLowerCase() === m.name.trim().toLowerCase()
+      );
+      return {
+        ...m,
+        score: rankingEntry?.score || 0,
+        result: results[m.id] || { lead: 0, convert: 0, personalLead: 0, submitted: false }
+      };
     });
 
-    const allLeaders = members.filter(m => m.type === 'leader').map(getMemberWithResult);
-    const allTrainers = members.filter(m => m.type === 'trainer').map(getMemberWithResult);
+    const allTrainers = members.filter(m => m.type === 'trainer').map((m) => {
+      const rankingEntry = sortedTR.find(r => 
+        r.name.trim().toLowerCase() === m.name.trim().toLowerCase()
+      );
+      return {
+        ...m,
+        score: rankingEntry?.score || 0,
+        result: results[m.id] || { lead: 0, convert: 0, personalLead: 0, submitted: false }
+      };
+    });
 
     // Only sum results from Leaders for the total stats
     allLeaders.forEach(m => {
       if (m.result.submitted) {
         totalLeads += m.result.lead;
-        totalConverts += m.result.convert;
+        todayConverts += m.result.convert;
       }
     });
 
     const sortByPerformance = (a: any, b: any) => {
-      // Primary sort: Convert count (descending)
+      // Primary sort: Today's Convert count (descending)
       if ((b.result.convert || 0) !== (a.result.convert || 0)) {
         return (b.result.convert || 0) - (a.result.convert || 0);
       }
-      // Secondary sort: Personal Lead count (descending)
+      // Secondary sort: Today's Personal Lead count (descending)
       if ((b.result.personalLead || 0) !== (a.result.personalLead || 0)) {
         return (b.result.personalLead || 0) - (a.result.personalLead || 0);
       }
-      // Tertiary sort: Lead count (descending)
-      return (b.result.lead || 0) - (a.result.lead || 0);
+      // Tertiary sort: Lifetime Score (score)
+      return (b.score || 0) - (a.score || 0);
     };
 
     const sortedL = [...allLeaders].sort(sortByPerformance);
@@ -1065,14 +1175,17 @@ export default function App() {
         leaders: allLeaders.length,
         trainers: allTrainers.length,
         leads: totalLeads,
-        converts: totalConverts
+        converts: globalTotalConverts, // Now shows Lifetime Total of all Leaders
+        todayConverts: todayConverts
       },
       topLeader: sortedL[0]?.result?.submitted ? sortedL[0] : null,
       topTrainer: sortedT[0]?.result?.submitted ? sortedT[0] : null,
       sortedLeaders: sortedL,
-      sortedTrainers: sortedT
+      sortedTrainers: sortedT,
+      sortedLeaderRanking: sortedLR,
+      sortedTrainerRanking: sortedTR
     };
-  }, [members, results]);
+  }, [members, results, leaderRanking, trainerRanking]);
 
   if (!isAuthReady || !isConfigReady) {
     return (
@@ -1299,6 +1412,22 @@ export default function App() {
                     </div>
                   </div>
                   <ChevronRight size={18} className="text-purple-500" />
+                </button>
+
+                <button 
+                  onClick={() => { setShowMenu(false); setShowOverallStatsModal(true); }}
+                  className="w-full flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 group transition-all"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-surface border border-border2 text-gold flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                      <Trophy size={20} />
+                    </div>
+                    <div className="text-left">
+                      <span className="block text-sm font-black text-white group-hover:text-gold transition-colors">Total Convert</span>
+                      <span className="block text-[10px] text-white/40 uppercase font-black">Overall Progress Board</span>
+                    </div>
+                  </div>
+                  <ChevronRight size={18} className="text-muted-main group-hover:text-gold" />
                 </button>
 
                 {hasStlAccess && (
@@ -1660,6 +1789,101 @@ export default function App() {
                 >
                   Clear All Results
                 </button>
+
+                {/* Total Convert Edit */}
+                <div className="mt-6 pt-6 border-t border-border">
+                  <label className="text-[10px] text-muted-main uppercase font-black tracking-widest block mb-1 px-1">Lifetime Total Convert</label>
+                  <p className="text-[9px] text-muted-main2 mb-3 px-1 leading-relaxed opacity-60">Syncs only with Team Leader rankings. Trainer scores are not included.</p>
+                  <div className="flex gap-2 mb-3">
+                    <input 
+                      type="number"
+                      value={config.totalConverts || 0}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value) || 0;
+                        setDoc(doc(db, 'config', 'global'), { ...config, totalConverts: val });
+                      }}
+                      className="flex-1 bg-surface border border-border2 rounded-lg px-3 py-2 text-sm text-gold font-bold outline-none focus:border-gold"
+                    />
+                    <div className="bg-gold/10 text-gold px-3 py-2 rounded-lg flex items-center justify-center">
+                      <Trophy size={14} />
+                    </div>
+                  </div>
+                  <button 
+                    onClick={async () => {
+                      const total = leaderRanking.reduce((sum, r) => sum + (r.score || 0), 0);
+                      await setDoc(doc(db, 'config', 'global'), { ...config, totalConverts: total });
+                      showMsg(`Synced! Total Leader Convert: ${total}`);
+                    }}
+                    className="w-full py-1.5 rounded-lg bg-gold text-bg text-[10px] uppercase font-black hover:opacity-90 transition-all flex items-center justify-center gap-1.5 mb-2"
+                  >
+                    <RefreshCw size={10} />
+                    Force Sync with Leaders
+                  </button>
+
+                  <button 
+                    onClick={async () => {
+                      setShowConfirm({
+                        title: 'Reset ALL Lifetime Scores to Zero?',
+                        onConfirm: async () => {
+                          try {
+                            const batch = writeBatch(db);
+                            
+                            // Reset global config
+                            batch.update(doc(db, 'config', 'global'), { totalConverts: 0 });
+                            
+                            // Reset Leader Ranking
+                            leaderRanking.forEach(r => {
+                              batch.update(doc(db, 'leaderRanking', r.id), { score: 0 });
+                            });
+                            
+                            // Reset Trainer Ranking
+                            trainerRanking.forEach(r => {
+                              batch.update(doc(db, 'trainerRanking', r.id), { score: 0 });
+                            });
+                            
+                            await batch.commit();
+                            showMsg('All conversion scores reset to zero!', 'success');
+                            setShowConfirm(null);
+                          } catch (err) {
+                            handleFirestoreError(err, OperationType.WRITE, 'reset-scores', showMsg);
+                          }
+                        }
+                      });
+                    }}
+                    className="w-full py-1.5 rounded-lg bg-red-600 text-white text-[10px] uppercase font-black hover:opacity-90 transition-all flex items-center justify-center gap-1.5"
+                  >
+                    <AlertTriangle size={10} />
+                    Reset All Lifetime Data
+                  </button>
+                </div>
+              </div>
+
+              {/* Auto Timer Scheduler */}
+              <div className="bg-bg border border-border rounded-xl p-4 mb-8">
+                <div className="flex items-center justify-between mb-4">
+                  <h4 className="text-[10px] text-muted-main tracking-[2px] uppercase">Schedule Auto Start</h4>
+                  <div 
+                    onClick={() => updateAutoTimer(!config.autoTimerEnabled, config.autoTimerTime || '22:00')}
+                    className={`w-10 h-5 rounded-full relative cursor-pointer transition-all ${config.autoTimerEnabled ? 'bg-green-accent' : 'bg-muted-main2'}`}
+                  >
+                    <div className={`absolute top-1 w-3 h-3 rounded-full bg-bg transition-all ${config.autoTimerEnabled ? 'left-6' : 'left-1'}`} />
+                  </div>
+                </div>
+                
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center gap-3 bg-surface/50 p-3 rounded-lg border border-border">
+                    <Clock size={16} className="text-gold" />
+                    <input 
+                      type="time" 
+                      defaultValue={config.autoTimerTime || '22:00'}
+                      onBlur={(e) => updateAutoTimer(!!config.autoTimerEnabled, e.target.value)}
+                      className="bg-transparent text-white font-bold outline-none flex-1"
+                    />
+                  </div>
+                  <p className="text-[10px] text-muted-main italic leading-relaxed">
+                    * প্রতিদিন এই সময়ে অটোমেটিক ৩০ মিনিটের টাইমার শুরু হবে যদি কোনো অ্যাডমিন অ্যাপে সক্রিয় থাকে।
+                  </p>
+                </div>
               </div>
 
               {/* Announcement Manager */}
@@ -2062,7 +2286,7 @@ export default function App() {
             title="Team Leader Ranking"
             icon={Crown}
             colorClass="text-gold"
-            members={leaderRanking}
+            members={sortedLeaderRanking}
             onClose={() => setShowLeaderRankingModal(false)}
             isActive={config.leaderRankingActive || false}
           />
@@ -2075,9 +2299,19 @@ export default function App() {
             title="Team Trainer Ranking"
             icon={Award}
             colorClass="text-blue-accent"
-            members={trainerRanking}
+            members={sortedTrainerRanking}
             onClose={() => setShowTrainerRankingModal(false)}
             isActive={config.trainerRankingActive || false}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showOverallStatsModal && (
+          <OverallStatsModal 
+            onClose={() => setShowOverallStatsModal(false)}
+            leaders={sortedLeaderRanking}
+            trainers={sortedTrainerRanking}
           />
         )}
       </AnimatePresence>
@@ -2275,6 +2509,9 @@ const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, on
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <div className="font-bold text-base text-white truncate">{member.name}</div>
+              <div className={`px-2 py-0.5 rounded-lg text-[10px] font-black border ${accentColor === 'gold' ? 'bg-gold/10 text-gold border-gold/20' : 'bg-blue-accent/10 text-blue-accent border-blue-accent/20'}`}>
+                { (member as any).score || 0 } Total Convert
+              </div>
               {status && (
                 <span className={`text-[8px] px-2 py-0.5 rounded-full border border-current font-black uppercase tracking-widest ${status.color}`}>
                   {status.label}
@@ -3343,6 +3580,109 @@ function RankingSection({
           ))
         )}
       </div>
+    </div>
+  );
+}
+
+function OverallStatsModal({ onClose, leaders, trainers }: { 
+  onClose: () => void, 
+  leaders: RankingMember[], 
+  trainers: RankingMember[] 
+}) {
+  const topLeaders = [...leaders].sort((a,b) => (b.score || 0) - (a.score || 0)).slice(0, 3);
+  const topTrainers = [...trainers].sort((a,b) => (b.score || 0) - (a.score || 0)).slice(0, 3);
+  
+  // Calculate total strictly from Team Leaders' lifetime scores
+  const total = leaders.reduce((sum, m) => sum + (m.score || 0), 0);
+
+  return (
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/90 backdrop-blur-xl" />
+      <motion.div 
+        initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} 
+        className="relative bg-[#0A0A0F] border border-gold/20 rounded-[2.5rem] max-w-lg w-full shadow-[0_0_80px_rgba(245,200,66,0.15)] flex flex-col max-h-[85vh] overflow-hidden"
+      >
+         <div className="h-2 w-full bg-gradient-to-r from-gold via-gold2 to-gold" />
+         
+         <div className="p-8 pt-10 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+               <div className="w-14 h-14 rounded-2xl bg-gold/10 flex items-center justify-center text-gold border border-gold/20">
+                  <Trophy size={32} />
+               </div>
+               <div>
+                  <h3 className="text-3xl font-serif font-black text-white leading-tight">Total Convert</h3>
+                  <p className="text-[10px] text-muted-main uppercase tracking-[3px] font-black opacity-40">System-wide performance tracker</p>
+               </div>
+            </div>
+            <button onClick={onClose} className="w-10 h-10 bg-white/5 rounded-2xl flex items-center justify-center hover:bg-white/10 text-muted-main hover:text-white transition-all border border-white/10">
+               <X size={20} />
+            </button>
+         </div>
+
+         <div className="flex-1 overflow-y-auto px-8 pb-8 custom-scrollbar">
+            {/* Main Total Display */}
+            <div className="relative group mb-10">
+               <div className="absolute inset-0 bg-gold/20 blur-3xl rounded-full opacity-50 group-hover:opacity-80 transition-opacity" />
+               <div className="relative bg-gradient-to-br from-surface to-bg border border-gold/30 p-8 rounded-[2rem] text-center shadow-2xl">
+                  <p className="text-[10px] text-gold font-black uppercase tracking-[5px] mb-2">System-wide Total Convert</p>
+                  <div className="text-6xl font-serif font-black text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.2)]">
+                     {total.toLocaleString()}
+                  </div>
+                  <div className="mt-4 flex items-center justify-center gap-2">
+                     <Star size={14} className="text-gold fill-gold" />
+                     <span className="text-[10px] text-muted-main uppercase font-bold tracking-widest">Global Milestone Reached</span>
+                     <Star size={14} className="text-gold fill-gold" />
+                  </div>
+               </div>
+            </div>
+
+            {/* Top 3 Leaders */}
+            <div className="space-y-4 mb-8">
+               <div className="flex items-center gap-3 mb-2 px-2">
+                  <Crown size={16} className="text-gold" />
+                  <h4 className="text-[12px] text-white font-black uppercase tracking-widest">Top 3 Team Leaders</h4>
+               </div>
+               <div className="space-y-3">
+                  {topLeaders.length === 0 ? (
+                    <div className="text-center py-4 bg-white/5 rounded-2xl text-xs text-muted-main2 italic">No data records...</div>
+                  ) : topLeaders.map((m, i) => (
+                    <div key={m.id} className="flex items-center justify-between p-4 bg-surface/50 border border-gold/10 rounded-2xl group hover:border-gold/30 transition-all">
+                       <div className="flex items-center gap-4">
+                          <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-xs ${i === 0 ? 'bg-gold text-bg' : i === 1 ? 'bg-zinc-300 text-bg' : i === 2 ? 'bg-orange-400 text-bg' : 'bg-white/10 text-white'}`}>
+                             {i + 1}
+                          </div>
+                          <span className="text-white font-serif font-bold text-lg">{m.name}</span>
+                       </div>
+                       <div className="text-gold font-black text-xl">{m.score}</div>
+                    </div>
+                  ))}
+               </div>
+            </div>
+
+            {/* Top 3 Trainers */}
+            <div className="space-y-4">
+               <div className="flex items-center gap-3 mb-2 px-2">
+                  <Award size={16} className="text-blue-accent" />
+                  <h4 className="text-[12px] text-white font-black uppercase tracking-widest">Top 3 Team Trainers</h4>
+               </div>
+               <div className="space-y-3">
+                  {topTrainers.length === 0 ? (
+                    <div className="text-center py-4 bg-white/5 rounded-2xl text-xs text-muted-main2 italic">No data records...</div>
+                  ) : topTrainers.map((m, i) => (
+                    <div key={m.id} className="flex items-center justify-between p-4 bg-surface/50 border border-blue-accent/10 rounded-2xl group hover:border-blue-accent/30 transition-all">
+                       <div className="flex items-center gap-4">
+                          <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-xs ${i === 0 ? 'bg-blue-accent text-bg' : i === 1 ? 'bg-zinc-300 text-bg' : i === 2 ? 'bg-orange-400 text-bg' : 'bg-white/10 text-white'}`}>
+                             {i + 1}
+                          </div>
+                          <span className="text-white font-serif font-bold text-lg">{m.name}</span>
+                       </div>
+                       <div className="text-blue-accent font-black text-xl">{m.score}</div>
+                    </div>
+                  ))}
+               </div>
+            </div>
+         </div>
+      </motion.div>
     </div>
   );
 }
