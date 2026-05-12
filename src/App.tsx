@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   collection, 
   doc, 
@@ -1145,21 +1145,26 @@ export default function App() {
   // Timer Logic
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (config.timerActive && config.timerEndTime > Date.now()) {
-      interval = setInterval(async () => {
-        const remaining = Math.max(0, Math.floor((config.timerEndTime - Date.now()) / 1000));
-        setTimeLeft(remaining);
-        if (remaining === 0) {
-          // Timer ended - deactivate in database
-          try {
-            await updateDoc(doc(db, 'config', 'global'), {
-              timerActive: false
-            });
-          } catch (err) {
-            console.error('Failed to auto-deactivate timer:', err);
+
+    if (config.timerActive) {
+      if (config.timerEndTime <= Date.now()) {
+        updateDoc(doc(db, 'config', 'global'), { timerActive: false }).catch(console.error);
+        setTimeLeft(0);
+      } else {
+        interval = setInterval(async () => {
+          const remaining = Math.max(0, Math.floor((config.timerEndTime - Date.now()) / 1000));
+          setTimeLeft(remaining);
+          if (remaining === 0) {
+            try {
+              await updateDoc(doc(db, 'config', 'global'), {
+                timerActive: false
+              });
+            } catch (err) {
+              console.error('Failed to auto-deactivate timer:', err);
+            }
           }
-        }
-      }, 1000);
+        }, 1000);
+      }
     } else {
       setTimeLeft(0);
     }
@@ -1167,26 +1172,35 @@ export default function App() {
   }, [config.timerActive, config.timerEndTime]);
 
   // Auto-timer Logic
+  const configRef = useRef(config);
   useEffect(() => {
-    if (!isAdmin || !config.autoTimerEnabled || !config.autoTimerTime) return;
+    configRef.current = config;
+  }, [config]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
 
     const interval = setInterval(async () => {
+      const currentConfig = configRef.current;
+      if (!currentConfig || !currentConfig.autoTimerEnabled || !currentConfig.autoTimerTime) return;
+
       const now = new Date();
       const HH = String(now.getHours()).padStart(2, '0');
       const mm = String(now.getMinutes()).padStart(2, '0');
       const currentTime = `${HH}:${mm}`;
       const today = now.toISOString().split('T')[0];
-
-      if (currentTime === config.autoTimerTime && config.lastAutoStartTime !== today) {
-        const duration = 1800; // 30 mins
+      const duration = 1800; // 30 mins
+      
+      if (currentTime === currentConfig.autoTimerTime && currentConfig.lastAutoStartTime !== today) {
+        console.log('Auto-timer triggered for time:', currentTime);
         try {
-          await setDoc(doc(db, 'config', 'global'), {
-            ...config,
+          await updateDoc(doc(db, 'config', 'global'), {
             timerActive: true,
             timerEndTime: Date.now() + duration * 1000,
             timerDuration: duration,
             lastAutoStartTime: today
           });
+          console.log('Auto-timer successfully set timerActive to true');
         } catch (err) {
           console.error('Auto-timer trigger fail:', err);
         }
@@ -1194,7 +1208,7 @@ export default function App() {
     }, 30000);
 
     return () => clearInterval(interval);
-  }, [isAdmin, config]);
+  }, [isAdmin]);
 
   const formatTime = (s: number) => {
     const mins = Math.floor(s / 60).toString().padStart(2, '0');
@@ -1485,8 +1499,7 @@ export default function App() {
   const startTimer = async () => {
     try {
       const duration = 1800; // 30 mins
-      await setDoc(doc(db, 'config', 'global'), {
-        ...config,
+      await updateDoc(doc(db, 'config', 'global'), {
         timerActive: true,
         timerEndTime: Date.now() + duration * 1000,
         timerDuration: duration
@@ -1499,8 +1512,7 @@ export default function App() {
 
   const stopTimer = async () => {
     try {
-      await setDoc(doc(db, 'config', 'global'), {
-        ...config,
+      await updateDoc(doc(db, 'config', 'global'), {
         timerActive: false
       });
       showMsg('Timer stopped', 'error');
