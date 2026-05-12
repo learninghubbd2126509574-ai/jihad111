@@ -1764,12 +1764,12 @@ export default function App() {
     }
   };
 
-  const updateRankingScore = async (type: 'leader' | 'trainer', id: string, newScore: number, newLeads?: number) => {
+  const updateRankingScore = async (type: 'leader' | 'trainer', id: string, diffScore: number, diffLeads: number) => {
     const coll = type === 'leader' ? 'leaderRanking' : 'trainerRanking';
     try {
       await updateDoc(doc(db, coll, id), { 
-        score: newScore,
-        ...(newLeads !== undefined && { leads: newLeads })
+        score: increment(diffScore),
+        leads: increment(diffLeads)
       });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `${coll}/${id}`, showMsg);
@@ -1965,6 +1965,7 @@ export default function App() {
     let totalLeads = 0;
     let todayConverts = 0;
     let totalSubmittedConverts = 0;
+    let todayLeads = 0;
     
     const sortByRanking = (a: any, b: any) => {
       if ((b.score || 0) !== (a.score || 0)) return (b.score || 0) - (a.score || 0);
@@ -2003,6 +2004,7 @@ export default function App() {
       if (m.result.submitted) {
         totalLeads += m.result.lead;
         todayConverts += m.result.convert;
+        todayLeads += m.result.lead;
         totalSubmittedConverts += m.result.convert || 0;
       }
     });
@@ -2029,7 +2031,8 @@ export default function App() {
         trainers: allTrainers.length,
         leads: totalLeads,
         converts: totalSubmittedConverts,
-        todayConverts: todayConverts
+        todayConverts: todayConverts,
+        todayLeads: todayLeads
       },
       topLeader: sortedL[0]?.result?.submitted ? sortedL[0] : null,
       topTrainer: sortedT[0]?.result?.submitted ? sortedT[0] : null,
@@ -2492,6 +2495,7 @@ export default function App() {
           {[
             { label: 'Leaders', value: stats.leaders, color: 'text-gold', icon: <Trophy size={12} /> },
             { label: 'Trainers', value: stats.trainers, color: 'text-blue-accent', icon: <GraduationCap size={12} /> },
+            { label: 'Leads', value: stats.todayLeads, color: 'text-green-accent', icon: <Send size={12} /> },
             { label: 'Converts', value: stats.converts, color: 'text-orange-400', icon: <CheckCircle2 size={12} /> }
           ].map((stat, i) => (
             <div key={i} className="group bg-surface border border-border rounded-xl p-3 sm:p-4 text-center relative overflow-hidden transition-all hover:border-gold/30">
@@ -4557,7 +4561,7 @@ function RankingSection({
                     <input 
                       type="number"
                       defaultValue={m.score}
-                      onBlur={(e) => onUpdateScore(m.id, Number(e.target.value), m.leads || 0)}
+                      onBlur={(e) => onUpdateScore(m.id, Number(e.target.value) - (m.score || 0), 0)}
                       className="w-10 bg-transparent text-center text-gold font-bold outline-none border-b border-white/5 focus:border-gold"
                     />
                   </div>
@@ -4566,7 +4570,7 @@ function RankingSection({
                     <input 
                       type="number"
                       defaultValue={m.leads || 0}
-                      onBlur={(e) => onUpdateScore(m.id, m.score, Number(e.target.value))}
+                      onBlur={(e) => onUpdateScore(m.id, 0, Number(e.target.value) - (m.leads || 0))}
                       className="w-10 bg-transparent text-center text-blue-accent font-bold outline-none border-b border-white/5 focus:border-blue-accent"
                     />
                   </div>
