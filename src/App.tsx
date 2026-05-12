@@ -18,19 +18,23 @@ import {
   orderBy, 
   limit,
   serverTimestamp,
+  getDoc,
   getDocFromServer,
   increment
 } from 'firebase/firestore';
 import { 
   signInWithPopup, 
+  signInWithRedirect,
+  getRedirectResult,
   GoogleAuthProvider, 
   onAuthStateChanged, 
   signOut,
-  User
+  type User as FirebaseUser
 } from 'firebase/auth';
 import { db, auth } from './firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
+  User,
   Shield, 
   LogOut, 
   Trophy, 
@@ -79,7 +83,10 @@ import {
   Music,
   Home,
   ExternalLink,
-  Link
+  Link,
+  UserPlus,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 
 // --- Types ---
@@ -181,6 +188,7 @@ interface RankingMember {
   id: string;
   name: string;
   score: number;
+  leads?: number;
   createdAt: any;
 }
 
@@ -188,6 +196,16 @@ interface QuickLink {
   id: string;
   name: string;
   url: string;
+  createdAt: any;
+}
+
+interface UserRegistration {
+  id?: string;
+  fullName: string;
+  whatsapp: string;
+  position: 'Team Leader' | 'Team Trainer' | 'STL' | 'Teacher' | 'Counsellor';
+  password: string;
+  status: 'pending' | 'active' | 'blocked';
   createdAt: any;
 }
 
@@ -265,8 +283,11 @@ interface FirestoreErrorInfo {
 
 // --- Error Handler ---
 function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null, showMsg?: (m: string, t: 'success' | 'error') => void) {
+  const err = error as any;
+  const message = err.message || String(error);
+  
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: message,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
@@ -285,10 +306,10 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   }
   console.error('Firestore Error: ', JSON.stringify(errInfo));
   if (showMsg) {
-    if (errInfo.error.includes('permission-denied')) {
-      showMsg('Permission denied! You are not authorized.', 'error');
+    if (message.includes('permission-denied') || message.includes('Missing or insufficient permissions')) {
+      showMsg('Permission Denied! (Admin access via Google Login may be required)', 'error');
     } else {
-      showMsg('An error occurred with the database.', 'error');
+      showMsg(`System Error: ${message}`, 'error');
     }
   }
 }
@@ -341,9 +362,9 @@ const QuickLinksModal = ({ links, onClose }: { links: QuickLink[], onClose: () =
           </button>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+        <div className="grid grid-cols-1 gap-4 max-h-[60vh] overflow-y-auto pr-2 pb-4 custom-scrollbar">
           {links.length === 0 ? (
-            <div className="text-center py-20 bg-white/[0.02] rounded-3xl border border-white/5 italic text-muted-main2">
+            <div className="text-center py-12 bg-white/[0.03] rounded-2xl border border-white/5 italic text-muted-main2 mx-2">
               No quick links available yet...
             </div>
           ) : (
@@ -353,22 +374,22 @@ const QuickLinksModal = ({ links, onClose }: { links: QuickLink[], onClose: () =
                 href={link.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: idx * 0.1 }}
-                className="group flex items-center justify-between p-5 rounded-2xl bg-white/[0.03] border border-white/5 hover:border-blue-accent/50 hover:bg-blue-accent/5 transition-all shadow-xl"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.05 }}
+                className="group flex items-center justify-between p-4 rounded-xl bg-white/[0.03] border border-white/5 hover:border-blue-accent/50 hover:bg-white/[0.06] transition-all"
               >
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-blue-accent/10 flex items-center justify-center text-blue-accent group-hover:scale-110 transition-transform">
-                    <Link size={20} />
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-blue-accent/10 flex items-center justify-center text-blue-accent">
+                    <Link size={18} />
                   </div>
                   <div>
-                    <h4 className="font-bold text-white group-hover:text-blue-accent transition-colors">{link.name}</h4>
-                    <p className="text-[10px] text-muted-main truncate max-w-[200px]">{link.url}</p>
+                    <h4 className="font-bold text-white text-sm">{link.name}</h4>
+                    <p className="text-[10px] text-muted-main/60 font-mono truncate max-w-[140px]">{link.url.replace(/^https?:\/\//, '')}</p>
                   </div>
                 </div>
-                <div className="p-2 rounded-lg bg-white/5 text-muted-main group-hover:text-blue-accent group-hover:bg-blue-accent/20 transition-all">
-                  <ExternalLink size={18} />
+                <div className="p-2 rounded-lg bg-white/5 text-muted-main group-hover:text-blue-accent group-hover:bg-blue-accent/10 transition-all">
+                  <ExternalLink size={16} />
                 </div>
               </motion.a>
             ))
@@ -386,9 +407,446 @@ const QuickLinksModal = ({ links, onClose }: { links: QuickLink[], onClose: () =
   );
 };
 
+const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: { 
+  onLogin: (w: string, p: string) => Promise<boolean>, 
+  onRegister: (d: any) => Promise<boolean>,
+  onAdminLogin: () => void 
+}) => {
+  const [mode, setMode] = useState<'login' | 'admin' | 'register'>('login');
+  const [whatsapp, setWhatsapp] = useState('');
+  const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [position, setPosition] = useState<any>('Team Leader');
+  const [showPass, setShowPass] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      if (mode === 'login') {
+         await onLogin(whatsapp, password);
+      } else if (mode === 'register') {
+         console.log('Sending data:', { fullName, whatsapp, position, password });
+         const success = await onRegister({ fullName, whatsapp, position, password });
+         if (success) setMode('login');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-bg flex flex-col items-center justify-center p-6 relative overflow-hidden font-sans">
+      {/* Background Decorative Elements */}
+      <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_70%_60%_at_20%_20%,rgba(201,168,76,0.12)_0%,transparent_65%)]" />
+        <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_55%_50%_at_80%_80%,rgba(100,70,200,0.1)_0%,transparent_65%)]" />
+        
+        {/* Orbs */}
+        <motion.div 
+          animate={{ x: [0, 30], y: [0, 40], scale: [1, 1.08] }}
+          transition={{ duration: 8, repeat: Infinity, repeatType: "mirror" }}
+          className="absolute -top-20 -left-20 w-[380px] h-[380px] bg-gold/10 blur-[80px] rounded-full"
+        />
+        <motion.div 
+          animate={{ x: [0, -30], y: [0, -40], scale: [1, 1.05] }}
+          transition={{ duration: 11, repeat: Infinity, repeatType: "mirror" }}
+          className="absolute -bottom-15 -right-15 w-[300px] h-[300px] bg-blue-accent/10 blur-[80px] rounded-full"
+        />
+      </div>
+
+      <motion.div 
+        initial={{ y: 32, opacity: 0, scale: 0.97 }}
+        animate={{ y: 0, opacity: 1, scale: 1 }}
+        transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+        className="relative z-10 w-full max-w-[460px] bg-gradient-to-br from-surface to-bg border border-gold/25 rounded-[24px] p-6 sm:p-10 shadow-[0_24px_80px_rgba(0,0,0,0.7)] group"
+      >
+        {/* Card Top Glow Border */}
+        <div className="absolute top-0 left-[10%] right-[10%] h-[2px] bg-gradient-to-r from-transparent via-gold to-transparent opacity-50" />
+
+        {/* Logo Section */}
+        <div className="flex flex-col items-center gap-2 mb-8">
+          <div className="w-[58px] h-[58px] bg-gradient-to-br from-[#0a1229] to-[#0d1c4a] border-1.5 border-gold/25 rounded-2xl flex items-center justify-center shadow-[0_8px_30px_rgba(201,168,76,0.15)]">
+            <svg viewBox="0 0 40 40" className="w-8 h-8">
+              <circle cx="20" cy="20" r="18" stroke="#c9a84c" strokeWidth="1.5" opacity="0.4" fill="none" />
+              {/* Unity 'U' Logo - Polished Curve */}
+              <path d="M13 10V22C13 25.866 16.134 29 20 29C23.866 29 27 25.866 27 22V10" stroke="#f0d080" strokeWidth="3" strokeLinecap="round" fill="none" />
+              <circle cx="20" cy="8" r="2" fill="#f0d080" />
+            </svg>
+          </div>
+          <div className="text-center">
+            <h1 className="font-serif text-[1.3rem] font-bold text-gold2 tracking-[1px]">Unity Earning</h1>
+            <p className="text-[0.7rem] font-medium text-muted-main uppercase tracking-[3px]">E-learning Platform</p>
+          </div>
+        </div>
+
+        {/* Triple Tabs */}
+        <div className="flex gap-1.5 bg-white/5 border border-white/5 rounded-xl p-1 mb-8">
+          {[
+            { id: 'login', icon: <User size={14} />, label: 'User Login' },
+            { id: 'admin', icon: <Shield size={14} />, label: 'Admin Login' },
+            { id: 'register', icon: <UserPlus size={14} />, label: 'Register' }
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setMode(tab.id as any)}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-[0.73rem] font-semibold transition-all ${
+                mode === tab.id 
+                  ? 'bg-gradient-to-br from-gold/20 to-gold/10 text-gold2 shadow-lg border border-gold/20' 
+                  : 'text-muted-main hover:text-white'
+              }`}
+            >
+              {tab.icon}
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={mode}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.3 }}
+            className="space-y-6"
+          >
+            {mode === 'admin' ? (
+              <div className="space-y-6">
+                <div className="flex items-center justify-center gap-3 bg-gold/10 border border-gold/25 rounded-xl py-2.5 px-4 mx-auto w-fit">
+                   <Shield size={14} className="text-gold" />
+                   <span className="text-[0.75rem] font-bold text-gold uppercase tracking-widest">Admin Access Only</span>
+                </div>
+                
+                <button 
+                  onClick={() => { console.log('Admin login clicked'); onAdminLogin(); }}
+                  className="w-full flex items-center justify-center gap-3 py-3.5 bg-white/5 border border-white/10 rounded-xl text-[0.88rem] font-medium text-text-main hover:bg-white/10 hover:border-gold/35 hover:text-gold2 transition-all group"
+                >
+                  <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+                  Sign in with Gmail
+                </button>
+
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 h-[1px] bg-white/5" />
+                  <span className="text-[0.7rem] text-muted-main whitespace-nowrap uppercase tracking-widest">or use credentials</span>
+                  <div className="flex-1 h-[1px] bg-white/5" />
+                </div>
+
+                <div className="space-y-4">
+                  <form onSubmit={async (e) => {
+                    e.preventDefault();
+                    setLoading(true);
+                    try {
+                      await onLogin(whatsapp, password);
+                    } finally {
+                      setLoading(false);
+                    }
+                  }} className="space-y-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[0.7rem] font-bold text-muted-main uppercase tracking-widest block pl-1">Admin Email</label>
+                      <div className="relative">
+                        <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-main" size={16} />
+                        <input 
+                          type="email"
+                          placeholder="admin@gmail.com"
+                          value={whatsapp}
+                          onChange={e => setWhatsapp(e.target.value)}
+                          className="w-full bg-white/5 border border-white/10 rounded-xl py-3.5 pl-12 pr-4 text-text-main outline-none focus:border-gold/50 focus:bg-gold/5 transition-all text-sm"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[0.7rem] font-bold text-muted-main uppercase tracking-widest block pl-1">Password</label>
+                      <div className="relative">
+                        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-main" size={16} />
+                        <input 
+                          type="password"
+                          placeholder="Admin password"
+                          value={password}
+                          onChange={e => setPassword(e.target.value)}
+                          className="w-full bg-white/5 border border-white/10 rounded-xl py-3.5 pl-12 pr-4 text-text-main outline-none focus:border-gold/50 focus:bg-gold/5 transition-all text-sm"
+                        />
+                      </div>
+                    </div>
+                    <button 
+                      type="submit"
+                      disabled={loading}
+                      className="w-full py-4 mt-2 bg-gradient-to-r from-gold to-gold2 rounded-xl text-bg font-serif font-bold tracking-wider hover:opacity-90 active:scale-95 transition-all shadow-lg shadow-gold/20 disabled:opacity-50"
+                    >
+                      {loading ? 'Processing...' : 'Admin Sign In'}
+                    </button>
+                  </form>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleSubmit} className="space-y-5">
+                {mode === 'register' && (
+                  <div className="space-y-1.5">
+                    <label className="text-[0.7rem] font-bold text-muted-main uppercase tracking-widest block pl-1">Full Name</label>
+                    <div className="relative">
+                      <UserCircle className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-main" size={16} />
+                      <input 
+                        required
+                        type="text"
+                        placeholder="Your full name"
+                        value={fullName}
+                        onChange={e => setFullName(e.target.value)}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl py-3.5 pl-12 pr-4 text-text-main outline-none focus:border-gold/50 focus:bg-gold/5 transition-all text-sm"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-1.5">
+                  <label className="text-[0.7rem] font-bold text-muted-main uppercase tracking-widest block pl-1">
+                    {mode === 'login' ? 'WhatsApp Number' : 'Personal Number'}
+                  </label>
+                  <div className="relative">
+                    <Smartphone className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-main" size={16} />
+                    <input 
+                      required
+                      type="tel"
+                      placeholder="017XXXXXXXX"
+                      value={whatsapp}
+                      onChange={e => setWhatsapp(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl py-3.5 pl-12 pr-4 text-text-main outline-none focus:border-gold/50 focus:bg-gold/5 transition-all text-sm font-mono"
+                    />
+                  </div>
+                </div>
+
+                {mode === 'register' && (
+                  <div className="space-y-1.5">
+                    <label className="text-[0.7rem] font-bold text-muted-main uppercase tracking-widest block pl-1">Position</label>
+                    <div className="relative">
+                      <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-main" size={16} />
+                      <select 
+                        value={position}
+                        onChange={e => setPosition(e.target.value)}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl py-3.5 pl-12 pr-4 text-text-main outline-none focus:border-gold/50 focus:bg-gold/5 transition-all appearance-none text-sm"
+                      >
+                        <option value="Team Leader">Team Leader</option>
+                        <option value="Team Trainer">Team Trainer</option>
+                        <option value="STL">STL</option>
+                        <option value="Teacher">Teacher</option>
+                        <option value="Counsellor">Counsellor</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-1.5">
+                  <label className="text-[0.7rem] font-bold text-muted-main uppercase tracking-widest block pl-1">
+                    {mode === 'login' ? 'Access Password' : 'Create Password'}
+                  </label>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-main" size={16} />
+                    <input 
+                      required
+                      type={showPass ? "text" : "password"}
+                      placeholder="••••••••"
+                      value={password}
+                      onChange={e => setPassword(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl py-3.5 pl-12 pr-12 text-text-main outline-none focus:border-gold/50 focus:bg-gold/5 transition-all text-sm"
+                    />
+                    <button 
+                      type="button"
+                      onClick={() => setShowPass(!showPass)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-main hover:text-gold transition-colors"
+                    >
+                      {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+
+                <button 
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-4 mt-2 bg-gradient-to-r from-gold via-gold2 to-gold rounded-xl text-bg font-serif font-bold tracking-wider hover:opacity-90 active:scale-95 transition-all shadow-[0_4px_20px_rgba(201,168,76,0.3)] disabled:opacity-50"
+                >
+                  {loading ? 'Please wait...' : (mode === 'login' ? 'Sign In' : 'Create Account')}
+                </button>
+
+                <div className="text-center pt-2">
+                  <p className="text-[0.8rem] text-muted-main">
+                    {mode === 'login' ? "Don't have an account? " : "Already have an account? "}
+                    <button 
+                      type="button"
+                      onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
+                      className="text-gold2 font-bold hover:text-white transition-colors border-b border-gold/30 hover:border-white"
+                    >
+                      {mode === 'login' ? 'Register Here' : 'Login Here'}
+                    </button>
+                  </p>
+                </div>
+              </form>
+            )}
+          </motion.div>
+        </AnimatePresence>
+
+        <div className="mt-8 pt-6 border-t border-white/5 text-center">
+          <p className="text-[0.66rem] text-muted-main/45 tracking-widest uppercase font-black">
+            © 2025 Unity Digital Agency · All rights reserved
+          </p>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+const UserManagementSection = ({ 
+  pending, 
+  approved, 
+  onApprove, 
+  onReject, 
+  onToggleBlock, 
+  onDelete, 
+  onUpdatePass 
+}: {
+  pending: UserRegistration[],
+  approved: UserRegistration[],
+  onApprove: (u: UserRegistration) => void,
+  onReject: (id: string) => void,
+  onToggleBlock: (u: UserRegistration) => void,
+  onDelete: (whatsapp: string) => void,
+  onUpdatePass: (w: string, p: string) => void
+}) => {
+  const [activeTab, setActiveTab] = useState<'pending' | 'list'>('pending');
+
+  return (
+    <div className="p-4 sm:p-6 bg-surface/50 border border-border2 rounded-[1.5rem] sm:rounded-[2rem] shadow-2xl relative overflow-hidden">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+        <div className="flex items-center gap-3 sm:gap-4">
+          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-gold/10 flex items-center justify-center text-gold">
+            <Users size={20} className="sm:hidden" />
+            <Users size={24} className="hidden sm:block" />
+          </div>
+          <div>
+            <h3 className="text-lg sm:text-xl font-serif font-black text-white">User Management</h3>
+            <p className="text-[9px] sm:text-[10px] text-muted-main uppercase tracking-widest mt-0.5">Control access & members</p>
+          </div>
+        </div>
+        <div className="flex bg-bg p-1 rounded-xl border border-white/5 w-full sm:w-auto">
+          <button 
+            onClick={() => setActiveTab('pending')}
+            className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-[10px] sm:text-xs font-bold transition-all ${activeTab === 'pending' ? 'bg-gold text-bg' : 'text-muted-main'}`}
+          >
+            Pending {pending.length > 0 && <span className="ml-1 bg-red-accent text-white px-1.5 py-0.5 rounded-full text-[9px]">{pending.length}</span>}
+          </button>
+          <button 
+            onClick={() => setActiveTab('list')}
+            className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-[10px] sm:text-xs font-bold transition-all ${activeTab === 'list' ? 'bg-gold text-bg' : 'text-muted-main'}`}
+          >
+            All Users
+          </button>
+        </div>
+      </div>
+
+      <div className="space-y-3 sm:space-y-4 max-h-[400px] sm:max-h-[500px] overflow-y-auto pr-1 sm:pr-2 custom-scrollbar">
+        {activeTab === 'pending' ? (
+          pending.length === 0 ? (
+            <div className="text-center py-20 text-muted-main2 italic text-sm">No pending registrations...</div>
+          ) : (
+            pending.map(u => (
+              <motion.div 
+                key={u.id}
+                layout
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="p-4 sm:p-5 bg-bg/40 border border-white/5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 group hover:border-gold/30 transition-all"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-white/5 flex items-center justify-center font-black text-gold text-lg sm:text-xl shrink-0">
+                    {u.fullName[0]}
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="font-bold text-white mb-1 truncate">{u.fullName}</h4>
+                    <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-[9px] sm:text-[10px] text-muted-main uppercase font-bold tracking-widest">
+                       <span className="flex items-center gap-1"><Phone size={10} /> {u.whatsapp}</span>
+                       <span className="hidden sm:block w-1 h-1 rounded-full bg-white/20" />
+                       <span className="flex items-center gap-1 text-gold"><Briefcase size={10} /> {u.position}</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 sm:ml-auto w-full sm:w-auto">
+                   <button 
+                    onClick={() => onApprove(u)}
+                    className="flex-1 sm:flex-none h-11 sm:h-10 rounded-xl bg-green-accent/15 text-green-accent hover:bg-green-accent hover:text-bg transition-all flex items-center justify-center gap-2 px-3 sm:px-4 shadow-lg shadow-green-accent/5"
+                    title="Approve"
+                   >
+                     <Check size={18} />
+                     <span className="sm:hidden text-[10px] font-black uppercase tracking-wider">Approve Account</span>
+                   </button>
+                   <button 
+                    onClick={() => onReject(u.id!)}
+                    className="flex-1 sm:flex-none h-11 sm:h-10 rounded-xl bg-red-accent/15 text-red-accent hover:bg-red-accent hover:text-white transition-all flex items-center justify-center gap-2 px-3 sm:px-4 shadow-lg shadow-red-accent/5"
+                    title="Reject"
+                   >
+                     <Trash2 size={18} />
+                     <span className="sm:hidden text-[10px] font-black uppercase tracking-wider">Reject</span>
+                   </button>
+                </div>
+              </motion.div>
+            ))
+          )
+        ) : (
+          approved.map(u => (
+            <div key={u.whatsapp} className="p-4 sm:p-5 bg-bg/40 border border-white/5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 group hover:border-gold/30 transition-all">
+              <div className="flex items-center gap-4">
+                <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center font-black text-lg sm:text-xl shrink-0 ${u.status === 'blocked' ? 'bg-red-accent/10 text-red-accent' : 'bg-white/5 text-gold'}`}>
+                  {u.fullName[0]}
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-bold text-white truncate">{u.fullName}</h4>
+                    {u.status === 'blocked' && <span className="bg-red-accent/20 text-red-accent text-[8px] px-1.5 py-0.5 rounded uppercase font-black">Blocked</span>}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-[9px] sm:text-[10px] text-muted-main uppercase font-bold tracking-widest">
+                     <span>{u.whatsapp}</span>
+                     <span className="hidden sm:block w-1 h-1 rounded-full bg-white/20" />
+                     <span className="text-gold">{u.position}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 sm:ml-auto w-full sm:w-auto">
+                 <button 
+                    onClick={() => {
+                      const newPass = prompt('Enter new password:', u.password);
+                      if (newPass) onUpdatePass(u.whatsapp, newPass);
+                    }}
+                    className="flex-1 sm:flex-none h-11 sm:h-10 rounded-xl bg-blue-accent/15 text-blue-accent hover:bg-blue-accent hover:text-bg transition-all flex items-center justify-center border border-blue-accent/20"
+                    title="Change Password"
+                 >
+                   <Lock size={16} />
+                   <span className="sm:hidden ml-2 text-[9px] font-black uppercase">Pass</span>
+                 </button>
+                 <button 
+                    onClick={() => onToggleBlock(u)}
+                    className={`flex-1 sm:flex-none h-11 sm:h-10 rounded-xl transition-all flex items-center justify-center border ${u.status === 'blocked' ? 'bg-green-accent/15 text-green-accent hover:bg-green-accent hover:text-bg border-green-accent/20' : 'bg-orange-500/15 text-orange-500 hover:bg-orange-500 hover:text-bg border-orange-500/20'}`}
+                    title={u.status === 'blocked' ? 'Unblock' : 'Block'}
+                 >
+                   {u.status === 'blocked' ? <CheckCircle2 size={16} /> : <Shield size={16} />}
+                   <span className="sm:hidden ml-2 text-[9px] font-black uppercase">{u.status === 'blocked' ? 'Unblock' : 'Block'}</span>
+                 </button>
+                 <button 
+                    onClick={() => onDelete(u.whatsapp)}
+                    className="flex-1 sm:flex-none h-11 sm:h-10 rounded-xl bg-red-accent/15 text-red-accent hover:bg-red-accent hover:text-white transition-all flex items-center justify-center border border-red-accent/20"
+                    title="Delete User"
+                 >
+                   <Trash2 size={16} />
+                   <span className="sm:hidden ml-2 text-[9px] font-black uppercase">Del</span>
+                 </button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+};
+
 export default function App() {
-  const [user, setUser] = useState<User | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [user, setUser] = useState<FirebaseUser | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [results, setResults] = useState<Record<string, Result>>({});
   const [config, setConfig] = useState<Config>({ 
@@ -426,6 +884,13 @@ export default function App() {
   const [showDemoModal, setShowDemoModal] = useState(false);
   const [showDemoHistory, setShowDemoHistory] = useState<boolean>(false);
 
+  const [pendingUsers, setPendingUsers] = useState<UserRegistration[]>([]);
+  const [approvedUsers, setApprovedUsers] = useState<UserRegistration[]>([]);
+  const [authenticatedUser, setAuthenticatedUser] = useState<UserRegistration | null>(() => {
+    const saved = localStorage.getItem('unity_user');
+    return saved ? JSON.parse(saved) : null;
+  });
+
   const [leaderRanking, setLeaderRanking] = useState<RankingMember[]>([]);
   const [trainerRanking, setTrainerRanking] = useState<RankingMember[]>([]);
   const [showLeaderRankingModal, setShowLeaderRankingModal] = useState(false);
@@ -445,7 +910,24 @@ export default function App() {
 
   // Admin check
   const adminEmail = "learninghubbd2126509574@gmail.com";
+  const devEmail = "learninghubbd2126509574@gmail.com";
+  // Initial password - this will be synced with Firestore if it exists
+  const initialAdminPass = "jihaD12@#";
+  const [isAdmin, setIsAdmin] = useState(() => {
+    const saved = localStorage.getItem('isAdmin');
+    const userJson = localStorage.getItem('unity_user');
+    if (saved === 'true') return true;
+    if (userJson) {
+      const u = JSON.parse(userJson);
+      return u.whatsapp === adminEmail || u.email === adminEmail || u.email === devEmail;
+    }
+    return false;
+  });
   const hasStlAccess = isAdmin || stlAuthenticated;
+
+  useEffect(() => {
+    localStorage.setItem('isAdmin', isAdmin ? 'true' : 'false');
+  }, [isAdmin]);
 
   useEffect(() => {
     // Force loading screen to disappear after 1 second for better UX
@@ -466,12 +948,29 @@ export default function App() {
   ];
 
   useEffect(() => {
+    // Handle Google Redirect Result
+    getRedirectResult(auth).then((result) => {
+      if (result?.user) {
+        if (result.user.email === devEmail || result.user.email === adminEmail) {
+          setIsAdmin(true);
+          localStorage.setItem('isAdmin', 'true');
+          showMsg('Admin access granted!', 'success');
+        } else {
+          showMsg('Logged in successfully!');
+        }
+      }
+    }).catch((err) => {
+      console.error('Redirect error:', err);
+      if (err.code !== 'auth/network-request-failed') {
+        showMsg(`Login failed: ${err.message}`, 'error');
+      }
+    });
+
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
-      const isAdm = u?.email === adminEmail;
-      setIsAdmin(isAdm);
-      // Automatically unlock site if user is admin
+      const isAdm = u?.email === adminEmail || u?.email === devEmail;
       if (isAdm) {
+        setIsAdmin(true);
         setSiteAuthenticated(true);
       }
       setIsAuthReady(true);
@@ -576,32 +1075,50 @@ export default function App() {
     let unsubAttendance = () => {};
     let unsubStlAttendance = () => {};
     let unsubDemoAttendance = () => {};
+    let unsubPending = () => {};
+    let unsubApproved = () => {};
 
     if (isAuthReady && user) {
-      if (isAdmin) {
+      const isActuallyAdmin = user.email === adminEmail || user.email === devEmail;
+      
+      // If signed in via Firebase Auth with admin email
+      if (isActuallyAdmin) {
         unsubApps = onSnapshot(query(collection(db, 'applications'), orderBy('createdAt', 'desc')), (snapshot) => {
           const aList: Application[] = [];
           snapshot.forEach(d => aList.push({ id: d.id, ...d.data() } as Application));
           setApplications(aList);
-        }, (err) => handleFirestoreError(err, OperationType.GET, 'applications', showMsg));
+        }, (err) => console.warn('Sync Applications: permission pending'));
 
         unsubAttendance = onSnapshot(query(collection(db, 'teacherAttendance'), orderBy('submittedAt', 'desc'), limit(100)), (snapshot) => {
           const rList: AttendanceRecord[] = [];
           snapshot.forEach(d => rList.push({ id: d.id, ...d.data() } as AttendanceRecord));
           setAttendanceRecords(rList);
-        }, (err) => handleFirestoreError(err, OperationType.GET, 'teacherAttendance', showMsg));
+        }, (err) => console.warn('Sync Attendance: permission pending'));
 
         unsubStlAttendance = onSnapshot(query(collection(db, 'stlAttendance'), orderBy('submittedAt', 'desc'), limit(50)), (snapshot) => {
           const list: STLAttendance[] = [];
           snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as STLAttendance));
           setStlAttendance(list);
-        }, (err) => handleFirestoreError(err, OperationType.GET, 'stlAttendance', showMsg));
+        }, (err) => console.warn('Sync STL: permission pending'));
 
         unsubDemoAttendance = onSnapshot(query(collection(db, 'demoAttendance'), orderBy('submittedAt', 'desc'), limit(50)), (snapshot) => {
           const list: DemoAttendance[] = [];
           snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as DemoAttendance));
           setDemoAttendance(list);
-        }, (err) => handleFirestoreError(err, OperationType.GET, 'demoAttendance', showMsg));
+        }, (err) => console.warn('Sync Demo: permission pending'));
+
+        // Listen to User Registrations (Admin only)
+        unsubPending = onSnapshot(query(collection(db, 'pendingRegistrations'), orderBy('createdAt', 'desc')), (snapshot) => {
+          const list: UserRegistration[] = [];
+          snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as UserRegistration));
+          setPendingUsers(list);
+        }, (err) => console.warn('Sync Pending: permission pending'));
+
+        unsubApproved = onSnapshot(collection(db, 'registeredUsers'), (snapshot) => {
+          const list: UserRegistration[] = [];
+          snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as UserRegistration));
+          setApprovedUsers(list);
+        }, (err) => console.warn('Sync Approved: permission pending'));
       }
     }
 
@@ -615,10 +1132,13 @@ export default function App() {
       unsubTeachers();
       unsubStlMembers();
       unsubDemoMembers();
+      unsubQuickLinks();
       unsubApps();
       unsubAttendance();
       unsubStlAttendance();
       unsubDemoAttendance();
+      unsubPending();
+      unsubApproved();
     };
   }, [isAuthReady, isAdmin, user]);
 
@@ -687,24 +1207,35 @@ export default function App() {
   };
 
   // Actions
-  const login = async () => {
+  const login = async (useRedirect = false) => {
     try {
       const provider = new GoogleAuthProvider();
-      // Force account selection to ensure the popup shows up
       provider.setCustomParameters({ prompt: 'select_account' });
       
-      await signInWithPopup(auth, provider);
-      showMsg('Logged in successfully!');
+      if (useRedirect) {
+        await signInWithRedirect(auth, provider);
+      } else {
+        const result = await signInWithPopup(auth, provider);
+        console.log('Logged in user email:', result.user?.email, 'Admin email:', adminEmail, 'Dev email:', devEmail);
+        if (result.user?.email === devEmail || result.user?.email === adminEmail) {
+          setIsAdmin(true);
+          localStorage.setItem('isAdmin', 'true');
+          showMsg('Admin access granted!', 'success');
+        } else {
+          showMsg('Logged in successfully!');
+        }
+      }
     } catch (err: any) {
       console.error('Login error details:', err);
       let message = 'Login failed';
       
-      if (err.code === 'auth/unauthorized-domain') {
-        message = 'Domain not authorized in Firebase! Please add this URL to Firebase Console.';
+      if (err.code === 'auth/network-request-failed') {
+        message = 'Network error! Try the "Alternative Login" (Redirect) below.';
+      } else if (err.code === 'auth/unauthorized-domain') {
+        message = 'Domain not authorized. Add this URL to Firebase console.';
       } else if (err.code === 'auth/popup-blocked') {
-        message = 'Popup blocked! Please allow popups for this site.';
+        message = 'Popup blocked! Please enable popups or use "Alternative Login".';
       } else if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
-        // Don't show an error message if the user intentionally closed the popup
         return;
       } else if (err.message) {
         message = `Login failed: ${err.message}`;
@@ -717,17 +1248,208 @@ export default function App() {
   const logout = async () => {
     try {
       await signOut(auth);
+      setIsAdmin(false);
+      localStorage.removeItem('isAdmin');
       setShowAdminPanel(false);
       setSiteAuthenticated(false);
-      // Ensure we clear any possible local flags
+      setAuthenticatedUser(null);
       localStorage.removeItem('stlAuth');
+      localStorage.removeItem('unity_user');
       showMsg('Logged out successfully');
-      // Force a small delay to ensure state updates before any background listeners trigger
       setTimeout(() => {
-        window.location.reload(); // Hard reset to ensure password screen is shown
+        window.location.reload();
       }, 500);
     } catch (err) {
       console.error('Logout error:', err);
+    }
+  };
+
+  const registerUser = async (data: any) => {
+    console.log('Registering user:', data);
+    try {
+      const whatsapp = data.whatsapp?.trim().replace(/\s+/g, '');
+      const fullName = data.fullName?.trim();
+      
+      // Validate data locally first
+      if (!fullName || !whatsapp || !data.password) {
+        showMsg('Please fill all fields', 'error');
+        return false;
+      }
+
+      // Check if already registered or pending using individual Lookups
+      const approvedSnap = await getDoc(doc(db, 'registeredUsers', whatsapp));
+      if (approvedSnap.exists()) {
+        showMsg('Number already registered!', 'error');
+        return false;
+      }
+
+      const pendingSnap = await getDoc(doc(db, 'pendingRegistrations', whatsapp));
+      if (pendingSnap.exists()) {
+        showMsg('Number already registered and pending approval!', 'error');
+        return false;
+      }
+
+      const registrationData = {
+        fullName: fullName,
+        whatsapp: whatsapp,
+        position: data.position,
+        password: data.password,
+        status: 'pending',
+        createdAt: serverTimestamp(),
+        id: whatsapp
+      };
+
+      await setDoc(doc(db, 'pendingRegistrations', whatsapp), registrationData);
+      showMsg('Registration submitted! Wait for admin approval.', 'success');
+      return true;
+    } catch (err) {
+      console.error('Registration error:', err);
+      handleFirestoreError(err, OperationType.CREATE, 'pendingRegistrations', showMsg);
+      return false;
+    }
+  };
+
+  const loginUser = async (whatsapp: string, pass: string) => {
+    const sanitizedWhatsapp = whatsapp.trim().replace(/\s+/g, '');
+    console.log('Login attempt for (sanitized):', sanitizedWhatsapp);
+    try {
+      // Admin manual login check
+      if (sanitizedWhatsapp === adminEmail) {
+        console.log('Checking admin login');
+        let currentAdminPass = initialAdminPass;
+        try {
+          const configDoc = await getDoc(doc(db, 'systemConfig', 'adminAuth'));
+          if (configDoc.exists() && configDoc.data().password) {
+            currentAdminPass = configDoc.data().password;
+          }
+        } catch (e) {
+          console.warn("Using fallback admin password");
+        }
+
+        if (pass === currentAdminPass) {
+          setIsAdmin(true);
+          localStorage.setItem('isAdmin', 'true');
+          setSiteAuthenticated(true);
+          showMsg('Admin access granted');
+          return true;
+        } else {
+          showMsg('Invalid admin credentials', 'error');
+          return false;
+        }
+      }
+
+      console.log('Fetching user from registeredUsers:', sanitizedWhatsapp);
+      const userSnap = await getDoc(doc(db, 'registeredUsers', sanitizedWhatsapp));
+      
+      if (!userSnap.exists()) {
+        console.log('User not found in registeredUsers');
+        showMsg('Invalid WhatsApp or Password!', 'error');
+        return false;
+      }
+      
+      const user = userSnap.data() as UserRegistration;
+      console.log('User found, checking password:', user.password === pass);
+      if (user.password !== pass) {
+        showMsg('Invalid WhatsApp or Password!', 'error');
+        return false;
+      }
+
+      if (user.status === 'blocked') {
+        showMsg('Your account is blocked!', 'error');
+        return false;
+      }
+
+      setAuthenticatedUser(user);
+      localStorage.setItem('unity_user', JSON.stringify(user));
+      showMsg(`Welcome back, ${user.fullName}!`);
+      return true;
+    } catch (err) {
+      handleFirestoreError(err, OperationType.GET, `registeredUsers/${whatsapp}`, showMsg);
+      return false;
+    }
+  };
+
+  const approveUser = async (pendingUser: UserRegistration) => {
+     try {
+       const batch = writeBatch(db);
+       // Add to registeredUsers
+       const userRef = doc(db, 'registeredUsers', pendingUser.whatsapp);
+       batch.set(userRef, {
+         ...pendingUser,
+         status: 'active',
+         id: pendingUser.whatsapp // Use whatsapp as ID for easier lookup
+       });
+       // Delete from pending
+       batch.delete(doc(db, 'pendingRegistrations', pendingUser.id!));
+       
+       await batch.commit();
+       showMsg(`${pendingUser.fullName} approved!`);
+     } catch (err) {
+       handleFirestoreError(err, OperationType.WRITE, 'userApproval', showMsg);
+     }
+  };
+
+  const rejectUser = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'pendingRegistrations', id));
+      showMsg('Registration rejected');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `pendingRegistrations/${id}`, showMsg);
+    }
+  };
+
+  const toggleUserBlock = async (user: UserRegistration) => {
+      try {
+        await updateDoc(doc(db, 'registeredUsers', user.whatsapp), {
+          status: user.status === 'blocked' ? 'active' : 'blocked'
+        });
+        showMsg(user.status === 'blocked' ? 'User unblocked' : 'User blocked');
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `registeredUsers/${user.whatsapp}`, showMsg);
+      }
+  };
+
+  const changeUserPassword = async (whatsapp: string, newPass: string) => {
+      try {
+        const userRef = doc(db, 'registeredUsers', whatsapp);
+        const userSnap = await getDoc(userRef);
+        if (userSnap.exists()) {
+            const userData = userSnap.data();
+            await updateDoc(userRef, {
+                ...userData,
+                password: newPass
+            });
+            showMsg('Password updated successfully');
+            window.location.reload(); 
+        } else {
+            showMsg('User not found!', 'error');
+        }
+      } catch (err) {
+         handleFirestoreError(err, OperationType.UPDATE, `registeredUsers/${whatsapp}`, showMsg);
+      }
+  };
+
+  const deleteUser = async (whatsapp: string) => {
+      setShowConfirm({
+        title: 'Are you sure you want to delete this user forever?',
+        onConfirm: async () => {
+          try {
+            await deleteDoc(doc(db, 'registeredUsers', whatsapp));
+            showMsg('User deleted');
+            setShowConfirm(null);
+          } catch (err) {
+            handleFirestoreError(err, OperationType.DELETE, `registeredUsers/${whatsapp}`, showMsg);
+          }
+        }
+      });
+  };
+
+  const updateAdminPassword = async (newPass: string) => {
+    try {
+      await setDoc(doc(db, 'systemConfig', 'adminAuth'), { password: newPass }, { merge: true });
+      showMsg('Admin password updated successfully!');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, 'systemConfig/adminAuth', showMsg);
     }
   };
 
@@ -1016,13 +1738,14 @@ export default function App() {
     }
   };
 
-  const addRankingMember = async (type: 'leader' | 'trainer', name: string, score: number) => {
+  const addRankingMember = async (type: 'leader' | 'trainer', name: string, score: number, leads: number = 0) => {
     if (!name.trim()) return;
     const coll = type === 'leader' ? 'leaderRanking' : 'trainerRanking';
     try {
       await addDoc(collection(db, coll), {
         name,
         score,
+        leads,
         createdAt: serverTimestamp()
       });
       showMsg(`${type === 'leader' ? 'Leader' : 'Trainer'} added to ranking`);
@@ -1041,10 +1764,13 @@ export default function App() {
     }
   };
 
-  const updateRankingScore = async (type: 'leader' | 'trainer', id: string, newScore: number) => {
+  const updateRankingScore = async (type: 'leader' | 'trainer', id: string, newScore: number, newLeads?: number) => {
     const coll = type === 'leader' ? 'leaderRanking' : 'trainerRanking';
     try {
-      await updateDoc(doc(db, coll, id), { score: newScore });
+      await updateDoc(doc(db, coll, id), { 
+        score: newScore,
+        ...(newLeads !== undefined && { leads: newLeads })
+      });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `${coll}/${id}`, showMsg);
     }
@@ -1153,8 +1879,9 @@ export default function App() {
       return;
     }
     try {
-      const prevConvert = results[memberId]?.convert || 0;
-      const diff = convert - prevConvert;
+      const prevResult = results[memberId] || { lead: 0, convert: 0, personalLead: 0 };
+      const diffScore = convert - (prevResult.convert || 0);
+      const diffLeads = personalLead - (prevResult.personalLead || 0);
       const member = members.find(m => m.id === memberId);
 
       // Use memberId as the document ID for predictable updates
@@ -1171,11 +1898,11 @@ export default function App() {
       await setDoc(resultRef, data);
 
       // Update global total and individual ranking score
-      if (diff !== 0) {
+      if (diffScore !== 0 || diffLeads !== 0) {
         // Update global total (Only for Leaders)
-        if (member?.type === 'leader') {
+        if (member?.type === 'leader' && diffScore !== 0) {
           await updateDoc(doc(db, 'config', 'global'), {
-            totalConverts: increment(diff)
+            totalConverts: increment(diffScore)
           });
         }
 
@@ -1190,13 +1917,15 @@ export default function App() {
 
           if (rankingEntry) {
             await updateDoc(doc(db, coll, rankingEntry.id), {
-              score: increment(diff)
+              score: increment(diffScore),
+              leads: increment(diffLeads)
             });
           } else {
             // Auto-create ranking entry if missing, so their score is tracked
             await addDoc(collection(db, coll), {
               name: member.name,
               score: convert, // Starting score is their current total
+              leads: personalLead,
               createdAt: serverTimestamp()
             });
           }
@@ -1235,14 +1964,15 @@ export default function App() {
   const { stats, topLeader, topTrainer, sortedLeaders, sortedTrainers, sortedLeaderRanking, sortedTrainerRanking } = useMemo(() => {
     let totalLeads = 0;
     let todayConverts = 0;
-    let globalTotalConverts = 0;
+    let totalSubmittedConverts = 0;
     
-    leaderRanking.forEach(r => {
-      globalTotalConverts += (r.score || 0);
-    });
-    
-    const sortedLR = [...leaderRanking].sort((a, b) => (b.score || 0) - (a.score || 0));
-    const sortedTR = [...trainerRanking].sort((a, b) => (b.score || 0) - (a.score || 0));
+    const sortByRanking = (a: any, b: any) => {
+      if ((b.score || 0) !== (a.score || 0)) return (b.score || 0) - (a.score || 0);
+      return (b.leads || 0) - (a.leads || 0);
+    };
+
+    const sortedLR = [...leaderRanking].sort(sortByRanking);
+    const sortedTR = [...trainerRanking].sort(sortByRanking);
 
     const allLeaders = members.filter(m => m.type === 'leader').map((m) => {
       const rankingEntry = sortedLR.find(r => 
@@ -1251,6 +1981,7 @@ export default function App() {
       return {
         ...m,
         score: rankingEntry?.score || 0,
+        leads: rankingEntry?.leads || 0,
         result: results[m.id] || { lead: 0, convert: 0, personalLead: 0, submitted: false }
       };
     });
@@ -1262,6 +1993,7 @@ export default function App() {
       return {
         ...m,
         score: rankingEntry?.score || 0,
+        leads: rankingEntry?.leads || 0,
         result: results[m.id] || { lead: 0, convert: 0, personalLead: 0, submitted: false }
       };
     });
@@ -1271,6 +2003,7 @@ export default function App() {
       if (m.result.submitted) {
         totalLeads += m.result.lead;
         todayConverts += m.result.convert;
+        totalSubmittedConverts += m.result.convert || 0;
       }
     });
 
@@ -1295,7 +2028,7 @@ export default function App() {
         leaders: allLeaders.length,
         trainers: allTrainers.length,
         leads: totalLeads,
-        converts: globalTotalConverts, // Now shows Lifetime Total of all Leaders
+        converts: totalSubmittedConverts,
         todayConverts: todayConverts
       },
       topLeader: sortedL[0]?.result?.submitted ? sortedL[0] : null,
@@ -1338,17 +2071,11 @@ export default function App() {
     );
   }
 
-  if (config.isLocked && !siteAuthenticated) {
-    const pass = (config.securityPassword && config.securityPassword.trim() !== '') 
-      ? config.securityPassword 
-      : 'unity2024';
-      
+  if (!isAdmin && !authenticatedUser) {
     return (
-      <SiteLock 
-        correctPassword={pass} 
-        onUnlock={() => {
-          setSiteAuthenticated(true);
-        }} 
+      <AuthContainer 
+        onLogin={loginUser}
+        onRegister={registerUser}
         onAdminLogin={login}
       />
     );
@@ -1415,31 +2142,50 @@ export default function App() {
       </AnimatePresence>
 
       {/* Header */}
-      <header className="sticky top-0 z-[200] bg-bg/85 backdrop-blur-xl border-b border-border px-6 h-16 flex items-center justify-between shadow-2xl">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-gold to-gold2 flex items-center justify-center font-serif font-black text-bg text-lg shadow-[0_0_18px_rgba(245,200,66,0.25)]">
+      <header className="sticky top-0 z-[200] bg-bg/90 backdrop-blur-2xl border-b border-border/20 px-4 sm:px-6 pt-6 sm:pt-10 h-20 sm:h-28 flex items-center justify-between shadow-2xl transition-all">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-gold to-gold2 flex items-center justify-center font-serif font-black text-bg text-base sm:text-lg shadow-[0_0_18px_rgba(245,200,66,0.25)]">
             U
           </div>
-          <div>
+          <div className="flex-col hidden sm:flex">
             <div className="font-serif font-bold text-base leading-tight">
               <span className="text-gold">Unity</span> Earning
             </div>
             <div className="text-[10px] text-muted-main tracking-[2.5px] uppercase">E-Learning Platform</div>
           </div>
+          <div className="sm:hidden">
+            <div className="font-serif font-bold text-[12px] leading-tight text-white">Unity <span className="text-gold">Earning</span></div>
+          </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           <button 
             onClick={() => setShowQuickLinksModal(true)}
-            className="relative w-10 h-10 flex items-center justify-center rounded-xl border border-blue-accent/30 bg-blue-accent/5 text-blue-accent hover:bg-blue-accent hover:text-bg transition-all shadow-[0_0_15px_rgba(37,99,235,0.15)] active:scale-90 overflow-hidden group"
+            className="relative w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center rounded-xl border border-blue-accent/30 bg-blue-accent/5 text-blue-accent hover:bg-blue-accent hover:text-bg transition-all shadow-[0_0_25px_rgba(37,99,235,0.2)] active:scale-90 overflow-hidden group"
             title="Quick Links"
           >
              <motion.div 
-               animate={{ opacity: [0.3, 0.7, 0.3], scale: [0.9, 1.1, 0.9] }}
-               transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
-               className="absolute inset-0 bg-blue-accent/30 blur-md group-hover:bg-blue-accent/40"
+               animate={{ 
+                 opacity: [0.2, 0.5, 0.2], 
+                 scale: [0.8, 1.2, 0.8],
+                 rotate: [0, 90, 0]
+               }}
+               transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+               className="absolute inset-0 bg-blue-accent/20 blur-xl group-hover:bg-blue-accent/30"
              />
-            <Home size={22} className="relative z-10" />
+             <motion.div 
+               animate={{ 
+                 boxShadow: [
+                   "0 0 10px rgba(37,99,235,0.2)",
+                   "0 0 30px rgba(37,99,235,0.4)",
+                   "0 0 10px rgba(37,99,235,0.2)"
+                 ]
+               }}
+               transition={{ duration: 2, repeat: Infinity }}
+               className="relative z-10 w-full h-full flex items-center justify-center"
+             >
+               <Home size={26} className="relative z-10 animate-pulse" />
+             </motion.div>
           </button>
 
           {isTimerActive && (
@@ -1511,7 +2257,7 @@ export default function App() {
                     </div>
                     <div className="text-left">
                       <span className="block text-sm font-black text-gold">Leader Ranking</span>
-                      <span className="block text-[10px] text-white/60 uppercase font-black">Performance Board</span>
+                      <span className="block text-[10px] text-white/60 uppercase font-black">Sub-Admin Board</span>
                     </div>
                   </div>
                   <ChevronRight size={18} className="text-gold" />
@@ -1527,7 +2273,7 @@ export default function App() {
                     </div>
                     <div className="text-left">
                       <span className="block text-sm font-black text-blue-accent">Trainer Ranking</span>
-                      <span className="block text-[10px] text-white/60 uppercase font-black">Performance Board</span>
+                      <span className="block text-[10px] text-white/60 uppercase font-black">Sub-Admin Board</span>
                     </div>
                   </div>
                   <ChevronRight size={18} className="text-blue-accent" />
@@ -1674,39 +2420,48 @@ export default function App() {
                           setShowStlLoginModal(true);
                         }
                       }}
-                      className="w-full flex items-center justify-between p-4 rounded-xl bg-bg border border-border hover:border-blue-accent/30 transition-all mb-3 group"
+                      className="w-full flex items-center justify-between p-4 rounded-xl bg-bg/40 border border-border/30 hover:border-blue-accent/30 transition-all mb-3 group"
                     >
                       <div className="flex items-center gap-3">
                         <Users className={stlAuthenticated ? "text-blue-accent" : "text-muted-main"} size={18} />
-                        <span className="text-sm font-bold text-white">{stlAuthenticated ? "STL Logout" : "STL Login"}</span>
+                        <span className="text-sm font-bold text-white tracking-tight">{stlAuthenticated ? "STL Logout" : "STL Login"}</span>
                       </div>
-                      <ChevronRight size={16} className="text-muted-main" />
+                      <ChevronRight size={16} className="text-muted-main/50" />
                     </button>
                   )}
 
                   <button 
-                    onClick={() => { setShowMenu(false); user ? setShowAdminPanel(true) : login(); }}
-                    className="w-full flex items-center justify-between p-4 rounded-xl bg-bg border border-border hover:border-white/20 transition-all mb-3"
+                    onClick={() => { 
+                      setShowMenu(false); 
+                      if (user) {
+                        setShowAdminPanel(true);
+                      } else {
+                        // Default to popup, error handler will suggest redirect
+                        login();
+                      }
+                    }}
+                    className="w-full flex items-center justify-between p-4 rounded-xl bg-surface border border-border/20 hover:border-gold/40 transition-all mb-3 group shadow-lg"
                   >
                     <div className="flex items-center gap-3">
                       <Shield className={user ? "text-gold" : "text-muted-main"} size={18} />
-                      <span className="text-sm font-bold text-white">{user ? "Admin Panel" : "Admin Login"}</span>
+                      <span className="text-sm font-bold text-white group-hover:text-gold transition-colors">{user ? "Admin Panel" : "Admin Login"}</span>
                     </div>
-                    <ChevronRight size={16} className="text-muted-main" />
+                    <div className="flex items-center gap-2">
+                      {!user && (
+                        <div 
+                          onClick={(e) => { e.stopPropagation(); setShowMenu(false); login(true); }}
+                          className="p-2 bg-blue-accent/10 rounded-lg text-blue-accent hover:bg-blue-accent hover:text-bg transition-all cursor-pointer"
+                          title="Alternative Login"
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); setShowMenu(false); login(true); } }}
+                        >
+                          <ExternalLink size={14} />
+                        </div>
+                      )}
+                      <ChevronRight size={16} className="text-muted-main group-hover:text-gold transition-colors" />
+                    </div>
                   </button>
-
-                  {user && (
-                    <button 
-                      onClick={() => { setShowMenu(false); logout(); }}
-                      className="w-full flex items-center justify-between p-4 rounded-xl bg-red-500/5 border border-red-500/20 hover:border-red-500/40 transition-all mb-3"
-                    >
-                      <div className="flex items-center gap-3">
-                        <LogOut className="text-red-500" size={18} />
-                        <span className="text-sm font-bold text-white">Log Out</span>
-                      </div>
-                      <ChevronRight size={16} className="text-red-500" />
-                    </button>
-                  )}
                 </div>
               </div>
               
@@ -1719,15 +2474,15 @@ export default function App() {
       </AnimatePresence>
 
       {/* Main Content */}
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 pt-8 pb-32">
-        <div className="text-center mb-10">
+      <main className="max-w-4xl mx-auto px-4 sm:px-6 pt-8 sm:pt-12 pb-32">
+        <div className="text-center mb-8 sm:mb-10">
           <div className="inline-flex items-center gap-2 bg-gold/5 border border-gold/20 text-gold px-3 py-1 rounded-full text-[9px] sm:text-[10px] tracking-[2px] uppercase mb-4">
             <span className="animate-bounce">📊</span> Live Result Board
           </div>
-          <h1 className="font-serif text-3xl sm:text-4xl md:text-5xl font-black mb-3 bg-gradient-to-br from-white via-white to-gold bg-clip-text text-transparent px-2">
-            Performance Dashboard
+          <h1 className="font-serif text-2xl sm:text-4xl md:text-5xl font-black mb-3 bg-gradient-to-br from-white via-white to-gold bg-clip-text text-transparent px-2">
+            Sub-Admin Dashboard
           </h1>
-          <p className="text-muted-main text-xs sm:text-sm max-w-sm mx-auto opacity-80">
+          <p className="text-muted-main text-[10px] sm:text-sm max-w-[280px] sm:max-w-sm mx-auto opacity-80">
             Real-time updates for Lead & Convert stats. Optimized for mobile tracking.
           </p>
         </div>
@@ -1737,7 +2492,6 @@ export default function App() {
           {[
             { label: 'Leaders', value: stats.leaders, color: 'text-gold', icon: <Trophy size={12} /> },
             { label: 'Trainers', value: stats.trainers, color: 'text-blue-accent', icon: <GraduationCap size={12} /> },
-            { label: 'Leads', value: stats.leads, color: 'text-green-accent', icon: <Send size={12} /> },
             { label: 'Converts', value: stats.converts, color: 'text-orange-400', icon: <CheckCircle2 size={12} /> }
           ].map((stat, i) => (
             <div key={i} className="group bg-surface border border-border rounded-xl p-3 sm:p-4 text-center relative overflow-hidden transition-all hover:border-gold/30">
@@ -1789,11 +2543,7 @@ export default function App() {
                           <span className="text-[7px] sm:text-[9px] text-muted-main uppercase font-bold">Conv</span>
                           <span className="text-xs sm:text-sm font-black text-green-accent">{topLeader.result.convert}</span>
                         </div>
-                        <div className="w-[1px] h-5 sm:h-6 bg-border" />
-                        <div className="flex flex-col">
-                          <span className="text-[7px] sm:text-[9px] text-muted-main uppercase font-bold">Leads</span>
-                          <span className="text-xs sm:text-sm font-black text-blue-accent">{topLeader.result.lead}</span>
-                        </div>
+                        
                         <div className="w-[1px] h-5 sm:h-6 bg-border" />
                         <div className="flex flex-col">
                           <span className="text-[7px] sm:text-[9px] text-muted-main uppercase font-bold">Pers</span>
@@ -1828,11 +2578,7 @@ export default function App() {
                           <span className="text-[7px] sm:text-[9px] text-muted-main uppercase font-bold">Conv</span>
                           <span className="text-xs sm:text-sm font-black text-green-accent">{topTrainer.result.convert}</span>
                         </div>
-                        <div className="w-[1px] h-5 sm:h-6 bg-border" />
-                        <div className="flex flex-col">
-                          <span className="text-[7px] sm:text-[9px] text-muted-main uppercase font-bold">Leads</span>
-                          <span className="text-xs sm:text-sm font-black text-blue-accent">{topTrainer.result.lead}</span>
-                        </div>
+                        
                         <div className="w-[1px] h-5 sm:h-6 bg-border" />
                         <div className="flex flex-col">
                           <span className="text-[7px] sm:text-[9px] text-muted-main uppercase font-bold">Pers</span>
@@ -1887,340 +2633,273 @@ export default function App() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setShowAdminPanel(false)}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[400]" 
+              className="fixed inset-0 bg-black/80 backdrop-blur-md z-[400]" 
             />
             <motion.div 
               initial={{ x: '100%' }}
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed top-0 right-0 w-full max-w-md h-full bg-surface border-l border-border2 z-[500] overflow-y-auto p-6 shadow-[-20px_0_60px_rgba(0,0,0,0.5)]"
+              className="fixed top-0 right-0 w-full max-w-xl h-full bg-surface border-l border-white/10 z-[500] flex flex-col shadow-[-20px_0_100px_rgba(0,0,0,0.8)] overflow-hidden"
             >
-              <div className="flex items-center justify-between mb-8 pb-4 border-b border-border">
-                <h2 className="font-serif text-xl text-gold">⚙ Admin Panel</h2>
-                <button onClick={() => setShowAdminPanel(false)} className="text-muted-main hover:text-white p-2">
-                  <X size={20} />
+              {/* Admin Branding & Close */}
+              <div className="p-4 sm:p-8 pb-4 flex items-center justify-between border-b border-white/5">
+                <div className="flex items-center gap-3 sm:gap-4">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-gold/10 text-gold flex items-center justify-center shadow-lg">
+                    <Shield size={24} className="sm:hidden" />
+                    <Shield size={28} className="hidden sm:block" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl sm:text-2xl font-serif font-black text-white">Admin Control</h2>
+                    <p className="text-[8px] sm:text-[10px] text-muted-main uppercase tracking-[3px] font-bold">University Earning Control</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowAdminPanel(false)} className="p-2 sm:p-3 bg-white/5 rounded-2xl text-muted-main hover:text-white transition-all">
+                  <X size={20} className="sm:hidden" />
+                  <X size={24} className="hidden sm:block" />
+                </button>
+                <button onClick={() => { logout(); setShowAdminPanel(false); }} className="p-2 sm:p-3 bg-red-accent/10 rounded-2xl text-red-accent hover:text-white hover:bg-red-accent transition-all ml-2">
+                  <LogOut size={20} className="sm:hidden" />
+                  <LogOut size={24} className="hidden sm:block" />
                 </button>
               </div>
 
-              {/* Timer Controls */}
-              <div className="bg-bg border border-border rounded-xl p-4 mb-8">
-                <h4 className="text-[10px] text-muted-main tracking-[2px] uppercase mb-4">Submission Timer · 30 min</h4>
-                {config.timerActive && (
-                  <div className="font-serif text-4xl font-black text-green-accent text-center tracking-widest mb-4 drop-shadow-[0_0_20px_rgba(31,217,122,0.4)]">
-                    {formatTime(timeLeft)}
-                  </div>
-                )}
-                <div className="flex gap-2">
-                  <button 
-                    onClick={startTimer}
-                    disabled={config.timerActive}
-                    className="flex-1 bg-green-accent text-bg font-bold py-2.5 rounded-lg text-sm hover:opacity-90 disabled:opacity-30 transition-all"
-                  >
-                    Start Timer
-                  </button>
-                  <button 
-                    onClick={stopTimer}
-                    disabled={!config.timerActive}
-                    className="flex-1 bg-red-accent text-white font-bold py-2.5 rounded-lg text-sm hover:opacity-90 disabled:opacity-30 transition-all"
-                  >
-                    Stop Timer
-                  </button>
-                </div>
-                <button 
-                  onClick={clearResults}
-                  className="w-full mt-3 border border-border2 text-muted-main font-bold py-2 rounded-lg text-sm hover:border-red-accent hover:text-red-accent transition-all"
-                >
-                  Clear All Results
-                </button>
-
-                {/* Total Convert Edit */}
-                <div className="mt-6 pt-6 border-t border-border">
-                  <label className="text-[10px] text-muted-main uppercase font-black tracking-widest block mb-1 px-1">Lifetime Total Convert</label>
-                  <p className="text-[9px] text-muted-main2 mb-3 px-1 leading-relaxed opacity-60">Syncs only with Team Leader rankings. Trainer scores are not included.</p>
-                  <div className="flex gap-2 mb-3">
-                    <input 
-                      type="number"
-                      value={config.totalConverts || 0}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value) || 0;
-                        setDoc(doc(db, 'config', 'global'), { ...config, totalConverts: val });
-                      }}
-                      className="flex-1 bg-surface border border-border2 rounded-lg px-3 py-2 text-sm text-gold font-bold outline-none focus:border-gold"
-                    />
-                    <div className="bg-gold/10 text-gold px-3 py-2 rounded-lg flex items-center justify-center">
-                      <Trophy size={14} />
-                    </div>
-                  </div>
-                  <button 
-                    onClick={async () => {
-                      const total = leaderRanking.reduce((sum, r) => sum + (r.score || 0), 0);
-                      await setDoc(doc(db, 'config', 'global'), { ...config, totalConverts: total });
-                      showMsg(`Synced! Total Leader Convert: ${total}`);
-                    }}
-                    className="w-full py-1.5 rounded-lg bg-gold text-bg text-[10px] uppercase font-black hover:opacity-90 transition-all flex items-center justify-center gap-1.5 mb-2"
-                  >
-                    <RefreshCw size={10} />
-                    Force Sync with Leaders
-                  </button>
-
-                  <button 
-                    onClick={async () => {
-                      setShowConfirm({
-                        title: 'Reset ALL Lifetime Scores to Zero?',
-                        onConfirm: async () => {
-                          try {
-                            const batch = writeBatch(db);
-                            
-                            // Reset global config
-                            batch.update(doc(db, 'config', 'global'), { totalConverts: 0 });
-                            
-                            // Reset Leader Ranking
-                            leaderRanking.forEach(r => {
-                              batch.update(doc(db, 'leaderRanking', r.id), { score: 0 });
-                            });
-                            
-                            // Reset Trainer Ranking
-                            trainerRanking.forEach(r => {
-                              batch.update(doc(db, 'trainerRanking', r.id), { score: 0 });
-                            });
-                            
-                            await batch.commit();
-                            showMsg('All conversion scores reset to zero!', 'success');
-                            setShowConfirm(null);
-                          } catch (err) {
-                            handleFirestoreError(err, OperationType.WRITE, 'reset-scores', showMsg);
-                          }
-                        }
-                      });
-                    }}
-                    className="w-full py-1.5 rounded-lg bg-red-600 text-white text-[10px] uppercase font-black hover:opacity-90 transition-all flex items-center justify-center gap-1.5"
-                  >
-                    <AlertTriangle size={10} />
-                    Reset All Lifetime Data
-                  </button>
-                </div>
-              </div>
-
-              {/* Auto Timer Scheduler */}
-              <div className="bg-bg border border-border rounded-xl p-4 mb-8">
-                <div className="flex items-center justify-between mb-4">
-                  <h4 className="text-[10px] text-muted-main tracking-[2px] uppercase">Schedule Auto Start</h4>
-                  <div 
-                    onClick={() => updateAutoTimer(!config.autoTimerEnabled, config.autoTimerTime || '22:00')}
-                    className={`w-10 h-5 rounded-full relative cursor-pointer transition-all ${config.autoTimerEnabled ? 'bg-green-accent' : 'bg-muted-main2'}`}
-                  >
-                    <div className={`absolute top-1 w-3 h-3 rounded-full bg-bg transition-all ${config.autoTimerEnabled ? 'left-6' : 'left-1'}`} />
-                  </div>
-                </div>
+              {/* Admin Navigation "Slots" (Three-line style alternative) */}
+              <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 custom-scrollbar space-y-10 sm:space-y-12">
                 
-                <div className="flex flex-col gap-3">
-                  <div className="flex items-center gap-3 bg-surface/50 p-3 rounded-lg border border-border">
-                    <Clock size={16} className="text-gold" />
-                    <input 
-                      type="time" 
-                      defaultValue={config.autoTimerTime || '22:00'}
-                      onBlur={(e) => updateAutoTimer(!!config.autoTimerEnabled, e.target.value)}
-                      className="bg-transparent text-white font-bold outline-none flex-1"
-                    />
-                  </div>
-                  <p className="text-[10px] text-muted-main italic leading-relaxed">
-                    * প্রতিদিন এই সময়ে অটোমেটিক ৩০ মিনিটের টাইমার শুরু হবে যদি কোনো অ্যাডমিন অ্যাপে সক্রিয় থাকে।
-                  </p>
-                </div>
-              </div>
+                {/* 2. Operations Slot (Timer & Results) */}
+                <section>
+                   <div className="flex items-center gap-3 mb-4 opacity-50 px-2 text-blue-accent">
+                     <Clock size={12} className="sm:w-3.5 sm:h-3.5" />
+                     <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-[2px]">Operations & Boards</span>
+                   </div>
+                   <div className="grid grid-cols-1 gap-3 sm:gap-4">
+                      <div className="bg-surface/40 border border-white/5 p-4 sm:p-6 rounded-2xl sm:rounded-3xl relative overflow-hidden group">
+                         <div className="absolute top-0 right-0 w-32 h-32 bg-blue-accent/5 blur-3xl rounded-full" />
+                         <h4 className="text-[9px] sm:text-xs font-black text-white uppercase tracking-widest mb-4">Production Timer</h4>
+                         {config.timerActive && (
+                            <div className="text-4xl sm:text-5xl font-mono font-black text-green-accent mb-4 sm:mb-6 tracking-tighter text-center">
+                               {formatTime(timeLeft)}
+                            </div>
+                         )}
+                         <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                           <button onClick={startTimer} disabled={config.timerActive} className="py-3 sm:py-4 bg-green-accent/10 text-green-accent font-black rounded-xl sm:rounded-2xl uppercase text-[9px] sm:text-[10px] tracking-widest border border-green-accent/20 disabled:opacity-30 hover:bg-green-accent hover:text-bg transition-all">Start</button>
+                           <button onClick={stopTimer} disabled={!config.timerActive} className="py-3 sm:py-4 bg-red-accent/10 text-red-accent font-black rounded-xl sm:rounded-2xl uppercase text-[9px] sm:text-[10px] tracking-widest border border-red-accent/20 disabled:opacity-30 hover:bg-red-accent hover:text-white transition-all">Stop</button>
+                         </div>
+                         <button onClick={clearResults} className="w-full mt-3 py-2 sm:py-3 text-[9px] sm:text-[10px] font-bold text-muted-main uppercase tracking-widest hover:text-red-accent transition-colors">Clear Sub-Admin Data</button>
+                      </div>
 
-              {/* Announcement Manager */}
-              <AnnouncementManager 
-                config={config}
-                onUpdate={updateAnnouncement}
-              />
+                      <div className="bg-surface/40 border border-white/5 p-4 sm:p-6 rounded-2xl sm:rounded-3xl">
+                         <h4 className="text-[9px] sm:text-xs font-black text-white uppercase tracking-widest mb-4">Auto-Timer Scheduler</h4>
+                         <div className="flex items-center justify-between bg-bg p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-white/5 mb-3 sm:mb-4">
+                            <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-widest ${config.autoTimerEnabled ? 'text-green-accent' : 'text-muted-main'}`}>
+                               {config.autoTimerEnabled ? 'Scheduled Active' : 'Scheduler Off'}
+                            </span>
+                            <div 
+                              onClick={() => updateAutoTimer(!config.autoTimerEnabled, config.autoTimerTime || '22:00')}
+                              className={`w-10 h-5 sm:w-12 sm:h-6 rounded-full relative cursor-pointer transition-all ${config.autoTimerEnabled ? 'bg-green-accent' : 'bg-muted-main2'}`}
+                            >
+                              <div className={`absolute top-0.5 sm:top-1 w-4 h-4 rounded-full bg-bg transition-all ${config.autoTimerEnabled ? 'left-5.5 sm:left-7' : 'left-0.5 sm:left-1'}`} />
+                            </div>
+                         </div>
+                         <div className="flex items-center gap-3 sm:gap-4 bg-bg p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-white/5">
+                            <Clock size={16} className="text-gold sm:w-[18px] sm:h-[18px]" />
+                            <input 
+                              type="time" 
+                              defaultValue={config.autoTimerTime || '22:00'}
+                              onBlur={(e) => updateAutoTimer(!!config.autoTimerEnabled, e.target.value)}
+                              className="bg-transparent text-white font-black text-base sm:text-lg outline-none flex-1"
+                            />
+                         </div>
+                      </div>
+                   </div>
+                </section>
 
-              {/* Member Management */}
-              <AdminSection 
-                title="Team Leaders" 
-                onAdd={(name) => addMember(name, 'leader')} 
-                members={members.filter(m => m.type === 'leader')}
-                onDelete={deleteMember}
-              />
-              <AdminSection 
-                title="Team Trainers" 
-                onAdd={(name) => addMember(name, 'trainer')} 
-                members={members.filter(m => m.type === 'trainer')}
-                onDelete={deleteMember}
-              />
-
-              {/* Picking Schedule Manager */}
-              <PickingScheduleManager 
-                items={pickingSchedule}
-                onAdd={addPickingItem}
-                onDelete={deletePickingItem}
-                onToggle={togglePickingItem}
-              />
-
-              {/* Teacher Management & Attendance */}
-              <TeacherManagementSection 
-                teachers={teachers}
-                attendanceRecords={attendanceRecords}
-                onAdd={addTeacher}
-                onDelete={deleteTeacher}
-                onViewHistory={(teacher) => setShowTeacherHistory(teacher)}
-              />
-
-              <SimpleManagementSection 
-                title="STL Meeting Members"
-                icon={Users}
-                colorClass="text-blue-accent"
-                members={stlMembers}
-                onAdd={addSTLMember}
-                onDelete={deleteSTLMember}
-                isActive={config.stlActive || false}
-                onToggleActive={(val) => updateAttendanceConfig(val, undefined)}
-                attendanceRecords={stlAttendance}
-              />
-
-              <SimpleManagementSection 
-                title="Demo Members"
-                icon={Presentation}
-                colorClass="text-green-500"
-                members={demoMembers}
-                onAdd={addDemoMember}
-                onDelete={deleteDemoMember}
-                isActive={config.demoActive || false}
-                onToggleActive={(val) => updateAttendanceConfig(undefined, val)}
-                attendanceRecords={demoAttendance}
-              />
-
-              <RankingSection 
-                title="Team Leader Ranking"
-                icon={Crown}
-                colorClass="text-gold"
-                members={leaderRanking}
-                onAdd={(name, score) => addRankingMember('leader', name, score)}
-                onDelete={(id) => deleteRankingMember('leader', id)}
-                onUpdateScore={(id, score) => updateRankingScore('leader', id, score)}
-                isActive={config.leaderRankingActive || false}
-                onToggleActive={(val) => updateAttendanceConfig(undefined, undefined, val, undefined)}
-              />
-
-              <RankingSection 
-                title="Team Trainer Ranking"
-                icon={Award}
-                colorClass="text-blue-accent"
-                members={trainerRanking}
-                onAdd={(name, score) => addRankingMember('trainer', name, score)}
-                onDelete={(id) => deleteRankingMember('trainer', id)}
-                onUpdateScore={(id, score) => updateRankingScore('trainer', id, score)}
-                isActive={config.trainerRankingActive || false}
-                onToggleActive={(val) => updateAttendanceConfig(undefined, undefined, undefined, val)}
-              />
-
-              {/* View History Buttons for Simple Attendance */}
-              <div className="grid grid-cols-2 gap-3 mb-8">
-                <button 
-                  onClick={() => setShowSTLHistory(true)}
-                  className="p-3 bg-blue-accent/10 border border-blue-accent/30 rounded-xl text-blue-accent text-[10px] font-bold uppercase tracking-widest hover:bg-blue-accent hover:text-bg transition-all"
-                >
-                  STL History ({stlAttendance.length})
-                </button>
-                <button 
-                  onClick={() => setShowDemoHistory(true)}
-                  className="p-3 bg-green-500/10 border border-green-500/30 rounded-xl text-green-500 text-[10px] font-bold uppercase tracking-widest hover:bg-green-500 hover:text-bg transition-all"
-                >
-                  Demo History ({demoAttendance.length})
-                </button>
-              </div>
-
-              {/* Quick Links Manager */}
-              <QuickLinksManagementSection 
-                links={quickLinks}
-                onAdd={addQuickLink}
-                onDelete={deleteQuickLink}
-              />
-
-              {/* Applications Section */}
-              <div className="mb-8 p-5 bg-bg border border-border rounded-2xl">
-                <div className="flex items-center gap-2 mb-4 border-b border-border pb-3">
-                  <Briefcase size={16} className="text-gold" />
-                  <h4 className="text-[10px] text-muted-main tracking-[2px] uppercase">চাকরির আবেদন ({applications.length})</h4>
-                </div>
-                <div className="space-y-2 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
-                  {applications.length === 0 ? (
-                    <div className="text-center text-muted-main2 text-xs py-4 italic">এখনও কোনো আবেদন নেই</div>
-                  ) : (
-                    applications.map((app) => (
-                      <div 
-                        key={app.id} 
-                        className="flex items-center justify-between bg-surface border border-border rounded-xl p-3 px-4 text-sm hover:border-gold/40 transition-all hover:bg-gold/5 group"
-                      >
-                        <div 
-                          onClick={() => setShowAppDetails(app)}
-                          className="flex items-center gap-3 cursor-pointer flex-1"
-                        >
-                          <div className="w-8 h-8 rounded-lg bg-gold/10 flex items-center justify-center text-gold group-hover:bg-gold group-hover:text-bg transition-all">
-                            <UserCircle size={18} />
-                          </div>
-                          <div>
-                            <div className="text-white font-bold">{app.fullName}</div>
-                            <div className="text-[9px] text-muted-main2 italic truncate max-w-[150px]">{app.mobileNumber}</div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              deleteApplication(app.id);
-                            }}
-                            className="p-2 text-muted-main2 hover:text-red-accent transition-colors"
-                            title="আবেদন মুছে ফেলুন"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                          <ChevronRight size={14} className="text-muted-main2 group-hover:text-gold" />
+                {/* 3. Global Stats Slot */}
+                <section>
+                   <div className="flex items-center gap-3 mb-4 opacity-50 px-2 text-gold2">
+                     <Trophy size={12} className="sm:w-3.5 sm:h-3.5" />
+                     <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-[2px]">Conversion Intelligence</span>
+                   </div>
+                   <div className="bg-surface/40 border border-white/5 p-4 sm:p-6 rounded-2xl sm:rounded-3xl">
+                      <label className="text-[9px] sm:text-[10px] text-muted-main uppercase font-black tracking-widest block mb-4">Lifetime Total Convert</label>
+                      <div className="flex gap-3 sm:gap-4 items-center mb-4 sm:mb-6">
+                        <input 
+                          type="number"
+                          value={config.totalConverts || 0}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value) || 0;
+                            setDoc(doc(db, 'config', 'global'), { ...config, totalConverts: val });
+                          }}
+                          className="flex-1 bg-bg border border-white/10 rounded-xl sm:rounded-2xl px-4 sm:px-6 py-3 sm:py-4 text-xl sm:text-2xl text-gold font-serif font-black outline-none focus:border-gold"
+                        />
+                        <div className="p-3 sm:p-4 bg-gold/10 text-gold rounded-xl sm:rounded-2xl border border-gold/20">
+                          <Trophy size={24} className="sm:hidden" />
+                          <Trophy size={32} className="hidden sm:block" />
                         </div>
                       </div>
-                    ))
-                  )}
-                </div>
+                      <div className="grid grid-cols-1 gap-2 sm:gap-3">
+                        <button 
+                          onClick={async () => {
+                            const total = leaderRanking.reduce((sum, r) => sum + (r.score || 0), 0);
+                            await setDoc(doc(db, 'config', 'global'), { ...config, totalConverts: total });
+                            showMsg(`Synced! Total Leader Convert: ${total}`);
+                          }}
+                          className="w-full py-3 sm:py-4 rounded-xl sm:rounded-2xl bg-white/5 text-gold text-[9px] sm:text-[10px] uppercase font-black hover:bg-gold hover:text-bg transition-all flex items-center justify-center gap-2 border border-gold/20"
+                        >
+                          <RefreshCw size={12} className="sm:w-3.5 sm:h-3.5" />
+                          Force Sync from Rankings
+                        </button>
+                        <button 
+                          onClick={async () => {
+                            setShowConfirm({
+                              title: 'Reset ALL Lifetime Scores to Zero?',
+                              onConfirm: async () => {
+                                try {
+                                  const batch = writeBatch(db);
+                                  batch.update(doc(db, 'config', 'global'), { totalConverts: 0 });
+                                  leaderRanking.forEach(r => batch.update(doc(db, 'leaderRanking', r.id), { score: 0 }));
+                                  trainerRanking.forEach(r => batch.update(doc(db, 'trainerRanking', r.id), { score: 0 }));
+                                  await batch.commit();
+                                  showMsg('All conversion scores reset to zero!', 'success');
+                                  setShowConfirm(null);
+                                } catch (err) {
+                                  handleFirestoreError(err, OperationType.WRITE, 'reset-scores', showMsg);
+                                }
+                              }
+                            });
+                          }}
+                          className="w-full py-3 sm:py-4 px-2 rounded-xl sm:rounded-2xl bg-red-600/5 text-red-500 text-[9px] sm:text-[10px] uppercase font-black hover:bg-red-600 hover:text-white transition-all flex items-center justify-center gap-2 border border-red-500/20"
+                        >
+                          <AlertTriangle size={12} className="sm:w-3.5 sm:h-3.5" />
+                          Destructive Data Reset
+                        </button>
+                      </div>
+                   </div>
+                </section>
+
+                {/* 4. Communication Slot */}
+                <section>
+                   <div className="flex items-center gap-3 mb-4 opacity-50 px-2 text-purple-400">
+                     <Megaphone size={14} />
+                     <span className="text-[10px] font-black uppercase tracking-[2px]">Communication & Hub</span>
+                   </div>
+                   <div className="space-y-6">
+                      <AnnouncementManager config={config} onUpdate={updateAnnouncement} />
+                      <QuickLinksManagementSection links={quickLinks} onAdd={addQuickLink} onDelete={deleteQuickLink} />
+                      <SocialLinksManager config={config} onUpdate={(links) => setDoc(doc(db, 'config', 'global'), { ...config, socialLinks: links })} />
+                      <NoticeManager config={config} onUpdate={updateNoticeText} />
+                   </div>
+                </section>
+
+                {/* 5. Team & Roster Slot */}
+                <section>
+                   <div className="flex items-center gap-3 mb-4 opacity-50 px-2 text-indigo-400">
+                     <Users size={14} />
+                     <span className="text-[10px] font-black uppercase tracking-[2px]">Team Roster Management</span>
+                   </div>
+                   <div className="space-y-4">
+                      <AdminSection title="Team Leaders" onAdd={(name) => addMember(name, 'leader')} members={members.filter(m => m.type === 'leader')} onDelete={deleteMember} />
+                      <AdminSection title="Team Trainers" onAdd={(name) => addMember(name, 'trainer')} members={members.filter(m => m.type === 'trainer')} onDelete={deleteMember} />
+                      <TeacherManagementSection teachers={teachers} attendanceRecords={attendanceRecords} onAdd={addTeacher} onDelete={deleteTeacher} onViewHistory={(teacher) => setShowTeacherHistory(teacher)} />
+                   </div>
+                </section>
+
+                {/* 6. External Systems Slot */}
+                <section>
+                   <div className="flex items-center gap-3 mb-4 opacity-50 px-2 text-green-accent">
+                     <Calendar size={14} />
+                     <span className="text-[10px] font-black uppercase tracking-[2px]">Schedules & Logs</span>
+                   </div>
+                   <div className="space-y-4">
+                      <div className="mb-4 p-5 bg-bg border border-border rounded-2xl">
+                        <div className="flex items-center gap-2 mb-4 border-b border-border pb-3">
+                          <Briefcase size={16} className="text-gold" />
+                          <h4 className="text-[10px] text-muted-main tracking-[2px] uppercase">Job Applications ({applications.length})</h4>
+                        </div>
+                        <div className="space-y-2 max-h-60 overflow-y-auto pr-2 custom-scrollbar text-xs">
+                          {applications.length === 0 ? <p className="text-muted-main2 italic py-4 text-center">No applications</p> : applications.map(app => (
+                            <div key={app.id} className="flex justify-between items-center p-3 bg-surface rounded-xl border border-white/5">
+                              <span className="text-white font-bold">{app.fullName}</span>
+                              <div className="flex gap-2">
+                                <button onClick={() => setShowAppDetails(app)} className="p-2 text-gold hover:bg-gold/10 rounded-lg"><Info size={14}/></button>
+                                <button onClick={() => deleteApplication(app.id)} className="p-2 text-red-accent hover:bg-red-accent/10 rounded-lg"><Trash2 size={14}/></button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <PickingScheduleManager items={pickingSchedule} onAdd={addPickingItem} onDelete={deletePickingItem} onToggle={togglePickingItem} />
+                      <SimpleManagementSection title="STL Meeting Members" icon={Users} colorClass="text-blue-accent" members={stlMembers} onAdd={addSTLMember} onDelete={deleteSTLMember} isActive={config.stlActive || false} onToggleActive={(val) => updateAttendanceConfig(val, undefined)} attendanceRecords={stlAttendance} />
+                      <SimpleManagementSection title="Demo Members" icon={Presentation} colorClass="text-green-500" members={demoMembers} onAdd={addDemoMember} onDelete={deleteDemoMember} isActive={config.demoActive || false} onToggleActive={(val) => updateAttendanceConfig(undefined, val)} attendanceRecords={demoAttendance} />
+                   </div>
+                </section>
+
+                {/* 7. Security & Setup Slot */}
+                <section>
+                   <div className="flex items-center gap-3 mb-4 opacity-50 px-2 text-red-400">
+                     <Shield size={14} />
+                     <span className="text-[10px] font-black uppercase tracking-[2px]">Security & Environment</span>
+                   </div>
+                   <div className="space-y-4">
+                      <AdminPasswordManager onUpdate={updateAdminPassword} />
+                      <SecurityManager config={config} onUpdate={updateSecurity} />
+                      <StlManager config={config} onUpdate={updateStlSettings} />
+                      <CounsellingManager config={config} onUpdate={updateCounsellingSettings} />
+                   </div>
+                </section>
+
+                {/* 8. Leaderboard & Achievement Slot */}
+                <section>
+                   <div className="flex items-center gap-3 mb-4 opacity-50 px-2 text-gold">
+                     <Crown size={14} />
+                     <span className="text-[10px] font-black uppercase tracking-[2px]">Leaderboard & Ranking Management</span>
+                   </div>
+                   <div className="space-y-6">
+                      <RankingSection 
+                        title="Leader Ranking Management" 
+                        icon={Crown} 
+                        colorClass="text-gold" 
+                        members={leaderRanking} 
+                        onAdd={(name, score, leads) => addRankingMember('leader', name, score, leads)} 
+                        onDelete={(id) => deleteRankingMember('leader', id)} 
+                        onUpdateScore={(id, score, leads) => updateRankingScore('leader', id, score, leads)}
+                        isActive={config.leaderRankingActive || false}
+                        onToggleActive={(val) => updateAttendanceConfig(undefined, undefined, val, undefined)}
+                      />
+                      <RankingSection 
+                        title="Trainer Ranking Management" 
+                        icon={Award} 
+                        colorClass="text-blue-accent" 
+                        members={trainerRanking} 
+                        onAdd={(name, score, leads) => addRankingMember('trainer', name, score, leads)} 
+                        onDelete={(id) => deleteRankingMember('trainer', id)} 
+                        onUpdateScore={(id, score, leads) => updateRankingScore('trainer', id, score, leads)}
+                        isActive={config.trainerRankingActive || false}
+                        onToggleActive={(val) => updateAttendanceConfig(undefined, undefined, undefined, val)}
+                      />
+                   </div>
+                </section>
+
+                {/* 9. Core Identity & Access Control */}
+                <section>
+                   <div className="flex items-center gap-3 mb-4 opacity-50 px-2 text-gold">
+                     <Users size={14} />
+                     <span className="text-[10px] font-black uppercase tracking-[2px]">Member Approvals & Permissions</span>
+                   </div>
+                   <UserManagementSection 
+                      pending={pendingUsers}
+                      approved={approvedUsers}
+                      onApprove={approveUser}
+                      onReject={rejectUser}
+                      onToggleBlock={toggleUserBlock}
+                      onDelete={deleteUser}
+                      onUpdatePass={changeUserPassword}
+                    />
+                </section>
+
               </div>
-
-              {/* Security Section */}
-              <SecurityManager 
-                config={config} 
-                onUpdate={updateSecurity}
-              />
-
-              {/* STL Access Section */}
-              <StlManager 
-                config={config} 
-                onUpdate={updateStlSettings}
-              />
-
-              {/* Social Links Section */}
-              <SocialLinksManager 
-                config={config} 
-                onUpdate={updateSocialLinks}
-              />
-
-              {/* Notice Section */}
-              <NoticeManager 
-                config={config}
-                onUpdate={updateNoticeText}
-              />
-
-              {/* Counselling Section */}
-              <CounsellingManager 
-                config={config}
-                onUpdate={updateCounsellingSettings}
-              />
-
-              <button 
-                onClick={logout}
-                className="w-full mt-8 border border-border2 text-muted-main font-bold py-3 rounded-lg text-sm hover:border-red-accent hover:text-red-accent transition-all flex items-center justify-center gap-2"
-              >
-                <LogOut size={16} />
-                Logout Admin
-              </button>
+              
             </motion.div>
           </>
         )}
@@ -2238,7 +2917,7 @@ export default function App() {
               initial={{ y: 50, opacity: 0 }} 
               animate={{ y: 0, opacity: 1 }} 
               exit={{ y: 50, opacity: 0 }} 
-              className="relative bg-[#0A0A0F] border border-white/10 rounded-[40px] max-w-md w-full shadow-[0_40px_100px_rgba(0,0,0,0.9)] flex flex-col max-h-[85vh] overflow-hidden"
+              className="relative bg-surface border border-white/10 rounded-[40px] max-w-md w-full shadow-[0_40px_100px_rgba(0,0,0,0.9)] flex flex-col max-h-[85vh] overflow-hidden"
             >
               <div className="h-1.5 w-full bg-gradient-to-r from-blue-accent via-purple-500 to-blue-accent"></div>
               
@@ -3217,6 +3896,75 @@ function ApplicationDetailsModal({ application, onClose, onRemove }: {
   );
 }
 
+function AdminPasswordManager({ onUpdate }: { onUpdate: (pass: string) => void }) {
+  const [newPass, setNewPass] = useState('');
+  const [show, setShow] = useState(false);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPass.length < 6) {
+      alert('Password must be at least 6 characters');
+      return;
+    }
+    onUpdate(newPass);
+    setNewPass('');
+  };
+
+  return (
+    <div className="bg-white/5 border border-white/5 rounded-2xl p-5 mb-4">
+      <button 
+        onClick={() => setShow(!show)}
+        className="w-full flex items-center justify-between text-left"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center text-red-500">
+            <Lock size={20} />
+          </div>
+          <div>
+            <h4 className="text-sm font-bold text-white">Admin Credentials</h4>
+            <p className="text-[10px] text-muted-main uppercase tracking-widest">Update Master Login</p>
+          </div>
+        </div>
+        <ChevronRight className={`text-muted-main transition-transform ${show ? 'rotate-90' : ''}`} size={20} />
+      </button>
+
+      <AnimatePresence>
+        {show && (
+          <motion.form 
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            onSubmit={handleSubmit} 
+            className="overflow-hidden"
+          >
+            <div className="pt-5 space-y-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-muted-main uppercase tracking-widest">New Admin Password</label>
+                <div className="relative">
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-main" size={16} />
+                  <input 
+                    type="text"
+                    value={newPass}
+                    onChange={e => setNewPass(e.target.value)}
+                    placeholder="Enter new master password"
+                    className="w-full bg-black/20 border border-white/10 rounded-xl py-3 pl-12 pr-4 text-sm text-text-main outline-none focus:border-red-500/50 transition-all font-mono"
+                  />
+                </div>
+              </div>
+              <button 
+                type="submit"
+                className="w-full py-3 bg-red-500 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-red-600 transition-colors"
+              >
+                Update Master Password
+              </button>
+            </div>
+          </motion.form>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 function SecurityManager({ config, onUpdate }: { config: Config, onUpdate: (password: string, locked: boolean) => void }) {
   const [password, setPassword] = useState(config.securityPassword || '');
   const [locked, setLocked] = useState(config.isLocked || false);
@@ -3723,17 +4471,20 @@ function RankingSection({
   icon: any,
   colorClass: string,
   members: RankingMember[],
-  onAdd: (name: string, score: number) => void,
+  onAdd: (name: string, score: number, leads: number) => void,
   onDelete: (id: string) => void,
-  onUpdateScore: (id: string, score: number) => void,
+  onUpdateScore: (id: string, score: number, leads: number) => void,
   isActive: boolean,
   onToggleActive: (val: boolean) => void
 }) {
   const [newName, setNewName] = useState('');
   const [newScore, setNewScore] = useState('');
+  const [newLeads, setNewLeads] = useState('');
 
   return (
-    <div className="mb-8 p-5 bg-bg border border-border rounded-2xl relative">
+    <div className="mb-8 p-5 bg-bg border border-border rounded-2xl relative group overflow-hidden">
+      <div className={`absolute top-0 right-0 w-32 h-32 opacity-5 blur-3xl rounded-full ${colorClass.replace('text-', 'bg-')}`} />
+      
       <div className="flex items-center justify-between mb-4 border-b border-border pb-3">
         <div className="flex items-center gap-2">
           <Icon size={16} className={colorClass} />
@@ -3754,27 +4505,35 @@ function RankingSection({
             placeholder="নাম লিখুন..."
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            className="flex-1 bg-surface border border-border2 rounded-lg px-3 py-2 text-sm focus:border-gold outline-none"
+            className="flex-1 bg-surface border border-border2 rounded-lg px-3 py-2 text-sm focus:border-gold outline-none text-white"
           />
           <input 
             type="number" 
-            placeholder="স্কোর..."
+            placeholder="কনভার্ট..."
             value={newScore}
             onChange={(e) => setNewScore(e.target.value)}
-            className="w-24 bg-surface border border-border2 rounded-lg px-3 py-2 text-sm focus:border-gold outline-none"
+            className="w-20 bg-surface border border-border2 rounded-lg px-3 py-2 text-sm focus:border-gold outline-none text-white"
+          />
+          <input 
+            type="number" 
+            placeholder="লিড..."
+            value={newLeads}
+            onChange={(e) => setNewLeads(e.target.value)}
+            className="w-16 bg-surface border border-border2 rounded-lg px-3 py-2 text-sm focus:border-gold outline-none text-white"
           />
         </div>
         <button 
           onClick={() => { 
             if (newName.trim()) {
-              onAdd(newName, Number(newScore) || 0); 
+              onAdd(newName, Number(newScore) || 0, Number(newLeads) || 0); 
               setNewName('');
               setNewScore('');
+              setNewLeads('');
             }
           }}
-          className="w-full bg-gold text-bg py-2 rounded-lg font-bold flex items-center justify-center gap-2"
+          className="w-full bg-gold text-bg py-2 rounded-lg font-bold flex items-center justify-center gap-2 hover:opacity-90 active:scale-95 transition-all text-xs"
         >
-          <Plus size={18} /> Add to Ranking
+          <Plus size={16} /> Add to Ranking
         </button>
       </div>
 
@@ -3787,20 +4546,34 @@ function RankingSection({
               key={m.id} 
               className="flex items-center justify-between bg-surface/50 border border-border rounded-xl p-3 px-4 text-xs group hover:border-gold/30 transition-all"
             >
-              <div className="flex items-center gap-3 flex-1">
-                <span className="text-gold font-black opacity-30 w-4 font-mono">{String(idx + 1).padStart(2, '0')}</span>
-                <span className="text-white font-bold">{m.name}</span>
+              <div className="flex items-center gap-3 flex-1 overflow-hidden">
+                <span className={`text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-lg ${idx === 0 ? 'bg-gold text-bg' : 'bg-white/10 text-white/40 font-mono'}`}>{idx + 1}</span>
+                <span className="text-white font-bold truncate">{m.name}</span>
               </div>
               <div className="flex items-center gap-3">
-                <input 
-                  type="number"
-                  defaultValue={m.score}
-                  onBlur={(e) => onUpdateScore(m.id, Number(e.target.value))}
-                  className="w-16 bg-bg border border-border2 rounded px-2 py-1 text-center text-gold font-bold outline-none focus:border-gold"
-                />
+                <div className="flex items-center gap-2">
+                  <div className="flex flex-col items-center">
+                    <span className="text-[6px] uppercase opacity-40 font-black">Conv</span>
+                    <input 
+                      type="number"
+                      defaultValue={m.score}
+                      onBlur={(e) => onUpdateScore(m.id, Number(e.target.value), m.leads || 0)}
+                      className="w-10 bg-transparent text-center text-gold font-bold outline-none border-b border-white/5 focus:border-gold"
+                    />
+                  </div>
+                  <div className="flex flex-col items-center">
+                    <span className="text-[6px] uppercase opacity-40 font-black">Lead</span>
+                    <input 
+                      type="number"
+                      defaultValue={m.leads || 0}
+                      onBlur={(e) => onUpdateScore(m.id, m.score, Number(e.target.value))}
+                      className="w-10 bg-transparent text-center text-blue-accent font-bold outline-none border-b border-white/5 focus:border-blue-accent"
+                    />
+                  </div>
+                </div>
                 <button 
                   onClick={() => onDelete(m.id)}
-                  className="p-1.5 bg-red-accent/10 text-red-accent rounded-lg hover:bg-red-accent hover:text-white transition-all"
+                  className="p-1 text-muted-main hover:text-red-accent transition-all opacity-0 group-hover:opacity-100"
                 >
                   <Trash2 size={12} />
                 </button>
@@ -3818,8 +4591,13 @@ function OverallStatsModal({ onClose, leaders, trainers }: {
   leaders: RankingMember[], 
   trainers: RankingMember[] 
 }) {
-  const topLeaders = [...leaders].sort((a,b) => (b.score || 0) - (a.score || 0)).slice(0, 3);
-  const topTrainers = [...trainers].sort((a,b) => (b.score || 0) - (a.score || 0)).slice(0, 3);
+  const sortByRanking = (a: RankingMember, b: RankingMember) => {
+    if ((b.score || 0) !== (a.score || 0)) return (b.score || 0) - (a.score || 0);
+    return (b.leads || 0) - (a.leads || 0);
+  };
+
+  const topLeaders = [...leaders].sort(sortByRanking).slice(0, 3);
+  const topTrainers = [...trainers].sort(sortByRanking).slice(0, 3);
   
   // Calculate total strictly from Team Leaders' lifetime scores
   const total = leaders.reduce((sum, m) => sum + (m.score || 0), 0);
@@ -3829,7 +4607,7 @@ function OverallStatsModal({ onClose, leaders, trainers }: {
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/90 backdrop-blur-xl" />
       <motion.div 
         initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} 
-        className="relative bg-[#0A0A0F] border border-gold/20 rounded-[2.5rem] max-w-lg w-full shadow-[0_0_80px_rgba(245,200,66,0.15)] flex flex-col max-h-[85vh] overflow-hidden"
+        className="relative bg-surface border border-gold/20 rounded-[2.5rem] max-w-lg w-full shadow-[0_0_80px_rgba(245,200,66,0.15)] flex flex-col max-h-[85vh] overflow-hidden"
       >
          <div className="h-2 w-full bg-gradient-to-r from-gold via-gold2 to-gold" />
          
@@ -3882,7 +4660,12 @@ function OverallStatsModal({ onClose, leaders, trainers }: {
                           </div>
                           <span className="text-white font-serif font-bold text-lg">{m.name}</span>
                        </div>
-                       <div className="text-gold font-black text-xl">{m.score}</div>
+                       <div className="flex flex-col items-end">
+                          <div className="text-gold font-black text-xl leading-none">{m.score}</div>
+                          <div className="text-[9px] text-gold/40 font-black uppercase tracking-widest mt-1">
+                            Conv
+                          </div>
+                       </div>
                     </div>
                   ))}
                </div>
@@ -3905,7 +4688,12 @@ function OverallStatsModal({ onClose, leaders, trainers }: {
                           </div>
                           <span className="text-white font-serif font-bold text-lg">{m.name}</span>
                        </div>
-                       <div className="text-blue-accent font-black text-xl">{m.score}</div>
+                       <div className="flex flex-col items-end">
+                          <div className="text-blue-accent font-black text-xl leading-none">{m.score}</div>
+                          <div className="text-[9px] text-blue-accent/40 font-black uppercase tracking-widest mt-1">
+                            Conv
+                          </div>
+                       </div>
                     </div>
                   ))}
                </div>
@@ -3978,7 +4766,7 @@ function SimpleAttendanceModal({
         initial={{ y: 20, opacity: 0 }} 
         animate={{ y: 0, opacity: 1 }} 
         exit={{ y: 20, opacity: 0 }} 
-        className="relative bg-[#0A0A0F] border border-white/10 rounded-[40px] max-w-md w-full shadow-[0_30px_100px_rgba(0,0,0,0.8)] overflow-hidden flex flex-col max-h-[85vh]"
+        className="relative bg-surface border border-white/10 rounded-[40px] max-w-md w-full shadow-[0_30px_100px_rgba(0,0,0,0.8)] overflow-hidden flex flex-col max-h-[85vh]"
       >
         <div className="h-1.5 w-full bg-gradient-to-r from-blue-accent to-purple-500"></div>
         <div className="p-8 pt-10 flex items-center justify-between">
@@ -4105,7 +4893,7 @@ function RankingBoardModal({
             </div>
             <div>
               <h3 className="text-2xl sm:text-3xl font-serif font-black text-white tracking-tight">{title}</h3>
-              <p className="text-[10px] text-muted-main uppercase tracking-[3px] font-black opacity-30">Prime Distinction • Performance</p>
+              <p className="text-[10px] text-muted-main uppercase tracking-[3px] font-black opacity-30">Prime Distinction • Sub-Admin</p>
             </div>
           </div>
           <button 
@@ -4161,11 +4949,14 @@ function RankingBoardModal({
                      </div>
                    </div>
 
-                   <div className="text-right">
-                     <div className={`text-2xl sm:text-3xl font-serif font-black ${isTop1 ? 'text-gold' : 'text-white'}`}>
-                       {m.score.toLocaleString()}
-                     </div>
-                     <div className="text-[9px] text-muted-main uppercase font-black tracking-[3px] opacity-30 mt-1">Credits</div>
+                   <div className="flex flex-col items-end gap-1">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[8px] font-black uppercase opacity-30 ${isTop1 ? 'text-gold' : 'text-white'}`}>Conv</span>
+                        <div className={`text-2xl sm:text-3xl font-serif font-black ${isTop1 ? 'text-gold' : 'text-white'}`}>
+                          {m.score.toLocaleString()}
+                        </div>
+                      </div>
+                      
                    </div>
                  </motion.div>
                );
@@ -4811,7 +5602,7 @@ function SiteLock({ correctPassword, onUnlock, onAdminLogin }: { correctPassword
   );
 
   return (
-    <div className="fixed inset-0 z-[99999] bg-[#0A0A0F] text-[#F0EAD6] font-['DM_Sans',_sans-serif] overflow-hidden">
+    <div className="fixed inset-0 z-[99999] bg-bg text-[#F0EAD6] font-['DM_Sans',_sans-serif] overflow-hidden">
       {onAdminLogin && (
         <div className="absolute top-6 right-6 z-[200]">
           <button
@@ -5037,23 +5828,42 @@ function SiteLock({ correctPassword, onUnlock, onAdminLogin }: { correctPassword
                 )}
               </div>
 
-              <button 
-                onClick={handleLogin}
-                disabled={isVerifying}
-                className="w-full relative bg-gradient-to-br from-[#F5C842] to-[#E8B800] rounded-[14px] p-[17px] font-['Syne'] text-[15px] font-bold text-[#0A0A0F] tracking-[0.05em] shadow-[0_8px_32px_rgba(245,200,66,0.25)] hover:-translate-y-0.5 hover:shadow-[0_12px_40px_rgba(245,200,66,0.4)] active:translate-y-0 transition-all overflow-hidden group disabled:opacity-70 login-btn-shine"
-              >
-                <div className="absolute inset-0 bg-gradient-to-br from-white/15 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                <div className="absolute top-0 -left-full w-3/5 h-full bg-gradient-to-r from-transparent via-white/20 to-transparent skew-x-[-20deg]"></div>
-                
-                <div className="relative z-10 flex items-center justify-center gap-2.5">
-                  <span>{isVerifying ? 'যাচাই হচ্ছে...' : 'প্রবেশ করুন'}</span>
-                  {!isVerifying && (
-                    <div className="group-hover:translate-x-1 transition-transform">
-                      <ChevronRight size={18} strokeWidth={2.5} />
-                    </div>
-                  )}
-                </div>
-              </button>
+              <div className="flex flex-col gap-4">
+                <button 
+                  onClick={handleLogin}
+                  disabled={isVerifying}
+                  className="w-full relative bg-gradient-to-br from-[#F5C842] to-[#E8B800] rounded-[14px] p-[17px] font-['Syne'] text-[15px] font-bold text-[#0A0A0F] tracking-[0.05em] shadow-[0_8px_32px_rgba(245,200,66,0.25)] hover:-translate-y-0.5 hover:shadow-[0_12px_40px_rgba(245,200,66,0.4)] active:translate-y-0 transition-all overflow-hidden group disabled:opacity-70 login-btn-shine"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-br from-white/15 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                  <div className="absolute top-0 -left-full w-3/5 h-full bg-gradient-to-r from-transparent via-white/20 to-transparent skew-x-[-20deg]"></div>
+                  
+                  <div className="relative z-10 flex items-center justify-center gap-2.5">
+                    <span>{isVerifying ? 'যাচাই হচ্ছে...' : 'প্রবেশ করুন'}</span>
+                    {!isVerifying && (
+                      <div className="group-hover:translate-x-1 transition-transform">
+                        <ChevronRight size={18} strokeWidth={2.5} />
+                      </div>
+                    )}
+                  </div>
+                </button>
+
+                {onAdminLogin && (
+                  <div className="flex flex-col gap-2">
+                    <button 
+                      onClick={() => onAdminLogin()}
+                      className="w-full bg-white/5 border border-white/10 text-[#F0EAD6]/60 font-['Syne'] font-bold py-3.5 rounded-[12px] hover:bg-white/10 hover:text-[#F5C842] transition-all text-[11px] uppercase tracking-widest flex items-center justify-center gap-2"
+                    >
+                      <Shield size={14} /> Admin Access
+                    </button>
+                    <button 
+                      onClick={() => { auth.signOut(); setShowMenu(false); window.location.reload(); }}
+                      className="w-full bg-red-accent/10 border border-red-accent/20 text-red-accent font-['Syne'] font-bold py-3.5 rounded-[12px] hover:bg-red-accent hover:text-bg transition-all text-[11px] uppercase tracking-widest flex items-center justify-center gap-2"
+                    >
+                      <LogOut size={14} />Logout
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="flex items-center gap-3.5 my-5 text-[12px] text-[#F0EAD6]/20">
@@ -5083,7 +5893,7 @@ function SiteLock({ correctPassword, onUnlock, onAdminLogin }: { correctPassword
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] bg-[#0A0A0F]/95 flex flex-col items-center justify-center gap-5"
+            className="fixed inset-0 z-[100] bg-bg/95 flex flex-col items-center justify-center gap-5"
           >
             <motion.div 
               initial={{ scale: 0, opacity: 0 }}

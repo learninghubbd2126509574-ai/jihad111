@@ -48,7 +48,28 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() && 
-        (request.auth.token.email == "learninghubbd2126509574@gmail.com" || request.auth.uid == "PgnolGg4KObuRNc4Vpf6dhJ5JoE2");
+        (request.auth.token.email == "learninghubbd2126509574@gmail.com" || 
+         request.auth.token.email == "admin@gmail.com" ||
+         request.auth.uid == "PgnolGg4KObuRNc4Vpf6dhJ5JoE2");
+    }
+
+    function isValidId(id) { 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-\\+]+$'); 
+    }
+
+    function isValidUserRegistration(data) {
+      return data.keys().hasAll(['fullName', 'whatsapp', 'position', 'password', 'status', 'createdAt']) &&
+             data.keys().hasOnly(['fullName', 'whatsapp', 'position', 'password', 'status', 'createdAt', 'id']) &&
+             data.fullName is string && data.fullName.size() > 0 && data.fullName.size() < 100 &&
+             data.whatsapp is string && data.whatsapp.size() > 0 && data.whatsapp.size() < 20 &&
+             data.position in ["Team Leader", "Team Trainer", "STL", "Teacher", "Counsellor"] &&
+             data.password is string && data.password.size() > 0 && data.password.size() < 100 &&
+             data.status in ["pending", "active", "blocked"];
+    }
+
+    function isValidUserUpdate(data) {
+      return (data.keys().hasOnly(['password']) && data.password is string && data.password.size() > 0 && data.password.size() < 100) ||
+             isValidUserRegistration(data);
     }
 
     function isValidMember(data) {
@@ -106,15 +127,29 @@ service cloud.firestore {
     }
 
     // Rules
+    match /pendingRegistrations/{id} {
+      allow create: if isValidUserRegistration(request.resource.data) && request.resource.data.status == 'pending' && isValidId(id);
+      allow get: if true; 
+      allow list, delete: if isAdmin();
+    }
+
+    match /registeredUsers/{whatsapp} {
+      allow get: if true;
+      allow list: if isAdmin();
+      allow create: if isAdmin() && isValidUserRegistration(request.resource.data) && isValidId(whatsapp);
+      allow update: if isAdmin() && isValidUserUpdate(request.resource.data) && isValidId(whatsapp);
+      allow delete: if isAdmin();
+    }
+
     match /members/{memberId} {
       allow read: if true;
-      allow create, update: if isAdmin() && isValidMember(request.resource.data);
+      allow create, update: if isAdmin() && isValidMember(request.resource.data) && isValidId(memberId);
       allow delete: if isAdmin();
     }
 
     match /results/{resultId} {
       allow read: if true;
-      allow create, update: if (isValidResult(request.resource.data));
+      allow create, update: if (isValidResult(request.resource.data)) && isValidId(resultId);
       allow delete: if isAdmin();
     }
 
@@ -129,54 +164,54 @@ service cloud.firestore {
 
     match /pickingSchedule/{itemId} {
       allow read: if true;
-      allow create, update, delete: if isAdmin();
+      allow create, update, delete: if isAdmin() && isValidId(itemId);
     }
 
     match /applications/{applicationId} {
-      allow read, delete: if isAdmin();
-      allow create: if true;
+      allow get, list, delete: if isAdmin();
+      allow create: if true && isValidId(applicationId);
     }
 
     match /teachers/{teacherId} {
       allow read: if true;
-      allow create, update: if isAdmin() && isValidTeacher(request.resource.data);
+      allow create, update: if isAdmin() && isValidTeacher(request.resource.data) && isValidId(teacherId);
       allow delete: if isAdmin();
     }
 
     match /teacherAttendance/{recordId} {
-      allow read, delete: if isAdmin();
-      allow create: if isValidAttendance(request.resource.data);
+      allow get, list, delete: if isAdmin();
+      allow create: if isValidAttendance(request.resource.data) && isValidId(recordId);
     }
 
     match /stlMembers/{id} {
       allow read: if true;
-      allow create, update: if isAdmin() && isValidSimpleMember(request.resource.data);
+      allow create, update: if isAdmin() && isValidSimpleMember(request.resource.data) && isValidId(id);
       allow delete: if isAdmin();
     }
 
     match /stlAttendance/{id} {
-      allow read, delete: if isAdmin();
-      allow create: if isValidSimpleAttendance(request.resource.data);
+      allow get, list, delete: if isAdmin();
+      allow create: if isValidSimpleAttendance(request.resource.data) && isValidId(id);
     }
 
     match /demoMembers/{id} {
       allow read: if true;
-      allow create, update: if isAdmin() && isValidSimpleMember(request.resource.data);
+      allow create, update: if isAdmin() && isValidSimpleMember(request.resource.data) && isValidId(id);
       allow delete: if isAdmin();
     }
 
     match /demoAttendance/{id} {
-      allow read, delete: if isAdmin();
-      allow create: if isValidSimpleAttendance(request.resource.data);
+      allow get, list, delete: if isAdmin();
+      allow create: if isValidSimpleAttendance(request.resource.data) && isValidId(id);
     }
 
     match /leaderRanking/{id} {
       allow read: if true;
       allow update: if isAdmin() || (
         get(/databases/$(database)/documents/config/global).data.timerActive == true &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['score'])
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['score', 'leads'])
       );
-      allow create: if isAdmin() && isValidRankingMember(request.resource.data);
+      allow create: if isAdmin() && isValidRankingMember(request.resource.data) && isValidId(id);
       allow delete: if isAdmin();
     }
 
@@ -184,16 +219,20 @@ service cloud.firestore {
       allow read: if true;
       allow update: if isAdmin() || (
         get(/databases/$(database)/documents/config/global).data.timerActive == true &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['score'])
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['score', 'leads'])
       );
-      allow create: if isAdmin() && isValidRankingMember(request.resource.data);
+      allow create: if isAdmin() && isValidRankingMember(request.resource.data) && isValidId(id);
       allow delete: if isAdmin();
     }
 
     match /quickLinks/{id} {
       allow read: if true;
-      allow create, update: if isAdmin() && isValidQuickLink(request.resource.data);
+      allow create, update: if isAdmin() && isValidQuickLink(request.resource.data) && isValidId(id);
       allow delete: if isAdmin();
+    }
+
+    match /systemConfig/{id} {
+      allow read, write: if isAdmin();
     }
   }
 }

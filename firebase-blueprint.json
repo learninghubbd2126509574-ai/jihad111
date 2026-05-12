@@ -147,11 +147,12 @@
     },
     "RankingMember": {
       "title": "RankingMember",
-      "description": "A member in a ranking board with a score.",
+      "description": "A member in a ranking board with a score and optional leads for tie-breakers.",
       "type": "object",
       "properties": {
         "name": { "type": "string" },
-        "score": { "type": "number" },
+        "score": { "type": "number", "description": "Number of converts" },
+        "leads": { "type": "number", "description": "Number of personal leads (tie-breaker)" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["name", "score"]
@@ -166,6 +167,20 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["name", "url"]
+    },
+    "UserRegistration": {
+      "title": "UserRegistration",
+      "description": "A registration request or active user profile.",
+      "type": "object",
+      "properties": {
+        "fullName": { "type": "string" },
+        "whatsapp": { "type": "string" },
+        "position": { "type": "string", "enum": ["Team Leader", "Team Trainer", "STL", "Teacher", "Counsellor"] },
+        "password": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "active", "blocked"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["fullName", "whatsapp", "position", "password", "status"]
     }
   },
   "firestore": {
@@ -224,6 +239,14 @@
     "/quickLinks/{id}": {
       "schema": "QuickLink",
       "description": "Collection of quick access links managed by admin."
+    },
+    "/pendingRegistrations/{id}": {
+      "schema": "UserRegistration",
+      "description": "Queue for new user registration approvals."
+    },
+    "/registeredUsers/{whatsapp}": {
+      "schema": "UserRegistration",
+      "description": "Active approved users, indexed by WhatsApp number."
     }
   }
 }
