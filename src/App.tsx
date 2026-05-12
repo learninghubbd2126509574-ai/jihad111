@@ -86,7 +86,8 @@ import {
   Link,
   UserPlus,
   Eye,
-  EyeOff
+  EyeOff,
+  Power
 } from 'lucide-react';
 
 // --- Types ---
@@ -239,6 +240,7 @@ interface Config {
   isLocked?: boolean;
   stlActive?: boolean;
   demoActive?: boolean;
+  teacherActive?: boolean;
   leaderRankingActive?: boolean;
   trainerRankingActive?: boolean;
   socialLinks?: SocialLinks;
@@ -2146,7 +2148,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* Header */}
-      <header className="sticky top-0 z-[200] bg-bg/90 backdrop-blur-2xl border-b border-border/20 px-4 sm:px-6 pt-6 sm:pt-10 h-20 sm:h-28 flex items-center justify-between shadow-2xl transition-all">
+      <header className="sticky top-0 z-[200] bg-bg/90 backdrop-blur-2xl border-b border-border/20 px-4 sm:px-6 h-16 sm:h-20 flex items-center justify-between shadow-2xl transition-all">
         <div className="flex items-center gap-2 sm:gap-3">
           <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-gold to-gold2 flex items-center justify-center font-serif font-black text-bg text-base sm:text-lg shadow-[0_0_18px_rgba(245,200,66,0.25)]">
             U
@@ -2315,40 +2317,40 @@ export default function App() {
                   <ChevronRight size={18} className="text-muted-main group-hover:text-gold" />
                 </button>
 
-                {hasStlAccess && (
-                  <>
-                    <button 
-                      onClick={() => { setShowMenu(false); setShowSTLModal(true); }}
-                      className="w-full flex items-center justify-between p-4 rounded-2xl bg-blue-accent/10 border border-blue-accent/30 hover:bg-blue-accent/20 group transition-all"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-blue-accent text-bg flex items-center justify-center shadow-lg">
-                          <Users size={20} />
-                        </div>
-                        <div className="text-left">
-                          <span className="block text-sm font-black text-blue-accent">STL Meeting</span>
-                          <span className="block text-[10px] text-white/60 uppercase font-black">Attendance System</span>
-                        </div>
+                {(hasStlAccess || config.stlActive) && (
+                  <button 
+                    onClick={() => { setShowMenu(false); setShowSTLModal(true); }}
+                    className="w-full flex items-center justify-between p-4 rounded-2xl bg-blue-accent/10 border border-blue-accent/30 hover:bg-blue-accent/20 group transition-all"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-blue-accent text-bg flex items-center justify-center shadow-lg">
+                        <Users size={20} />
                       </div>
-                      <ChevronRight size={18} className="text-blue-accent" />
-                    </button>
+                      <div className="text-left">
+                        <span className="block text-sm font-black text-blue-accent">STL Meeting</span>
+                        <span className="block text-[10px] text-white/60 uppercase font-black">Attendance System</span>
+                      </div>
+                    </div>
+                    <ChevronRight size={18} className="text-blue-accent" />
+                  </button>
+                )}
 
-                    <button 
-                      onClick={() => { setShowMenu(false); setShowDemoModal(true); }}
-                      className="w-full flex items-center justify-between p-4 rounded-2xl bg-green-500/10 border border-green-500/30 hover:bg-green-500/20 group transition-all"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-green-500 text-bg flex items-center justify-center shadow-lg">
-                          <Presentation size={20} />
-                        </div>
-                        <div className="text-left">
-                          <span className="block text-sm font-black text-green-500">Demo</span>
-                          <span className="block text-[10px] text-white/60 uppercase font-black">Attendance System</span>
-                        </div>
+                {(hasStlAccess || config.demoActive) && (
+                  <button 
+                    onClick={() => { setShowMenu(false); setShowDemoModal(true); }}
+                    className="w-full flex items-center justify-between p-4 rounded-2xl bg-green-500/10 border border-green-500/30 hover:bg-green-500/20 group transition-all"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-green-500 text-bg flex items-center justify-center shadow-lg">
+                        <Presentation size={20} />
                       </div>
-                      <ChevronRight size={18} className="text-green-500" />
-                    </button>
-                  </>
+                      <div className="text-left">
+                        <span className="block text-sm font-black text-green-500">Demo</span>
+                        <span className="block text-[10px] text-white/60 uppercase font-black">Attendance System</span>
+                      </div>
+                    </div>
+                    <ChevronRight size={18} className="text-green-500" />
+                  </button>
                 )}
 
                 <button 
