@@ -886,10 +886,7 @@ export default function App() {
 
   const [pendingUsers, setPendingUsers] = useState<UserRegistration[]>([]);
   const [approvedUsers, setApprovedUsers] = useState<UserRegistration[]>([]);
-  const [authenticatedUser, setAuthenticatedUser] = useState<UserRegistration | null>(() => {
-    const saved = localStorage.getItem('unity_user');
-    return saved ? JSON.parse(saved) : null;
-  });
+  const [authenticatedUser, setAuthenticatedUser] = useState<UserRegistration | null>(null);
 
   const [leaderRanking, setLeaderRanking] = useState<RankingMember[]>([]);
   const [trainerRanking, setTrainerRanking] = useState<RankingMember[]>([]);
@@ -905,24 +902,15 @@ export default function App() {
   
   const [showConfirm, setShowConfirm] = useState<{ title: string, onConfirm: () => void } | null>(null);
   const [siteAuthenticated, setSiteAuthenticated] = useState(false);
-  const [stlAuthenticated, setStlAuthenticated] = useState(() => localStorage.getItem('stlAuth') === 'true');
+  const [stlAuthenticated, setStlAuthenticated] = useState(false);
   const [showStlLoginModal, setShowStlLoginModal] = useState(false);
 
   // Admin check
-  const adminEmail = "learninghubbd2126509574@gmail.com";
+  const adminEmail = "admin@gmail.com";
   const devEmail = "learninghubbd2126509574@gmail.com";
   // Initial password - this will be synced with Firestore if it exists
   const initialAdminPass = "jihaD12@#";
-  const [isAdmin, setIsAdmin] = useState(() => {
-    const saved = localStorage.getItem('isAdmin');
-    const userJson = localStorage.getItem('unity_user');
-    if (saved === 'true') return true;
-    if (userJson) {
-      const u = JSON.parse(userJson);
-      return u.whatsapp === adminEmail || u.email === adminEmail || u.email === devEmail;
-    }
-    return false;
-  });
+  const [isAdmin, setIsAdmin] = useState(false);
   const hasStlAccess = isAdmin || stlAuthenticated;
 
   useEffect(() => {
@@ -930,6 +918,12 @@ export default function App() {
   }, [isAdmin]);
 
   useEffect(() => {
+    // Clear login persistence on every refresh/link click
+    localStorage.removeItem('isAdmin');
+    localStorage.removeItem('unity_user');
+    localStorage.removeItem('stlAuth');
+    localStorage.removeItem('stl_user');
+    
     // Force loading screen to disappear after 1 second for better UX
     const timer = setTimeout(() => {
       setIsAuthReady(true);
@@ -968,11 +962,7 @@ export default function App() {
 
     const unsubscribe = onAuthStateChanged(auth, (u) => {
       setUser(u);
-      const isAdm = u?.email === adminEmail || u?.email === devEmail;
-      if (isAdm) {
-        setIsAdmin(true);
-        setSiteAuthenticated(true);
-      }
+      // Removed automatic admin grant to require manual login every time
       setIsAuthReady(true);
     });
     return () => unsubscribe();
@@ -1178,8 +1168,7 @@ export default function App() {
   }, [config]);
 
   useEffect(() => {
-    if (!isAdmin) return;
-
+    // Removed isAdmin restriction so any client can trigger it if enabled
     const interval = setInterval(async () => {
       const currentConfig = configRef.current;
       if (!currentConfig || !currentConfig.autoTimerEnabled || !currentConfig.autoTimerTime) return;
@@ -5872,7 +5861,7 @@ function SiteLock({ correctPassword, onUnlock, onAdminLogin }: { correctPassword
                       <Shield size={14} /> Admin Access
                     </button>
                     <button 
-                      onClick={() => { auth.signOut(); setShowMenu(false); window.location.reload(); }}
+                      onClick={() => { auth.signOut(); window.location.reload(); }}
                       className="w-full bg-red-accent/10 border border-red-accent/20 text-red-accent font-['Syne'] font-bold py-3.5 rounded-[12px] hover:bg-red-accent hover:text-bg transition-all text-[11px] uppercase tracking-widest flex items-center justify-center gap-2"
                     >
                       <LogOut size={14} />Logout
