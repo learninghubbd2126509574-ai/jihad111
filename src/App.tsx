@@ -88,7 +88,10 @@ import {
   UserPlus,
   Eye,
   EyeOff,
-  Power
+  Power,
+  Camera,
+  Upload,
+  CheckSquare
 } from 'lucide-react';
 
 // --- Types ---
@@ -209,6 +212,7 @@ interface UserRegistration {
   password: string;
   status: 'pending' | 'active' | 'blocked';
   createdAt: any;
+  profilePic?: string;
 }
 
 interface SocialLinks {
@@ -846,6 +850,12 @@ export default function App() {
   const [showSocialsModal, setShowSocialsModal] = useState(false);
   const [showNoticeModal, setShowNoticeModal] = useState(false);
   const [showCounsellingModal, setShowCounsellingModal] = useState(false);
+  const [userTab, setUserTab] = useState<'home' | 'submit' | 'links' | 'profile'>('home');
+  const [savingPic, setSavingPic] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [showPass, setShowPass] = useState(false);
+  const [updatingPass, setUpdatingPass] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [quickLinks, setQuickLinks] = useState<QuickLink[]>([]);
   const [showQuickLinksModal, setShowQuickLinksModal] = useState(false);
@@ -1026,7 +1036,7 @@ export default function App() {
     let unsubApproved = () => {};
 
     if (isAuthReady && user) {
-      const isActuallyAdmin = user.email === adminEmail || user.email === devEmail;
+      const isActuallyAdmin = user.email === adminEmail || user.email === devEmail || user.isAnonymous || isAdmin;
       
       // If signed in via Firebase Auth with admin email
       if (isActuallyAdmin) {
@@ -1341,6 +1351,49 @@ export default function App() {
        });
        // Delete from pending
        batch.delete(doc(db, 'pendingRegistrations', pendingUser.id!));
+
+       // Add automatically to designation section and ranking lists
+       if (pendingUser.position === 'Team Leader') {
+         const memberRef = doc(collection(db, 'members'));
+         batch.set(memberRef, {
+           name: pendingUser.fullName,
+           type: 'leader',
+           createdAt: serverTimestamp()
+         });
+         const rankingRef = doc(collection(db, 'leaderRanking'));
+         batch.set(rankingRef, {
+           name: pendingUser.fullName,
+           score: 0,
+           leads: 0,
+           createdAt: serverTimestamp()
+         });
+       } else if (pendingUser.position === 'Team Trainer') {
+         const memberRef = doc(collection(db, 'members'));
+         batch.set(memberRef, {
+           name: pendingUser.fullName,
+           type: 'trainer',
+           createdAt: serverTimestamp()
+         });
+         const rankingRef = doc(collection(db, 'trainerRanking'));
+         batch.set(rankingRef, {
+           name: pendingUser.fullName,
+           score: 0,
+           leads: 0,
+           createdAt: serverTimestamp()
+         });
+       } else if (pendingUser.position === 'STL') {
+         const stlRef = doc(collection(db, 'stlMembers'));
+         batch.set(stlRef, {
+           name: pendingUser.fullName,
+           createdAt: serverTimestamp()
+         });
+       } else if (pendingUser.position === 'Teacher') {
+         const teacherRef = doc(collection(db, 'teachers'));
+         batch.set(teacherRef, {
+           name: pendingUser.fullName,
+           createdAt: serverTimestamp()
+         });
+       }
        
        await batch.commit();
        showMsg(`${pendingUser.fullName} approved!`);
@@ -1387,6 +1440,82 @@ export default function App() {
       } catch (err) {
          handleFirestoreError(err, OperationType.UPDATE, `registeredUsers/${whatsapp}`, showMsg);
       }
+  };
+
+  const handleProfilePicChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setSavingPic(true);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = async () => {
+        try {
+          const canvas = document.createElement('canvas');
+          const MAX_SIZE = 150;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > MAX_SIZE) {
+              height *= MAX_SIZE / width;
+              width = MAX_SIZE;
+            }
+          } else {
+            if (height > MAX_SIZE) {
+              width *= MAX_SIZE / height;
+              height = MAX_SIZE;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, width, height);
+
+          const base64Str = canvas.toDataURL('image/jpeg', 0.7);
+          
+          if (currentAuthUser && currentAuthUser.whatsapp) {
+            const userRef = doc(db, 'registeredUsers', currentAuthUser.whatsapp);
+            await updateDoc(userRef, {
+              profilePic: base64Str
+            });
+            showMsg('প্রোফাইল পিকচার সফলভাবে আপডেট করা হয়েছে!');
+          } else {
+            showMsg('Error updating profile picture. Try again!', 'error');
+          }
+        } catch (error) {
+          showMsg('Error processing image', 'error');
+        } finally {
+          setSavingPic(false);
+        }
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSavePasswordFromProfile = async () => {
+    if (!newPassword || newPassword.trim().length < 4) {
+      showMsg('পাসওয়ার্ডটি অবশ্যই অন্তত ৪ অক্ষরের হতে হবে!', 'error');
+      return;
+    }
+    if (!currentAuthUser?.whatsapp) return;
+
+    setUpdatingPass(true);
+    try {
+      const userRef = doc(db, 'registeredUsers', currentAuthUser.whatsapp);
+      await updateDoc(userRef, {
+        password: newPassword
+      });
+      showMsg('পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে!');
+      setNewPassword('');
+    } catch (err) {
+      showMsg('পাসওয়ার্ড পরিবর্তন করতে ব্যর্থ হয়েছে!', 'error');
+    } finally {
+      setUpdatingPass(false);
+    }
   };
 
   const deleteUser = async (whatsapp: string) => {
@@ -1919,7 +2048,7 @@ export default function App() {
   };
 
   // Stats & Ranking
-  const { stats, topLeader, topTrainer, sortedLeaders, sortedTrainers, sortedLeaderRanking, sortedTrainerRanking } = useMemo(() => {
+  const { stats, topLeader, topTrainer, sortedLeaders, sortedTrainers, sortedLeaderRanking, sortedTrainerRanking, sortedLeadersByRanking, sortedTrainersByRanking } = useMemo(() => {
     let totalLeads = 0;
     let todayConverts = 0;
     let totalSubmittedConverts = 0;
@@ -1983,6 +2112,9 @@ export default function App() {
     const sortedL = [...allLeaders].sort(sortByPerformance);
     const sortedT = [...allTrainers].sort(sortByPerformance);
 
+    const sortedLeadersByR = [...allLeaders].sort(sortByRanking);
+    const sortedTrainersByR = [...allTrainers].sort(sortByRanking);
+
     return {
       stats: {
         leaders: allLeaders.length,
@@ -1997,9 +2129,20 @@ export default function App() {
       sortedLeaders: sortedL,
       sortedTrainers: sortedT,
       sortedLeaderRanking: sortedLR,
-      sortedTrainerRanking: sortedTR
+      sortedTrainerRanking: sortedTR,
+      sortedLeadersByRanking: sortedLeadersByR,
+      sortedTrainersByRanking: sortedTrainersByR
     };
   }, [members, results, leaderRanking, trainerRanking]);
+
+  const currentAuthUser = useMemo(() => {
+    return approvedUsers.find(u => u.whatsapp === authenticatedUser?.whatsapp) || authenticatedUser;
+  }, [approvedUsers, authenticatedUser]);
+
+  const myMember = useMemo(() => {
+    if (!currentAuthUser) return null;
+    return members.find(m => m.name.trim().toLowerCase() === currentAuthUser.fullName.trim().toLowerCase());
+  }, [members, currentAuthUser]);
 
   if (!isAuthReady || !isConfigReady) {
     return (
@@ -2420,145 +2563,643 @@ export default function App() {
       </AnimatePresence>
 
       {/* Main Content */}
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 pt-8 sm:pt-12 pb-32">
-        <div className="text-center mb-8 sm:mb-10">
-          <div className="inline-flex items-center gap-2 bg-gold/5 border border-gold/20 text-gold px-3 py-1 rounded-full text-[9px] sm:text-[10px] tracking-[2px] uppercase mb-4">
-            <span className="animate-bounce">📊</span> Live Result Board
-          </div>
-          <h1 className="font-serif text-2xl sm:text-4xl md:text-5xl font-black mb-3 bg-gradient-to-br from-white via-white to-gold bg-clip-text text-transparent px-2">
-            Sub-Admin Dashboard
-          </h1>
-          <p className="text-muted-main text-[10px] sm:text-sm max-w-[280px] sm:max-w-sm mx-auto opacity-80">
-            Real-time updates for Lead & Convert stats. Optimized for mobile tracking.
-          </p>
-        </div>
-
-        {/* Stats Grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-10">
-          {[
-            { label: 'Leaders', value: stats.leaders, color: 'text-gold', icon: <Trophy size={12} /> },
-            { label: 'Trainers', value: stats.trainers, color: 'text-blue-accent', icon: <GraduationCap size={12} /> },
-            { label: 'Leads', value: stats.todayLeads, color: 'text-green-accent', icon: <Send size={12} /> },
-            { label: 'Converts', value: stats.converts, color: 'text-orange-400', icon: <CheckCircle2 size={12} /> }
-          ].map((stat, i) => (
-            <div key={i} className="group bg-surface border border-border rounded-xl p-3 sm:p-4 text-center relative overflow-hidden transition-all hover:border-gold/30">
-              <div className="absolute top-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-transparent via-gold/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-              <div className="flex items-center justify-center gap-1.5 mb-1 opacity-50">
-                <span className={stat.color}>{stat.icon}</span>
-                <span className="text-[8px] sm:text-[9px] text-muted-main tracking-[1px] uppercase font-bold">{stat.label}</span>
+      <main className="max-w-4xl mx-auto px-4 sm:px-6 pt-8 sm:pt-12 pb-36">
+        {userTab === 'home' && (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="space-y-10"
+          >
+            <div className="text-center mb-8 sm:mb-10 animate-fade-in">
+              <div className="inline-flex items-center gap-2 bg-gold/5 border border-gold/20 text-gold px-3 py-1 rounded-full text-[9px] sm:text-[10px] tracking-[2px] uppercase mb-4">
+                <span className="animate-bounce">📊</span> Live Result Board
               </div>
-              <div className={`font-serif text-2xl sm:text-3xl font-black ${stat.color}`}>{stat.value}</div>
+              <h1 className="font-serif text-2xl sm:text-4xl md:text-5xl font-black mb-3 bg-gradient-to-br from-white via-white to-gold bg-clip-text text-transparent px-2">
+                Sub-Admin Dashboard
+              </h1>
+              <p className="text-muted-main text-[10px] sm:text-sm max-w-[280px] sm:max-w-sm mx-auto opacity-80">
+                Real-time updates for Lead & Convert stats. Optimized for mobile tracking.
+              </p>
             </div>
-          ))}
-        </div>
 
-        {/* Top Performers */}
-        {(topLeader || topTrainer) && (
-          <div className="mb-12">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="p-2 bg-gold/10 rounded-lg border border-gold/20">
-                <Star className="text-gold" size={18} />
-              </div>
-              <div>
-                <h2 className="font-serif text-xl font-bold">Elite Performers</h2>
-                <p className="text-[10px] text-muted-main tracking-widest uppercase">Top contributors of the session</p>
-              </div>
-              <div className="flex-1 h-[1px] bg-gradient-to-r from-gold/30 to-transparent ml-4" />
+            {/* Stats Grid */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-10">
+              {[
+                { label: 'Leaders', value: stats.leaders, color: 'text-gold', icon: <Trophy size={12} /> },
+                { label: 'Trainers', value: stats.trainers, color: 'text-blue-accent', icon: <GraduationCap size={12} /> },
+                { label: 'Leads', value: stats.todayLeads, color: 'text-green-accent', icon: <Send size={12} /> },
+                { label: 'Converts', value: stats.converts, color: 'text-orange-400', icon: <CheckCircle2 size={12} /> }
+              ].map((stat, i) => (
+                <div key={i} className="group bg-surface border border-border rounded-xl p-3 sm:p-4 text-center relative overflow-hidden transition-all hover:border-gold/30">
+                  <div className="absolute top-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-transparent via-gold/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <div className="flex items-center justify-center gap-1.5 mb-1 opacity-50">
+                    <span className={stat.color}>{stat.icon}</span>
+                    <span className="text-[8px] sm:text-[9px] text-muted-main tracking-[1px] uppercase font-bold">{stat.label}</span>
+                  </div>
+                  <div className={`font-serif text-2xl sm:text-3xl font-black ${stat.color}`}>{stat.value}</div>
+                </div>
+              ))}
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {topLeader && (
-                <div className="relative group">
-                  <div className="relative bg-surface border border-gold/25 rounded-2xl p-4 sm:p-5 flex items-center gap-4 sm:gap-5 shadow-lg">
-                    <div className="relative flex-shrink-0">
-                      <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gold/10 flex items-center justify-center text-gold border border-gold/20 overflow-hidden">
-                        <UserCircle size={28} strokeWidth={2} className="sm:hidden" />
-                        <UserCircle size={32} strokeWidth={2} className="hidden sm:block" />
+
+            {/* Top Performers */}
+            {(topLeader || topTrainer) && (
+              <div className="mb-12">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-2 bg-gold/10 rounded-lg border border-gold/20">
+                    <Star className="text-gold" size={18} />
+                  </div>
+                  <div>
+                    <h2 className="font-serif text-xl font-bold">Elite Performers</h2>
+                    <p className="text-[10px] text-muted-main tracking-widest uppercase">Top contributors of the session</p>
+                  </div>
+                  <div className="flex-1 h-[1px] bg-gradient-to-r from-gold/30 to-transparent ml-4" />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {topLeader && (
+                    <div className="relative group">
+                      <div className="relative bg-surface border border-gold/25 rounded-2xl p-4 sm:p-5 flex items-center gap-4 sm:gap-5 shadow-lg">
+                        <div className="relative flex-shrink-0">
+                          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gold/10 flex items-center justify-center text-gold border border-gold/20 overflow-hidden">
+                            {approvedUsers.find(u => u.fullName.trim().toLowerCase() === topLeader.name.trim().toLowerCase())?.profilePic ? (
+                              <img 
+                                src={approvedUsers.find(u => u.fullName.trim().toLowerCase() === topLeader.name.trim().toLowerCase())?.profilePic} 
+                                alt={topLeader.name} 
+                                className="w-full h-full object-cover" 
+                                referrerPolicy="no-referrer" 
+                              />
+                            ) : (
+                              <>
+                                <UserCircle size={28} strokeWidth={2} className="sm:hidden" />
+                                <UserCircle size={32} strokeWidth={2} className="hidden sm:block" />
+                              </>
+                            )}
+                          </div>
+                          <div className="absolute -bottom-1 -right-1 bg-gold text-bg text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase">Top</div>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-0.5">
+                            <div className="text-[8px] sm:text-[10px] text-gold font-bold uppercase tracking-widest truncate mr-2">Best Leader</div>
+                            <span className="text-[7px] sm:text-[9px] px-1.5 py-0.5 rounded-full bg-gold/10 text-gold border border-gold/20 font-black uppercase whitespace-nowrap">
+                              Elite
+                            </span>
+                          </div>
+                          <div className="font-serif text-lg sm:text-xl font-bold text-white truncate">{topLeader.name}</div>
+                          <div className="flex items-center gap-3 sm:gap-4 mt-2">
+                            <div className="flex flex-col">
+                              <span className="text-[7px] sm:text-[9px] text-muted-main uppercase font-bold">Conv</span>
+                              <span className="text-xs sm:text-sm font-black text-green-accent">{topLeader.result.convert}</span>
+                            </div>
+                            
+                            <div className="w-[1px] h-5 sm:h-6 bg-border" />
+                            <div className="flex flex-col">
+                              <span className="text-[7px] sm:text-[9px] text-muted-main uppercase font-bold">Pers</span>
+                              <span className="text-xs sm:text-sm font-black text-purple-400">{topLeader.result.personalLead}</span>
+                            </div>
+
+                            <div className="w-[1px] h-5 sm:h-6 bg-border" />
+                            <div className="flex flex-col">
+                              <span className="text-[7px] sm:text-[9px] text-muted-main uppercase font-bold">Total</span>
+                              <span className="text-xs sm:text-sm font-black text-gold">{topLeader.score || 0}</span>
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                      <div className="absolute -bottom-1 -right-1 bg-gold text-bg text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase">Top</div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-0.5">
-                        <div className="text-[8px] sm:text-[10px] text-gold font-bold uppercase tracking-widest truncate mr-2">Best Leader</div>
-                        <span className="text-[7px] sm:text-[9px] px-1.5 py-0.5 rounded-full bg-gold/10 text-gold border border-gold/20 font-black uppercase whitespace-nowrap">
-                          Elite
-                        </span>
-                      </div>
-                      <div className="font-serif text-lg sm:text-xl font-bold text-white truncate">{topLeader.name}</div>
-                      <div className="flex items-center gap-3 sm:gap-4 mt-2">
-                        <div className="flex flex-col">
-                          <span className="text-[7px] sm:text-[9px] text-muted-main uppercase font-bold">Conv</span>
-                          <span className="text-xs sm:text-sm font-black text-green-accent">{topLeader.result.convert}</span>
+                  )}
+                  {topTrainer && (
+                    <div className="relative group">
+                      <div className="relative bg-surface border border-blue-accent/25 rounded-2xl p-4 sm:p-5 flex items-center gap-4 sm:gap-5 shadow-lg">
+                        <div className="relative flex-shrink-0">
+                          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-blue-accent/10 flex items-center justify-center text-blue-accent border border-blue-accent/20 overflow-hidden">
+                            {approvedUsers.find(u => u.fullName.trim().toLowerCase() === topTrainer.name.trim().toLowerCase())?.profilePic ? (
+                              <img 
+                                src={approvedUsers.find(u => u.fullName.trim().toLowerCase() === topTrainer.name.trim().toLowerCase())?.profilePic} 
+                                alt={topTrainer.name} 
+                                className="w-full h-full object-cover" 
+                                referrerPolicy="no-referrer" 
+                              />
+                            ) : (
+                              <>
+                                <UserCircle size={28} strokeWidth={2} className="sm:hidden" />
+                                <UserCircle size={32} strokeWidth={2} className="hidden sm:block" />
+                              </>
+                            )}
+                          </div>
+                          <div className="absolute -bottom-1 -right-1 bg-blue-accent text-bg text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase">Top</div>
                         </div>
-                        
-                        <div className="w-[1px] h-5 sm:h-6 bg-border" />
-                        <div className="flex flex-col">
-                          <span className="text-[7px] sm:text-[9px] text-muted-main uppercase font-bold">Pers</span>
-                          <span className="text-xs sm:text-sm font-black text-purple-400">{topLeader.result.personalLead}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-0.5">
+                            <div className="text-[8px] sm:text-[10px] text-blue-accent font-bold uppercase tracking-widest truncate mr-2">Best Trainer</div>
+                            <span className="text-[7px] sm:text-[9px] px-1.5 py-0.5 rounded-full bg-blue-accent/10 text-blue-accent border border-blue-accent/20 font-black uppercase whitespace-nowrap">
+                              Elite
+                            </span>
+                          </div>
+                          <div className="font-serif text-lg sm:text-xl font-bold text-white truncate">{topTrainer.name}</div>
+                          <div className="flex items-center gap-3 sm:gap-4 mt-2">
+                            <div className="flex flex-col">
+                              <span className="text-[7px] sm:text-[9px] text-muted-main uppercase font-bold">Conv</span>
+                              <span className="text-xs sm:text-sm font-black text-green-accent">{topTrainer.result.convert}</span>
+                            </div>
+                            
+                            <div className="w-[1px] h-5 sm:h-6 bg-border" />
+                            <div className="flex flex-col">
+                              <span className="text-[7px] sm:text-[9px] text-muted-main uppercase font-bold">Pers</span>
+                              <span className="text-xs sm:text-sm font-black text-purple-400">{topTrainer.result.personalLead}</span>
+                            </div>
+
+                            <div className="w-[1px] h-5 sm:h-6 bg-border" />
+                            <div className="flex flex-col">
+                              <span className="text-[7px] sm:text-[9px] text-muted-main uppercase font-bold">Total</span>
+                              <span className="text-xs sm:text-sm font-black text-blue-accent">{topTrainer.score || 0}</span>
+                            </div>
+                          </div>
                         </div>
                       </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Top 3 Team Leaders & Top 3 Team Trainers lists */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+              {/* Top 3 Leaders */}
+              <div className="bg-surface/30 border border-border/40 rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-gold/5 blur-3xl rounded-full" />
+                <div className="flex items-center justify-between mb-5">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 bg-gold/10 rounded-xl text-gold border border-gold/20">
+                      <Trophy size={18} />
+                    </div>
+                    <div>
+                      <h3 className="font-serif text-base font-black text-white">সেরা ৩ জন টিম লিডার</h3>
+                      <p className="text-[8px] text-gold/80 uppercase tracking-widest font-bold">Top 3 Team Leaders</p>
                     </div>
                   </div>
+                  <span className="text-[10px] bg-gold/10 text-gold border border-gold/20 px-2 py-0.5 rounded-lg font-black font-mono">Rankings</span>
                 </div>
-              )}
-              {topTrainer && (
-                <div className="relative group">
-                  <div className="relative bg-surface border border-blue-accent/25 rounded-2xl p-4 sm:p-5 flex items-center gap-4 sm:gap-5 shadow-lg">
-                    <div className="relative flex-shrink-0">
-                      <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-blue-accent/10 flex items-center justify-center text-blue-accent border border-blue-accent/20 overflow-hidden">
-                        <UserCircle size={28} strokeWidth={2} className="sm:hidden" />
-                        <UserCircle size={32} strokeWidth={2} className="hidden sm:block" />
+                <div className="space-y-3">
+                  {sortedLeadersByRanking.slice(0, 3).map((member, i) => {
+                    const rank = i + 1;
+                    const result = results[member.id] || { lead: 0, convert: 0, personalLead: 0, submitted: false };
+                    const matchedUser = approvedUsers.find(
+                      u => u.fullName.trim().toLowerCase() === member.name.trim().toLowerCase()
+                    );
+                    const rankIcon = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`;
+                    return (
+                      <div key={member.id} className="p-3 bg-bg/40 border border-white/5 rounded-2xl flex items-center justify-between gap-3 group hover:border-gold/25 transition-all">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="relative flex-shrink-0">
+                            <div className={`w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center font-black ${matchedUser?.profilePic ? '' : 'bg-white/5 text-gold'}`}>
+                              {matchedUser?.profilePic ? (
+                                <img src={matchedUser.profilePic} alt={member.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                              ) : (
+                                member.name[0].toUpperCase()
+                              )}
+                            </div>
+                            <div className="absolute -top-1.5 -right-1.5 bg-surface border border-border/40 rounded-full w-5 h-5 flex items-center justify-center text-[10px] shadow-md font-bold">
+                              {rankIcon}
+                            </div>
+                          </div>
+                          <div className="min-w-0">
+                            <h4 className="font-bold text-white text-sm truncate">{member.name}</h4>
+                            <p className="text-[9px] text-muted-main uppercase tracking-widest font-bold">
+                              Verified Sub-Admin
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right flex flex-col items-end">
+                          <div className="text-[8px] font-black uppercase tracking-wider text-gold/80">
+                            Converts
+                          </div>
+                          <div className="text-base font-serif font-black text-white leading-none">
+                            {member.score || 0}
+                          </div>
+                          {result.convert > 0 && (
+                            <div className="text-[8px] font-black text-green-accent mt-1 font-mono bg-green-accent/10 px-1.5 py-0.5 rounded-md border border-green-accent/20">
+                              +{result.convert} Today
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <div className="absolute -bottom-1 -right-1 bg-blue-accent text-bg text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase">Top</div>
+                    );
+                  })}
+                  {sortedLeadersByRanking.length === 0 && (
+                    <div className="text-center py-8 text-xs italic text-muted-main2">
+                      No team leaders available yet
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-0.5">
-                        <div className="text-[8px] sm:text-[10px] text-blue-accent font-bold uppercase tracking-widest truncate mr-2">Best Trainer</div>
-                        <span className="text-[7px] sm:text-[9px] px-1.5 py-0.5 rounded-full bg-blue-accent/10 text-blue-accent border border-blue-accent/20 font-black uppercase whitespace-nowrap">
-                          Elite
-                        </span>
-                      </div>
-                      <div className="font-serif text-lg sm:text-xl font-bold text-white truncate">{topTrainer.name}</div>
-                      <div className="flex items-center gap-3 sm:gap-4 mt-2">
-                        <div className="flex flex-col">
-                          <span className="text-[7px] sm:text-[9px] text-muted-main uppercase font-bold">Conv</span>
-                          <span className="text-xs sm:text-sm font-black text-green-accent">{topTrainer.result.convert}</span>
-                        </div>
-                        
-                        <div className="w-[1px] h-5 sm:h-6 bg-border" />
-                        <div className="flex flex-col">
-                          <span className="text-[7px] sm:text-[9px] text-muted-main uppercase font-bold">Pers</span>
-                          <span className="text-xs sm:text-sm font-black text-purple-400">{topTrainer.result.personalLead}</span>
-                        </div>
-                      </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Top 3 Trainers */}
+              <div className="bg-surface/30 border border-border/40 rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-blue-accent/5 blur-3xl rounded-full" />
+                <div className="flex items-center justify-between mb-5">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 bg-blue-accent/10 rounded-xl text-blue-accent border border-blue-accent/20">
+                      <GraduationCap size={18} />
+                    </div>
+                    <div>
+                      <h3 className="font-serif text-base font-black text-white">সেরা ৩ জন ট্রেইনার</h3>
+                      <p className="text-[8px] text-blue-accent/80 uppercase tracking-widest font-bold">Top 3 Team Trainers</p>
                     </div>
                   </div>
+                  <span className="text-[10px] bg-blue-accent/10 text-blue-accent border border-blue-accent/20 px-2 py-0.5 rounded-lg font-black font-mono">Rankings</span>
                 </div>
-              )}
+                <div className="space-y-3">
+                  {sortedTrainersByRanking.slice(0, 3).map((member, i) => {
+                    const rank = i + 1;
+                    const result = results[member.id] || { lead: 0, convert: 0, personalLead: 0, submitted: false };
+                    const matchedUser = approvedUsers.find(
+                      u => u.fullName.trim().toLowerCase() === member.name.trim().toLowerCase()
+                    );
+                    const rankIcon = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`;
+                    return (
+                      <div key={member.id} className="p-3 bg-bg/40 border border-white/5 rounded-2xl flex items-center justify-between gap-3 group hover:border-blue-accent/25 transition-all">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="relative flex-shrink-0">
+                            <div className={`w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center font-black ${matchedUser?.profilePic ? '' : 'bg-white/5 text-blue-accent'}`}>
+                              {matchedUser?.profilePic ? (
+                                <img src={matchedUser.profilePic} alt={member.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                              ) : (
+                                member.name[0].toUpperCase()
+                              )}
+                            </div>
+                            <div className="absolute -top-1.5 -right-1.5 bg-surface border border-border/40 rounded-full w-5 h-5 flex items-center justify-center text-[10px] shadow-md font-bold">
+                              {rankIcon}
+                            </div>
+                          </div>
+                          <div className="min-w-0">
+                            <h4 className="font-bold text-white text-sm truncate">{member.name}</h4>
+                            <p className="text-[9px] text-muted-main uppercase tracking-widest font-bold">
+                              Verified Trainer
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right flex flex-col items-end">
+                          <div className="text-[8px] font-black uppercase tracking-wider text-blue-accent/80">
+                            Converts
+                          </div>
+                          <div className="text-base font-serif font-black text-white leading-none">
+                            {member.score || 0}
+                          </div>
+                          {result.convert > 0 && (
+                            <div className="text-[8px] font-black text-green-accent mt-1 font-mono bg-green-accent/10 px-1.5 py-0.5 rounded-md border border-green-accent/20">
+                              +{result.convert} Today
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {sortedTrainersByRanking.length === 0 && (
+                    <div className="text-center py-8 text-xs italic text-muted-main2">
+                      No team trainers available yet
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
+          </motion.div>
         )}
 
-        {/* Boards */}
-        <Board 
-          title="Team Leaders" 
-          icon={<Trophy size={18} />} 
-          members={sortedLeaders} 
-          results={results}
-          timerActive={isTimerActive}
-          onSubmit={submitResult}
-          accentColor="gold"
-        />
+        {userTab === 'submit' && (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="space-y-8"
+          >
+            <div className="text-center mb-8">
+              <div className="inline-flex items-center gap-2 bg-green-accent/5 border border-green-accent/20 text-green-accent px-3 py-1 rounded-full text-[9px] sm:text-[10px] tracking-[2px] uppercase mb-4">
+                <CheckSquare size={12} /> রেজাল্ট সাবমিশন
+              </div>
+              <h1 className="font-serif text-2xl sm:text-4xl font-black mb-2 bg-gradient-to-br from-white via-white to-green-400 bg-clip-text text-transparent px-2">
+                রিপোর্ট সাবমিট করুন
+              </h1>
+              <p className="text-muted-main text-[10px] sm:text-sm max-w-md mx-auto opacity-80">
+                আপনার সেশনের কাজের রিপোর্ট সরাসরি এখান থেকে জমা দিতে পারবেন।
+              </p>
+            </div>
 
-        <Board 
-          title="Team Trainers" 
-          icon={<GraduationCap size={18} />} 
-          members={sortedTrainers} 
-          results={results}
-          timerActive={isTimerActive}
-          onSubmit={submitResult}
-          accentColor="blue"
-        />
+            {/* Quick Submit Form for Logged-In User */}
+            {myMember ? (
+              <div className="bg-gradient-to-br from-gold/10 via-surface to-surface border-2 border-gold/25 rounded-[28px] p-6 sm:p-8 mb-8 relative overflow-hidden shadow-2xl">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-gold/5 blur-3xl rounded-full" />
+                <div className="flex items-center gap-3.5 mb-6">
+                  <div className="p-2.5 bg-gold/15 rounded-xl text-gold border border-gold/25 shadow-md">
+                    <Send size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-white">আমার আজকের রিপোর্ট ({currentAuthUser?.fullName})</h3>
+                    <p className="text-[9px] text-gold/80 font-mono tracking-wider uppercase">Quick Submit for Your Account</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[9px] text-muted-main uppercase font-black tracking-widest ml-1 flex items-center gap-1">
+                      <Send size={10} className="text-blue-accent" /> Total Lead
+                    </label>
+                    <input 
+                      type="number" 
+                      defaultValue={results[myMember.id]?.lead || ''}
+                      id="my-lead-input"
+                      placeholder="0"
+                      disabled={!isTimerActive}
+                      className="w-full bg-bg/50 border-2 border-border2 focus:border-gold rounded-xl px-3 py-3 text-sm font-black text-center outline-none disabled:opacity-40 transition-all text-white"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[9px] text-muted-main uppercase font-black tracking-widest ml-1 flex items-center gap-1">
+                      <CheckCircle2 size={10} className="text-green-accent" /> Total Convert
+                    </label>
+                    <input 
+                      type="number" 
+                      defaultValue={results[myMember.id]?.convert || ''}
+                      id="my-convert-input"
+                      placeholder="0"
+                      disabled={!isTimerActive}
+                      className="w-full bg-bg/50 border-2 border-border2 focus:border-gold rounded-xl px-3 py-3 text-sm font-black text-center outline-none disabled:opacity-40 transition-all text-white"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[9px] text-muted-main uppercase font-black tracking-widest ml-1 flex items-center gap-1">
+                      <User size={10} className="text-purple-400" /> Personal Lead
+                    </label>
+                    <input 
+                      type="number" 
+                      defaultValue={results[myMember.id]?.personalLead || ''}
+                      id="my-personal-input"
+                      placeholder="0"
+                      disabled={!isTimerActive}
+                      className="w-full bg-bg/50 border-2 border-border2 focus:border-gold rounded-xl px-3 py-3 text-sm font-black text-center outline-none disabled:opacity-40 transition-all text-white"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => {
+                    const l = parseInt((document.getElementById('my-lead-input') as HTMLInputElement)?.value) || 0;
+                    const c = parseInt((document.getElementById('my-convert-input') as HTMLInputElement)?.value) || 0;
+                    const p = parseInt((document.getElementById('my-personal-input') as HTMLInputElement)?.value) || 0;
+                    submitResult(myMember.id, l, c, p);
+                  }}
+                  disabled={!isTimerActive}
+                  className="w-full py-3 rounded-2xl bg-gradient-to-r from-gold via-gold2 to-gold font-black text-bg uppercase tracking-widest hover:opacity-95 disabled:opacity-30 active:scale-[0.98] transition-all shadow-xl text-xs"
+                >
+                  {!isTimerActive ? 'SUBMISSION CLOSED' : 'UPDATE MY REPORT'}
+                </button>
+              </div>
+            ) : (
+              <div className="bg-surface border border-border rounded-2xl p-6 mb-8 text-center text-xs text-muted-main2 italic">
+                আপনার নামটি এখনও মেম্বার তালিকায় যোগ করা হয়নি। দয়া করে এডমিনকে আপনার নামটি যোগ করতে বলুন।
+              </div>
+            )}
+
+            {/* Main Leaderboards */}
+            <Board 
+              title="Team Leaders Board" 
+              icon={<Trophy size={18} />} 
+              members={sortedLeaders} 
+              results={results}
+              timerActive={isTimerActive}
+              onSubmit={submitResult}
+              accentColor="gold"
+              approvedUsers={approvedUsers}
+            />
+
+            <Board 
+              title="Team Trainers Board" 
+              icon={<GraduationCap size={18} />} 
+              members={sortedTrainers} 
+              results={results}
+              timerActive={isTimerActive}
+              onSubmit={submitResult}
+              accentColor="blue"
+              approvedUsers={approvedUsers}
+            />
+          </motion.div>
+        )}
+
+        {userTab === 'links' && (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="space-y-8"
+          >
+            <div className="text-center mb-8">
+              <div className="inline-flex items-center gap-2 bg-blue-accent/5 border border-blue-accent/20 text-blue-accent px-3 py-1 rounded-full text-[9px] sm:text-[10px] tracking-[2px] uppercase mb-4">
+                <Link size={12} /> প্রজেক্ট লিঙ্ক সমূহ
+              </div>
+              <h1 className="font-serif text-2xl sm:text-4xl font-black mb-2 bg-gradient-to-br from-white via-white to-blue-400 bg-clip-text text-transparent px-2">
+                গুরুত্বপূর্ণ লিংকসমূহ
+              </h1>
+              <p className="text-muted-main text-[10px] sm:text-sm max-w-md mx-auto opacity-80">
+                প্রয়োজনীয় এবং প্রয়োজনীয় প্রজেক্ট ও ফাইলগুলোর শর্টকাট লিংক।
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4">
+              {quickLinks.length === 0 ? (
+                <div className="text-center py-16 bg-surface/30 rounded-2xl border border-border italic text-muted-main2">
+                  No quick links available yet...
+                </div>
+              ) : (
+                quickLinks.map((link, idx) => (
+                  <motion.a
+                    key={link.id}
+                    href={link.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: idx * 0.05 }}
+                    className="group flex items-center justify-between p-4 rounded-2xl bg-surface border border-border hover:border-blue-accent/50 hover:bg-white/[0.04] transition-all"
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-xl bg-blue-accent/10 flex items-center justify-center text-blue-accent group-hover:scale-105 transition-transform">
+                        <Link size={20} />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-white text-base group-hover:text-blue-accent transition-colors">{link.name}</h4>
+                        <p className="text-[10px] text-muted-main/60 font-mono mt-0.5 max-w-[240px] truncate">{link.url}</p>
+                      </div>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-white/5 text-muted-main group-hover:text-blue-accent group-hover:bg-blue-accent/10 transition-all">
+                      <ExternalLink size={18} />
+                    </div>
+                  </motion.a>
+                ))
+              )}
+            </div>
+          </motion.div>
+        )}
+
+        {userTab === 'profile' && (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="space-y-8"
+          >
+            <div className="text-center mb-8">
+              <div className="inline-flex items-center gap-2 bg-purple-500/5 border border-purple-500/20 text-purple-400 px-3 py-1 rounded-full text-[9px] sm:text-[10px] tracking-[2px] uppercase mb-4">
+                <User size={12} /> প্রোফাইল সেটিংস
+              </div>
+              <h1 className="font-serif text-2xl sm:text-4xl font-black mb-2 bg-gradient-to-br from-white via-white to-purple-400 bg-clip-text text-transparent px-2">
+                আমার প্রোফাইল
+              </h1>
+              <p className="text-muted-main text-[10px] sm:text-sm max-w-md mx-auto opacity-80">
+                আপনার ব্যক্তিগত প্রোফাইল তথ্য এবং ছবি সেটিংস পরিবর্তন করুন।
+              </p>
+            </div>
+
+            {/* Profile Detail Card */}
+            <div className="bg-surface border border-border rounded-[32px] overflow-hidden shadow-xl">
+              <div className="p-6 sm:p-8 flex flex-col items-center border-b border-border relative">
+                {/* Background Decor */}
+                <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-r from-purple-900/10 via-gold/5 to-transparent" />
+
+                {/* Profile Picture Picker */}
+                <div className="relative group cursor-pointer mb-5 z-10" onClick={() => fileInputRef.current?.click()}>
+                  <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-3xl overflow-hidden border-2 border-purple-500/40 relative flex items-center justify-center bg-bg/80 shadow-2xl">
+                    {savingPic ? (
+                      <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-xs text-white font-black">
+                        Uploading...
+                      </div>
+                    ) : currentAuthUser?.profilePic ? (
+                      <img 
+                        src={currentAuthUser.profilePic} 
+                        alt="Profile" 
+                        className="w-full h-full object-cover"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <UserCircle size={56} className="text-purple-400" />
+                    )}
+                  </div>
+                  <div className="absolute -bottom-2 -right-2 bg-purple-500 text-bg p-2 rounded-xl shadow-lg border border-purple-600/20 opacity-0 group-hover:opacity-100 sm:opacity-100 transition-all hover:scale-110 active:scale-95">
+                    <Camera size={16} />
+                  </div>
+                </div>
+
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  onChange={handleProfilePicChange} 
+                  accept="image/*" 
+                  className="hidden" 
+                />
+
+                <h2 className="text-2xl font-black text-white tracking-tight text-center">{currentAuthUser?.fullName}</h2>
+                <div className="px-3 py-1 rounded-full bg-purple-500/10 text-purple-400 border border-purple-500/20 text-[10px] font-black uppercase tracking-widest mt-2">
+                  {currentAuthUser?.position}
+                </div>
+              </div>
+
+              {/* Information Rows */}
+              <div className="p-6 sm:p-8 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="bg-bg/40 border border-white/5 rounded-2xl p-4">
+                    <span className="block text-[10px] text-muted-main uppercase font-black tracking-wider mb-1">পূর্ণ নাম (Full Name)</span>
+                    <span className="text-white font-bold">{currentAuthUser?.fullName}</span>
+                  </div>
+                  <div className="bg-bg/40 border border-white/5 rounded-2xl p-4">
+                    <span className="block text-[10px] text-muted-main uppercase font-black tracking-wider mb-1">হোয়াটসঅ্যাপ নাম্বার (WhatsApp)</span>
+                    <span className="text-white font-bold font-mono">{currentAuthUser?.whatsapp}</span>
+                  </div>
+                  <div className="bg-bg/40 border border-white/5 rounded-2xl p-4">
+                    <span className="block text-[10px] text-muted-main uppercase font-black tracking-wider mb-1">মোট ভেরিফাইড কনভার্ট (Total Converts)</span>
+                    <span className="text-gold font-serif font-black text-lg flex items-center gap-1">
+                      👑 {
+                        [...leaderRanking, ...trainerRanking].find(
+                          r => r.name.trim().toLowerCase() === currentAuthUser?.fullName.trim().toLowerCase()
+                        )?.score || 0
+                      }
+                    </span>
+                  </div>
+                  {myMember && (
+                    <>
+                      <div className="bg-bg/40 border border-white/5 rounded-2xl p-4">
+                        <span className="block text-[10px] text-muted-main uppercase font-black tracking-wider mb-1">আজকের সেশন কনভার্ট (Today's Converts)</span>
+                        <span className="text-green-accent font-serif font-black text-lg flex items-center gap-1">
+                          ⚡ {results[myMember.id]?.convert || 0}
+                        </span>
+                      </div>
+                      <div className="bg-bg/40 border border-white/5 rounded-2xl p-4">
+                        <span className="block text-[10px] text-muted-main uppercase font-black tracking-wider mb-1">আজকের পার্সোনাল লিড (Today's Personal Leads)</span>
+                        <span className="text-purple-400 font-serif font-black text-lg flex items-center gap-1">
+                          🎯 {results[myMember.id]?.personalLead || 0}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                  <div className="bg-bg/40 border border-white/5 rounded-2xl p-4">
+                    <span className="block text-[10px] text-muted-main uppercase font-black tracking-wider mb-1">লগইন পাসওয়ার্ড (Password)</span>
+                    <div className="flex items-center justify-between">
+                      <span className="text-white font-bold font-mono">
+                        {showPass ? currentAuthUser?.password : '••••••'}
+                      </span>
+                      <button onClick={() => setShowPass(!showPass)} className="text-purple-400 hover:text-white p-1 text-xs font-black">
+                        {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Password Change Sub-Form */}
+                <div className="mt-8 pt-6 border-t border-border">
+                  <h3 className="text-sm font-black text-white uppercase tracking-wider mb-4">পাসওয়ার্ড পরিবর্তন করুন (Change Password)</h3>
+                  <div className="flex flex-col sm:flex-row items-stretch gap-3">
+                    <input 
+                      type="password" 
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="নতুন পাসওয়ার্ড লিখুন"
+                      className="flex-1 bg-bg/50 border-2 border-border2 focus:border-purple-500 rounded-2xl px-4 py-3.5 text-sm font-bold outline-none transition-all text-white"
+                    />
+                    <button
+                      onClick={handleSavePasswordFromProfile}
+                      disabled={updatingPass}
+                      className="px-6 py-3.5 rounded-2xl bg-purple-500 hover:bg-purple-600 text-bg font-black uppercase tracking-wider text-xs shadow-xl active:scale-95 disabled:opacity-40 transition-all"
+                    >
+                      {updatingPass ? 'Saving...' : 'সেভ করুন'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
       </main>
+
+      {/* Floating Bottom Navigation Bar */}
+      <div className="fixed bottom-0 inset-x-0 bg-surface/90 backdrop-blur-xl border-t border-white/5 px-4 py-3.5 z-[300] flex justify-around items-center shadow-[0_-15px_30px_rgba(0,0,0,0.6)]">
+        {[
+          { id: 'home', label: 'হোম', icon: <Home size={20} />, activeColor: 'text-gold' },
+          { id: 'submit', label: 'রেজাল্ট', icon: <CheckSquare size={20} />, activeColor: 'text-green-accent' },
+          { id: 'links', label: 'লিংক সমূহ', icon: <Link size={20} />, activeColor: 'text-blue-accent' },
+          { id: 'profile', label: 'প্রোফাইল', icon: <User size={20} />, activeColor: 'text-purple-400' }
+        ].map((tab) => {
+          const isActive = userTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setUserTab(tab.id as any)}
+              className={`flex flex-col items-center gap-1 transition-all ${isActive ? tab.activeColor : 'text-muted-main hover:text-white'}`}
+            >
+              <div className={`p-1.5 rounded-xl transition-all ${isActive ? 'bg-white/5 scale-110 shadow-lg' : 'hover:scale-105'}`}>
+                {tab.icon}
+              </div>
+              <span className="text-[10px] font-black tracking-tight">{tab.label}</span>
+            </button>
+          );
+        })}
+      </div>
 
       {/* Admin Side Panel */}
       <AnimatePresence>
@@ -3201,9 +3842,10 @@ interface BoardProps {
   timerActive: boolean;
   onSubmit: (id: string, lead: number, convert: number, personalLead: number) => void;
   accentColor: 'gold' | 'blue';
+  approvedUsers?: UserRegistration[];
 }
 
-const Board: React.FC<BoardProps> = ({ title, icon, members, results, timerActive, onSubmit, accentColor }) => {
+const Board: React.FC<BoardProps> = ({ title, icon, members, results, timerActive, onSubmit, accentColor, approvedUsers }) => {
   return (
     <div className="mb-12">
       <div className="flex items-center gap-4 mb-6">
@@ -3231,6 +3873,7 @@ const Board: React.FC<BoardProps> = ({ title, icon, members, results, timerActiv
               onSubmit={onSubmit}
               accentColor={accentColor}
               rank={i + 1}
+              approvedUsers={approvedUsers}
             />
           ))
         )}
@@ -3246,9 +3889,10 @@ interface MemberCardProps {
   onSubmit: (id: string, lead: number, convert: number, personalLead: number) => void;
   accentColor: 'gold' | 'blue';
   rank: number;
+  approvedUsers?: UserRegistration[];
 }
 
-const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, onSubmit, accentColor, rank }) => {
+const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, onSubmit, accentColor, rank, approvedUsers }) => {
   const [lead, setLead] = useState<string>('');
   const [convert, setConvert] = useState<string>('');
   const [personalLead, setPersonalLead] = useState<string>('');
@@ -3275,6 +3919,9 @@ const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, on
   };
 
   const status = result?.submitted ? getPerformanceStatus(result.convert) : null;
+  const matchedUser = approvedUsers?.find(
+    u => u.fullName.trim().toLowerCase() === member.name.trim().toLowerCase()
+  );
 
   return (
     <motion.div 
@@ -3291,10 +3938,19 @@ const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, on
         <div className="flex items-center gap-4 flex-1">
           <div 
             className={`w-12 h-12 rounded-2xl flex items-center justify-center font-serif font-black text-bg text-lg shadow-xl relative overflow-hidden flex-shrink-0 ${
-              accentColor === 'gold' ? 'bg-gradient-to-br from-gold to-gold2' : 'bg-gradient-to-br from-blue-accent to-blue-accent2'
+              matchedUser?.profilePic ? 'border border-gold/15' : (accentColor === 'gold' ? 'bg-gradient-to-br from-gold to-gold2' : 'bg-gradient-to-br from-blue-accent to-blue-accent2')
             }`}
           >
-            <UserCircle size={28} strokeWidth={2} />
+            {matchedUser?.profilePic ? (
+              <img 
+                src={matchedUser.profilePic} 
+                alt={member.name} 
+                className="w-full h-full object-cover"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <UserCircle size={28} strokeWidth={2} />
+            )}
             {rank <= 3 && (
               <div className="absolute -top-1 -right-1 bg-surface border border-border rounded-full w-5 h-5 flex items-center justify-center text-[10px] shadow-md z-10">
                 {rankIcon}
