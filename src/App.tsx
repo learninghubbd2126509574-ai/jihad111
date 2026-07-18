@@ -15,6 +15,7 @@ import {
   getDocs,
   writeBatch,
   query, 
+  where,
   orderBy, 
   limit,
   serverTimestamp,
@@ -345,7 +346,7 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 
 const Toast = ({ message, type, onClose }: { message: string, type: 'success' | 'error', onClose: () => void }) => {
   useEffect(() => {
-    const timer = setTimeout(onClose, 3000);
+    const timer = setTimeout(onClose, 2000);
     return () => clearTimeout(timer);
   }, [onClose]);
 
@@ -1551,11 +1552,68 @@ export default function App() {
 
   const deleteUser = async (whatsapp: string) => {
       setShowConfirm({
-        title: 'Are you sure you want to delete this user forever?',
+        title: 'Are you sure you want to delete this user and all related data?',
         onConfirm: async () => {
           try {
-            await deleteDoc(doc(db, 'registeredUsers', whatsapp));
-            showMsg('User deleted');
+            // Get user data first to know the name for related collections
+            const userSnap = await getDoc(doc(db, 'registeredUsers', whatsapp));
+            const userData = userSnap.data() as UserRegistration;
+            const userName = userData?.fullName;
+
+            const batch = writeBatch(db);
+            
+            // Delete from registeredUsers
+            batch.delete(doc(db, 'registeredUsers', whatsapp));
+
+            if (userName) {
+              // Delete from members
+              const membersQ = query(collection(db, 'members'), where('name', '==', userName));
+              const membersSnap = await getDocs(membersQ);
+              
+              for (const memberDoc of membersSnap.docs) {
+                batch.delete(memberDoc.ref);
+                // Also delete their results
+                const resultsQ = query(collection(db, 'results'), where('memberId', '==', memberDoc.id));
+                const resultsSnap = await getDocs(resultsQ);
+                resultsSnap.forEach(r => batch.delete(r.ref));
+              }
+
+              // Delete from rankings
+              const leaderRankQ = query(collection(db, 'leaderRanking'), where('name', '==', userName));
+              const leaderRankSnap = await getDocs(leaderRankQ);
+              leaderRankSnap.forEach(r => batch.delete(r.ref));
+
+              const trainerRankQ = query(collection(db, 'trainerRanking'), where('name', '==', userName));
+              const trainerRankSnap = await getDocs(trainerRankQ);
+              trainerRankSnap.forEach(r => batch.delete(r.ref));
+
+              const stlQ = query(collection(db, 'stlMembers'), where('name', '==', userName));
+              const stlSnap = await getDocs(stlQ);
+              stlSnap.forEach(r => batch.delete(r.ref));
+
+              // Teachers and attendance
+              const teachersQ = query(collection(db, 'teachers'), where('name', '==', userName));
+              const teachersSnap = await getDocs(teachersQ);
+              for (const teacherDoc of teachersSnap.docs) {
+                batch.delete(teacherDoc.ref);
+                const attendanceQ = query(collection(db, 'teacherAttendance'), where('teacherId', '==', teacherDoc.id));
+                const attendanceSnap = await getDocs(attendanceQ);
+                attendanceSnap.forEach(a => batch.delete(a.ref));
+              }
+
+              // Demo members and attendance
+              const demoMembersQ = query(collection(db, 'demoMembers'), where('name', '==', userName));
+              const demoMembersSnap = await getDocs(demoMembersQ);
+              for (const demoDoc of demoMembersSnap.docs) {
+                batch.delete(demoDoc.ref);
+                const demoAttendanceQ = query(collection(db, 'demoAttendance'), where('memberId', '==', demoDoc.id));
+                const demoAttendanceSnap = await getDocs(demoAttendanceQ);
+                demoAttendanceSnap.forEach(a => batch.delete(a.ref));
+              }
+            }
+
+            await batch.commit();
+            showMsg('User and all related data deleted');
             setShowConfirm(null);
           } catch (err) {
             handleFirestoreError(err, OperationType.DELETE, `registeredUsers/${whatsapp}`, showMsg);
