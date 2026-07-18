@@ -1197,7 +1197,9 @@ export default function App() {
   };
 
   const showMsg = (message: string, type: 'success' | 'error' = 'success') => {
-    setToast({ message, type });
+    if (type === 'error') {
+      setToast({ message, type });
+    }
   };
 
   // Actions
