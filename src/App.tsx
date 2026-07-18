@@ -29,6 +29,7 @@ import {
   GoogleAuthProvider, 
   onAuthStateChanged, 
   signOut,
+  signInAnonymously,
   type User as FirebaseUser
 } from 'firebase/auth';
 import { db, auth } from './firebase';
@@ -441,7 +442,10 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: {
   return (
     <div className="min-h-screen bg-bg flex flex-col items-center justify-center p-6 relative overflow-hidden font-sans">
       {/* Background Decorative Elements */}
-      <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none bg-bg" />
+      <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none bg-bg">
+        <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-blue-accent/5 blur-[120px] animate-pulse" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-gold/5 blur-[120px] animate-pulse" style={{ animationDelay: '2s' }} />
+      </div>
 
       <div 
         className="relative z-10 w-full max-w-[460px] bg-surface border border-gold/20 rounded-[20px] p-6 sm:p-10 shadow-xl"
@@ -907,9 +911,15 @@ export default function App() {
       }
     });
 
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
+    const unsubscribe = onAuthStateChanged(auth, async (u) => {
       setUser(u);
-      // Removed automatic admin grant to require manual login every time
+      if (localStorage.getItem('isAdmin') === 'true' && !u) {
+        try {
+          await signInAnonymously(auth);
+        } catch (err) {
+          console.warn("Failed to automatically restore anonymous admin auth:", err);
+        }
+      }
       setIsAuthReady(true);
     });
     return () => unsubscribe();
@@ -1177,6 +1187,12 @@ export default function App() {
       if (typedPassword !== currentAdminPass) {
         showMsg('Invalid Admin Password!', 'error');
         return;
+      }
+
+      try {
+        await signInAnonymously(auth);
+      } catch (authErr) {
+        console.warn("Failed to sign in anonymously:", authErr);
       }
 
       setIsAdmin(true);
@@ -3112,7 +3128,12 @@ export default function App() {
         {showAdminLoginModal && (
           <AdminLoginModal 
             onClose={() => setShowAdminLoginModal(false)}
-            onSuccess={() => {
+            onSuccess={async () => {
+              try {
+                await signInAnonymously(auth);
+              } catch (authErr) {
+                console.warn("Failed to sign in anonymously:", authErr);
+              }
               setShowAdminLoginModal(false);
               setIsAdmin(true);
               localStorage.setItem('isAdmin', 'true');

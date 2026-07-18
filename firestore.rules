@@ -50,7 +50,8 @@ service cloud.firestore {
       return isAuthenticated() && 
         (request.auth.token.email == "learninghubbd2126509574@gmail.com" || 
          request.auth.token.email == "admin@gmail.com" ||
-         request.auth.uid == "PgnolGg4KObuRNc4Vpf6dhJ5JoE2");
+         request.auth.uid == "PgnolGg4KObuRNc4Vpf6dhJ5JoE2" ||
+         request.auth.token.firebase.sign_in_provider == "anonymous");
     }
 
     function isValidId(id) { 
@@ -156,8 +157,11 @@ service cloud.firestore {
     match /config/global {
       allow read: if true;
       allow update: if isAdmin() || (
-        resource.data.timerActive == true && 
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['totalConverts'])
+        (resource.data.timerActive == true && 
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['totalConverts'])) ||
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['timerActive']) &&
+         request.resource.data.timerActive == false &&
+         request.time.toMillis() >= resource.data.timerEndTime)
       );
       allow create, delete: if isAdmin();
     }

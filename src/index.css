@@ -1,25 +1,85 @@
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400..900;1,400..900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
   --font-serif: "Playfair Display", serif;
+  --font-mono: "JetBrains Mono", monospace;
   
-  --color-bg: #020617;
-  --color-surface: #0f172a;
-  --color-surface2: #1e293b;
-  --color-border: #c9a84c;
-  --color-gold: #c9a84c;
-  --color-gold2: #f0d080;
-  --color-gold3: #fff0a0;
-  --color-blue-accent: #3b82f6;
+  /* Rich, luxury midnight slate canvas */
+  --color-bg: #060913;
+  --color-surface: #0c1122;
+  --color-surface2: #141b30;
+  
+  /* Premium Champagne & Royal Golds */
+  --color-border: rgba(212, 175, 55, 0.35);
+  --color-border2: rgba(255, 255, 255, 0.06);
+  --color-gold: #dfb33d;
+  --color-gold2: #f6e095;
+  --color-gold3: #fff9e6;
+  
+  /* Vivid professional accents */
+  --color-blue-accent: #38bdf8;
+  --color-green-accent: #34d399;
+  --color-red-accent: #f87171;
+  --color-purple-accent: #a78bfa;
+  
+  /* High contrast text */
   --color-text-main: #f8fafc;
-  --color-muted-main: #64748b;
+  --color-muted-main: #8295b4;
 }
 
 @layer base {
   body {
-    @apply bg-bg text-text-main font-sans;
+    @apply bg-bg text-text-main font-sans antialiased selection:bg-gold/30 selection:text-white;
   }
 }
+
+/* Custom smooth animations & glowing scrollbars */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 99px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(223, 179, 61, 0.15);
+  border-radius: 99px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(223, 179, 61, 0.3);
+}
+
+/* Shimmer & Ambient card reflections */
+.glass-panel {
+  background: linear-gradient(135deg, rgba(12, 17, 34, 0.7) 0%, rgba(20, 27, 48, 0.5) 100%);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.gold-glass-panel {
+  background: linear-gradient(135deg, rgba(20, 27, 48, 0.8) 0%, rgba(12, 17, 34, 0.9) 100%);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(223, 179, 61, 0.12);
+}
+
+.glow-btn {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.glow-btn::before {
+  content: '';
+  position: absolute;
+  top: 0; left: -100%;
+  width: 100%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+  transition: all 0.6s ease;
+}
+.glow-btn:hover::before {
+  left: 100%;
+}
+
 
