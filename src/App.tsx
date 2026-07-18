@@ -412,7 +412,7 @@ const QuickLinksModal = ({ links, onClose }: { links: QuickLink[], onClose: () =
 const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: { 
   onLogin: (w: string, p: string) => Promise<boolean>, 
   onRegister: (d: any) => Promise<boolean>,
-  onAdminLogin: () => void 
+  onAdminLogin: (pass: string) => void 
 }) => {
   const [mode, setMode] = useState<'login' | 'admin' | 'register'>('login');
   const [whatsapp, setWhatsapp] = useState('');
@@ -441,28 +441,10 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: {
   return (
     <div className="min-h-screen bg-bg flex flex-col items-center justify-center p-6 relative overflow-hidden font-sans">
       {/* Background Decorative Elements */}
-      <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_70%_60%_at_20%_20%,rgba(201,168,76,0.12)_0%,transparent_65%)]" />
-        <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_55%_50%_at_80%_80%,rgba(100,70,200,0.1)_0%,transparent_65%)]" />
-        
-        {/* Orbs */}
-        <motion.div 
-          animate={{ x: [0, 30], y: [0, 40], scale: [1, 1.08] }}
-          transition={{ duration: 8, repeat: Infinity, repeatType: "mirror" }}
-          className="absolute -top-20 -left-20 w-[380px] h-[380px] bg-gold/10 blur-[80px] rounded-full"
-        />
-        <motion.div 
-          animate={{ x: [0, -30], y: [0, -40], scale: [1, 1.05] }}
-          transition={{ duration: 11, repeat: Infinity, repeatType: "mirror" }}
-          className="absolute -bottom-15 -right-15 w-[300px] h-[300px] bg-blue-accent/10 blur-[80px] rounded-full"
-        />
-      </div>
+      <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none bg-bg" />
 
-      <motion.div 
-        initial={{ y: 32, opacity: 0, scale: 0.97 }}
-        animate={{ y: 0, opacity: 1, scale: 1 }}
-        transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
-        className="relative z-10 w-full max-w-[460px] bg-gradient-to-br from-surface to-bg border border-gold/25 rounded-[24px] p-6 sm:p-10 shadow-[0_24px_80px_rgba(0,0,0,0.7)] group"
+      <div 
+        className="relative z-10 w-full max-w-[460px] bg-surface border border-gold/20 rounded-[20px] p-6 sm:p-10 shadow-xl"
       >
         {/* Card Top Glow Border */}
         <div className="absolute top-0 left-[10%] right-[10%] h-[2px] bg-gradient-to-r from-transparent via-gold to-transparent opacity-50" />
@@ -505,193 +487,155 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: {
           ))}
         </div>
 
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={mode}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.3 }}
-            className="space-y-6"
-          >
-            {mode === 'admin' ? (
-              <div className="space-y-6">
-                <div className="flex items-center justify-center gap-3 bg-gold/10 border border-gold/25 rounded-xl py-2.5 px-4 mx-auto w-fit">
-                   <Shield size={14} className="text-gold" />
-                   <span className="text-[0.75rem] font-bold text-gold uppercase tracking-widest">Admin Access Only</span>
-                </div>
-                
-                <button 
-                  onClick={() => { console.log('Admin login clicked'); onAdminLogin(); }}
-                  className="w-full flex items-center justify-center gap-3 py-3.5 bg-white/5 border border-white/10 rounded-xl text-[0.88rem] font-medium text-text-main hover:bg-white/10 hover:border-gold/35 hover:text-gold2 transition-all group"
-                >
-                  <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
-                  Sign in with Gmail
-                </button>
-
-                <div className="flex items-center gap-3">
-                  <div className="flex-1 h-[1px] bg-white/5" />
-                  <span className="text-[0.7rem] text-muted-main whitespace-nowrap uppercase tracking-widest">or use credentials</span>
-                  <div className="flex-1 h-[1px] bg-white/5" />
-                </div>
-
-                <div className="space-y-4">
-                  <form onSubmit={async (e) => {
-                    e.preventDefault();
-                    setLoading(true);
-                    try {
-                      await onLogin(whatsapp, password);
-                    } finally {
-                      setLoading(false);
-                    }
-                  }} className="space-y-4">
-                    <div className="space-y-1.5">
-                      <label className="text-[0.7rem] font-bold text-muted-main uppercase tracking-widest block pl-1">Admin Email</label>
-                      <div className="relative">
-                        <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-main" size={16} />
-                        <input 
-                          type="email"
-                          placeholder="admin@gmail.com"
-                          value={whatsapp}
-                          onChange={e => setWhatsapp(e.target.value)}
-                          className="w-full bg-white/5 border border-white/10 rounded-xl py-3.5 pl-12 pr-4 text-text-main outline-none focus:border-gold/50 focus:bg-gold/5 transition-all text-sm"
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-[0.7rem] font-bold text-muted-main uppercase tracking-widest block pl-1">Password</label>
-                      <div className="relative">
-                        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-main" size={16} />
-                        <input 
-                          type="password"
-                          placeholder="Admin password"
-                          value={password}
-                          onChange={e => setPassword(e.target.value)}
-                          className="w-full bg-white/5 border border-white/10 rounded-xl py-3.5 pl-12 pr-4 text-text-main outline-none focus:border-gold/50 focus:bg-gold/5 transition-all text-sm"
-                        />
-                      </div>
-                    </div>
-                    <button 
-                      type="submit"
-                      disabled={loading}
-                      className="w-full py-4 mt-2 bg-gradient-to-r from-gold to-gold2 rounded-xl text-bg font-serif font-bold tracking-wider hover:opacity-90 active:scale-95 transition-all shadow-lg shadow-gold/20 disabled:opacity-50"
-                    >
-                      {loading ? 'Processing...' : 'Admin Sign In'}
-                    </button>
-                  </form>
+        <div className="space-y-6">
+          {mode === 'admin' ? (
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              setLoading(true);
+              try {
+                await onAdminLogin(password);
+              } finally {
+                setLoading(false);
+              }
+            }} className="space-y-6">
+              <div className="flex items-center justify-center gap-3 bg-gold/10 border border-gold/25 rounded-xl py-2.5 px-4 mx-auto w-fit">
+                 <Shield size={14} className="text-gold" />
+                 <span className="text-[0.75rem] font-bold text-gold uppercase tracking-widest">Admin Access Only</span>
+              </div>
+              
+              <div className="space-y-1.5">
+                <label className="text-[0.7rem] font-bold text-muted-main uppercase tracking-widest block pl-1">Admin Password</label>
+                <div className="relative">
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-main" size={16} />
+                  <input 
+                    required
+                    type="password"
+                    placeholder="Enter Admin password"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl py-3.5 pl-12 pr-4 text-text-main outline-none focus:border-gold/50 focus:bg-gold/5 transition-all text-sm font-mono"
+                  />
                 </div>
               </div>
-            ) : (
-              <form onSubmit={handleSubmit} className="space-y-5">
-                {mode === 'register' && (
-                  <div className="space-y-1.5">
-                    <label className="text-[0.7rem] font-bold text-muted-main uppercase tracking-widest block pl-1">Full Name</label>
-                    <div className="relative">
-                      <UserCircle className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-main" size={16} />
-                      <input 
-                        required
-                        type="text"
-                        placeholder="Your full name"
-                        value={fullName}
-                        onChange={e => setFullName(e.target.value)}
-                        className="w-full bg-white/5 border border-white/10 rounded-xl py-3.5 pl-12 pr-4 text-text-main outline-none focus:border-gold/50 focus:bg-gold/5 transition-all text-sm"
-                      />
-                    </div>
-                  </div>
-                )}
 
+              <button 
+                type="submit"
+                disabled={loading}
+                className="w-full py-4 mt-2 bg-gradient-to-r from-gold to-gold2 rounded-xl text-bg font-serif font-bold tracking-wider hover:opacity-90 active:scale-95 transition-all shadow-lg shadow-gold/20 disabled:opacity-50"
+              >
+                {loading ? 'Processing...' : 'Admin Sign In'}
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-5">
+              {mode === 'register' && (
                 <div className="space-y-1.5">
-                  <label className="text-[0.7rem] font-bold text-muted-main uppercase tracking-widest block pl-1">
-                    {mode === 'login' ? 'WhatsApp Number' : 'Personal Number'}
-                  </label>
+                  <label className="text-[0.7rem] font-bold text-muted-main uppercase tracking-widest block pl-1">Full Name</label>
                   <div className="relative">
-                    <Smartphone className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-main" size={16} />
+                    <UserCircle className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-main" size={16} />
                     <input 
                       required
-                      type="tel"
-                      placeholder="017XXXXXXXX"
-                      value={whatsapp}
-                      onChange={e => setWhatsapp(e.target.value)}
-                      className="w-full bg-white/5 border border-white/10 rounded-xl py-3.5 pl-12 pr-4 text-text-main outline-none focus:border-gold/50 focus:bg-gold/5 transition-all text-sm font-mono"
+                      type="text"
+                      placeholder="Your full name"
+                      value={fullName}
+                      onChange={e => setFullName(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl py-3.5 pl-12 pr-4 text-text-main outline-none focus:border-gold/50 focus:bg-gold/5 transition-all text-sm"
                     />
                   </div>
                 </div>
+              )}
 
-                {mode === 'register' && (
-                  <div className="space-y-1.5">
-                    <label className="text-[0.7rem] font-bold text-muted-main uppercase tracking-widest block pl-1">Position</label>
-                    <div className="relative">
-                      <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-main" size={16} />
-                      <select 
-                        value={position}
-                        onChange={e => setPosition(e.target.value)}
-                        className="w-full bg-white/5 border border-white/10 rounded-xl py-3.5 pl-12 pr-4 text-text-main outline-none focus:border-gold/50 focus:bg-gold/5 transition-all appearance-none text-sm"
-                      >
-                        <option value="Team Leader">Team Leader</option>
-                        <option value="Team Trainer">Team Trainer</option>
-                        <option value="STL">STL</option>
-                        <option value="Teacher">Teacher</option>
-                        <option value="Counsellor">Counsellor</option>
-                      </select>
-                    </div>
-                  </div>
-                )}
+              <div className="space-y-1.5">
+                <label className="text-[0.7rem] font-bold text-muted-main uppercase tracking-widest block pl-1">
+                  {mode === 'login' ? 'WhatsApp Number' : 'Personal Number'}
+                </label>
+                <div className="relative">
+                  <Smartphone className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-main" size={16} />
+                  <input 
+                    required
+                    type="tel"
+                    placeholder="017XXXXXXXX"
+                    value={whatsapp}
+                    onChange={e => setWhatsapp(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl py-3.5 pl-12 pr-4 text-text-main outline-none focus:border-gold/50 focus:bg-gold/5 transition-all text-sm font-mono"
+                  />
+                </div>
+              </div>
 
+              {mode === 'register' && (
                 <div className="space-y-1.5">
-                  <label className="text-[0.7rem] font-bold text-muted-main uppercase tracking-widest block pl-1">
-                    {mode === 'login' ? 'Access Password' : 'Create Password'}
-                  </label>
+                  <label className="text-[0.7rem] font-bold text-muted-main uppercase tracking-widest block pl-1">Position</label>
                   <div className="relative">
-                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-main" size={16} />
-                    <input 
-                      required
-                      type={showPass ? "text" : "password"}
-                      placeholder="••••••••"
-                      value={password}
-                      onChange={e => setPassword(e.target.value)}
-                      className="w-full bg-white/5 border border-white/10 rounded-xl py-3.5 pl-12 pr-12 text-text-main outline-none focus:border-gold/50 focus:bg-gold/5 transition-all text-sm"
-                    />
-                    <button 
-                      type="button"
-                      onClick={() => setShowPass(!showPass)}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-main hover:text-gold transition-colors"
+                    <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-main" size={16} />
+                    <select 
+                      value={position}
+                      onChange={e => setPosition(e.target.value)}
+                      className="w-full bg-white/5 border border-white/10 rounded-xl py-3.5 pl-12 pr-4 text-text-main outline-none focus:border-gold/50 focus:bg-gold/5 transition-all appearance-none text-sm"
                     >
-                      {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
+                      <option value="Team Leader">Team Leader</option>
+                      <option value="Team Trainer">Team Trainer</option>
+                      <option value="STL">STL</option>
+                      <option value="Teacher">Teacher</option>
+                      <option value="Counsellor">Counsellor</option>
+                    </select>
                   </div>
                 </div>
+              )}
 
-                <button 
-                  type="submit"
-                  disabled={loading}
-                  className="w-full py-4 mt-2 bg-gradient-to-r from-gold via-gold2 to-gold rounded-xl text-bg font-serif font-bold tracking-wider hover:opacity-90 active:scale-95 transition-all shadow-[0_4px_20px_rgba(201,168,76,0.3)] disabled:opacity-50"
-                >
-                  {loading ? 'Please wait...' : (mode === 'login' ? 'Sign In' : 'Create Account')}
-                </button>
-
-                <div className="text-center pt-2">
-                  <p className="text-[0.8rem] text-muted-main">
-                    {mode === 'login' ? "Don't have an account? " : "Already have an account? "}
-                    <button 
-                      type="button"
-                      onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
-                      className="text-gold2 font-bold hover:text-white transition-colors border-b border-gold/30 hover:border-white"
-                    >
-                      {mode === 'login' ? 'Register Here' : 'Login Here'}
-                    </button>
-                  </p>
+              <div className="space-y-1.5">
+                <label className="text-[0.7rem] font-bold text-muted-main uppercase tracking-widest block pl-1">
+                  {mode === 'login' ? 'Access Password' : 'Create Password'}
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-main" size={16} />
+                  <input 
+                    required
+                    type={showPass ? "text" : "password"}
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl py-3.5 pl-12 pr-12 text-text-main outline-none focus:border-gold/50 focus:bg-gold/5 transition-all text-sm"
+                  />
+                  <button 
+                    type="button"
+                    onClick={() => setShowPass(!showPass)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-main hover:text-gold transition-colors"
+                  >
+                    {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
                 </div>
-              </form>
-            )}
-          </motion.div>
-        </AnimatePresence>
+              </div>
+
+              <button 
+                type="submit"
+                disabled={loading}
+                className="w-full py-4 mt-2 bg-gradient-to-r from-gold via-gold2 to-gold rounded-xl text-bg font-serif font-bold tracking-wider hover:opacity-90 active:scale-95 transition-all shadow-[0_4px_20px_rgba(201,168,76,0.3)] disabled:opacity-50"
+              >
+                {loading ? 'Please wait...' : (mode === 'login' ? 'Sign In' : 'Create Account')}
+              </button>
+
+              <div className="text-center pt-2">
+                <p className="text-[0.8rem] text-muted-main">
+                  {mode === 'login' ? "Don't have an account? " : "Already have an account? "}
+                  <button 
+                    type="button"
+                    onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
+                    className="text-gold2 font-bold hover:text-white transition-colors border-b border-gold/30 hover:border-white"
+                  >
+                    {mode === 'login' ? 'Register Here' : 'Login Here'}
+                  </button>
+                </p>
+              </div>
+            </form>
+          )}
+        </div>
 
         <div className="mt-8 pt-6 border-t border-white/5 text-center">
           <p className="text-[0.66rem] text-muted-main/45 tracking-widest uppercase font-black">
             © 2025 Unity Digital Agency · All rights reserved
           </p>
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 };
@@ -906,12 +850,13 @@ export default function App() {
   const [siteAuthenticated, setSiteAuthenticated] = useState(false);
   const [stlAuthenticated, setStlAuthenticated] = useState(false);
   const [showStlLoginModal, setShowStlLoginModal] = useState(false);
+  const [showAdminLoginModal, setShowAdminLoginModal] = useState(false);
 
   // Admin check
   const adminEmail = "admin@gmail.com";
   const devEmail = "learninghubbd2126509574@gmail.com";
   // Initial password - this will be synced with Firestore if it exists
-  const initialAdminPass = "jihaD12@#";
+  const initialAdminPass = "212650";
   const [isAdmin, setIsAdmin] = useState(false);
   const hasStlAccess = isAdmin || stlAuthenticated;
 
@@ -1212,41 +1157,35 @@ export default function App() {
   };
 
   // Actions
-  const login = async (useRedirect = false) => {
+  const login = async (useRedirect = false, typedPassword?: string) => {
     try {
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: 'select_account' });
-      
-      if (useRedirect) {
-        await signInWithRedirect(auth, provider);
-      } else {
-        const result = await signInWithPopup(auth, provider);
-        console.log('Logged in user email:', result.user?.email, 'Admin email:', adminEmail, 'Dev email:', devEmail);
-        if (result.user?.email === devEmail || result.user?.email === adminEmail) {
-          setIsAdmin(true);
-          localStorage.setItem('isAdmin', 'true');
-          showMsg('Admin access granted!', 'success');
-        } else {
-          showMsg('Logged in successfully!');
-        }
+      if (!typedPassword) {
+        showMsg('Please enter the Admin Password first!', 'error');
+        return;
       }
+
+      let currentAdminPass = initialAdminPass;
+      try {
+        const configDoc = await getDoc(doc(db, 'systemConfig', 'adminAuth'));
+        if (configDoc.exists() && configDoc.data().password) {
+          currentAdminPass = configDoc.data().password;
+        }
+      } catch (e) {
+        console.warn("Using fallback admin password");
+      }
+
+      if (typedPassword !== currentAdminPass) {
+        showMsg('Invalid Admin Password!', 'error');
+        return;
+      }
+
+      setIsAdmin(true);
+      localStorage.setItem('isAdmin', 'true');
+      setSiteAuthenticated(true);
+      showMsg('Admin access granted!', 'success');
     } catch (err: any) {
       console.error('Login error details:', err);
-      let message = 'Login failed';
-      
-      if (err.code === 'auth/network-request-failed') {
-        message = 'Network error! Try the "Alternative Login" (Redirect) below.';
-      } else if (err.code === 'auth/unauthorized-domain') {
-        message = 'Domain not authorized. Add this URL to Firebase console.';
-      } else if (err.code === 'auth/popup-blocked') {
-        message = 'Popup blocked! Please enable popups or use "Alternative Login".';
-      } else if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
-        return;
-      } else if (err.message) {
-        message = `Login failed: ${err.message}`;
-      }
-      
-      showMsg(message, 'error');
+      showMsg(`Login failed: ${err.message}`, 'error');
     }
   };
 
@@ -2082,7 +2021,7 @@ export default function App() {
       <AuthContainer 
         onLogin={loginUser}
         onRegister={registerUser}
-        onAdminLogin={login}
+        onAdminLogin={(pass) => login(false, pass)}
       />
     );
   }
@@ -2148,7 +2087,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* Header */}
-      <header className="sticky top-0 z-[200] bg-bg/90 backdrop-blur-2xl border-b border-border/20 px-4 sm:px-6 h-16 sm:h-20 flex items-center justify-between shadow-2xl transition-all">
+      <header className="sticky top-0 z-[200] bg-bg border-b border-border/20 px-4 sm:px-6 h-16 sm:h-20 flex items-center justify-between shadow-lg transition-all">
         <div className="flex items-center gap-2 sm:gap-3">
           <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-gold to-gold2 flex items-center justify-center font-serif font-black text-bg text-base sm:text-lg shadow-[0_0_18px_rgba(245,200,66,0.25)]">
             U
@@ -2439,34 +2378,19 @@ export default function App() {
                   <button 
                     onClick={() => { 
                       setShowMenu(false); 
-                      if (user) {
+                      if (isAdmin) {
                         setShowAdminPanel(true);
                       } else {
-                        // Default to popup, error handler will suggest redirect
-                        login();
+                        setShowAdminLoginModal(true);
                       }
                     }}
                     className="w-full flex items-center justify-between p-4 rounded-xl bg-surface border border-border/20 hover:border-gold/40 transition-all mb-3 group shadow-lg"
                   >
                     <div className="flex items-center gap-3">
-                      <Shield className={user ? "text-gold" : "text-muted-main"} size={18} />
-                      <span className="text-sm font-bold text-white group-hover:text-gold transition-colors">{user ? "Admin Panel" : "Admin Login"}</span>
+                      <Shield className={isAdmin ? "text-gold" : "text-muted-main"} size={18} />
+                      <span className="text-sm font-bold text-white group-hover:text-gold transition-colors">{isAdmin ? "Admin Panel" : "Admin Login"}</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {!user && (
-                        <div 
-                          onClick={(e) => { e.stopPropagation(); setShowMenu(false); login(true); }}
-                          className="p-2 bg-blue-accent/10 rounded-lg text-blue-accent hover:bg-blue-accent hover:text-bg transition-all cursor-pointer"
-                          title="Alternative Login"
-                          role="button"
-                          tabIndex={0}
-                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); setShowMenu(false); login(true); } }}
-                        >
-                          <ExternalLink size={14} />
-                        </div>
-                      )}
-                      <ChevronRight size={16} className="text-muted-main group-hover:text-gold transition-colors" />
-                    </div>
+                    <ChevronRight size={16} className="text-muted-main group-hover:text-gold transition-colors" />
                   </button>
                 </div>
               </div>
@@ -2528,10 +2452,9 @@ export default function App() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {topLeader && (
                 <div className="relative group">
-                  <div className="absolute -inset-0.5 bg-gradient-to-r from-gold via-orange-500 to-gold rounded-2xl blur opacity-15 group-hover:opacity-30 transition duration-1000 animate-pulse"></div>
-                  <div className="relative bg-surface/60 backdrop-blur-sm border border-gold/30 rounded-2xl p-4 sm:p-5 flex items-center gap-4 sm:gap-5 shadow-xl">
+                  <div className="relative bg-surface border border-gold/25 rounded-2xl p-4 sm:p-5 flex items-center gap-4 sm:gap-5 shadow-lg">
                     <div className="relative flex-shrink-0">
-                      <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-br from-gold/20 to-orange-500/20 flex items-center justify-center text-gold border border-gold/30 overflow-hidden">
+                      <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gold/10 flex items-center justify-center text-gold border border-gold/20 overflow-hidden">
                         <UserCircle size={28} strokeWidth={2} className="sm:hidden" />
                         <UserCircle size={32} strokeWidth={2} className="hidden sm:block" />
                       </div>
@@ -2563,10 +2486,9 @@ export default function App() {
               )}
               {topTrainer && (
                 <div className="relative group">
-                  <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-accent via-purple-500 to-blue-accent rounded-2xl blur opacity-15 group-hover:opacity-30 transition duration-1000 animate-pulse"></div>
-                  <div className="relative bg-surface/60 backdrop-blur-sm border border-blue-accent/30 rounded-2xl p-4 sm:p-5 flex items-center gap-4 sm:gap-5 shadow-xl">
+                  <div className="relative bg-surface border border-blue-accent/25 rounded-2xl p-4 sm:p-5 flex items-center gap-4 sm:gap-5 shadow-lg">
                     <div className="relative flex-shrink-0">
-                      <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-br from-blue-accent/20 to-purple-500/20 flex items-center justify-center text-blue-accent border border-blue-accent/30 overflow-hidden">
+                      <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-blue-accent/10 flex items-center justify-center text-blue-accent border border-blue-accent/20 overflow-hidden">
                         <UserCircle size={28} strokeWidth={2} className="sm:hidden" />
                         <UserCircle size={32} strokeWidth={2} className="hidden sm:block" />
                       </div>
@@ -3187,6 +3109,22 @@ export default function App() {
       </AnimatePresence>
 
       <AnimatePresence>
+        {showAdminLoginModal && (
+          <AdminLoginModal 
+            onClose={() => setShowAdminLoginModal(false)}
+            onSuccess={() => {
+              setShowAdminLoginModal(false);
+              setIsAdmin(true);
+              localStorage.setItem('isAdmin', 'true');
+              setSiteAuthenticated(true);
+              showMsg('Admin access granted!', 'success');
+            }}
+            initialAdminPass={initialAdminPass}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
         {showCounsellingModal && (
           <CounsellingScheduleModal 
             config={config}
@@ -3326,7 +3264,7 @@ const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, on
         layout: { type: 'spring', damping: 25, stiffness: 200 },
         opacity: { duration: 0.2 }
       }}
-      className={`bg-surface/40 backdrop-blur-md border border-border rounded-2xl overflow-hidden transition-all duration-300 hover:border-gold/20 hover:shadow-[0_20px_40px_rgba(0,0,0,0.3)] ${result?.submitted ? 'border-green-accent/20 bg-green-accent/5' : ''}`}
+      className={`bg-surface border border-border rounded-2xl overflow-hidden transition-all duration-300 hover:border-gold/20 hover:shadow-lg ${result?.submitted ? 'border-green-accent/20 bg-green-accent/5' : ''}`}
     >
       <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-4">
         <div className="flex items-center gap-4 flex-1">
@@ -4979,6 +4917,81 @@ function RankingBoardModal({
              Acknowledge Ranking
            </button>
         </div>
+      </motion.div>
+    </div>
+  );
+}
+
+function AdminLoginModal({ onClose, onSuccess, initialAdminPass }: { onClose: () => void, onSuccess: () => void, initialAdminPass: string }) {
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      let currentAdminPass = initialAdminPass;
+      try {
+        const configDoc = await getDoc(doc(db, 'systemConfig', 'adminAuth'));
+        if (configDoc.exists() && configDoc.data().password) {
+          currentAdminPass = configDoc.data().password;
+        }
+      } catch (e) {
+        console.warn("Using fallback admin password");
+      }
+
+      if (password.trim() === currentAdminPass.trim()) {
+        onSuccess();
+      } else {
+        setError(true);
+        setTimeout(() => setError(false), 2000);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 sm:p-10">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} onClick={onClose} className="absolute inset-0 bg-black/80 backdrop-blur-md" />
+      <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="relative bg-surface border border-border2 p-6 sm:p-8 rounded-[40px] max-w-[400px] w-full overflow-hidden shadow-[0_30px_100px_rgba(0,0,0,0.8)]">
+        <div className="flex justify-between items-center mb-8">
+          <div>
+            <h3 className="text-2xl font-serif font-black text-white">Admin Access</h3>
+            <p className="text-xs text-muted-main uppercase tracking-widest mt-1">Admin Identity Required</p>
+          </div>
+          <button onClick={onClose} className="p-2 bg-white/5 rounded-full hover:bg-white/10 transition-all text-muted-main hover:text-white">
+            <X size={20} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div>
+            <label className="block text-[10px] font-black uppercase tracking-[2px] text-muted-main mb-2 pl-2">Admin Password</label>
+            <input 
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className={`w-full bg-bg border ${error ? 'border-red-500' : 'border-border2'} rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-gold/50 transition-colors shadow-inner font-mono`}
+              placeholder="••••••••"
+              autoFocus
+              required
+              disabled={loading}
+            />
+            {error && <div className="text-xs text-red-500 mt-2 pl-2">Invalid password</div>}
+          </div>
+          
+          <button 
+            type="submit"
+            disabled={loading}
+            className="w-full bg-gradient-to-r from-gold to-gold2 hover:opacity-95 text-bg py-4 rounded-2xl font-bold transition-all shadow-[0_0_20px_rgba(245,200,66,0.3)] hover:shadow-[0_0_30px_rgba(245,200,66,0.5)] active:scale-[0.98] disabled:opacity-50"
+          >
+            {loading ? 'Verifying...' : 'Access System'}
+          </button>
+        </form>
       </motion.div>
     </div>
   );
