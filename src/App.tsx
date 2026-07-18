@@ -934,9 +934,8 @@ export default function App() {
         if (result.user.email === devEmail || result.user.email === adminEmail) {
           setIsAdmin(true);
           localStorage.setItem('isAdmin', 'true');
-          showMsg('Admin access granted!', 'success');
         } else {
-          showMsg('Logged in successfully!');
+          // No notification
         }
       }
     }).catch((err) => {
@@ -1233,7 +1232,6 @@ export default function App() {
       setIsAdmin(true);
       localStorage.setItem('isAdmin', 'true');
       setSiteAuthenticated(true);
-      showMsg('Admin access granted!', 'success');
     } catch (err: any) {
       console.error('Login error details:', err);
       showMsg(`Login failed: ${err.message}`, 'error');
@@ -1250,7 +1248,6 @@ export default function App() {
       setAuthenticatedUser(null);
       localStorage.removeItem('stlAuth');
       localStorage.removeItem('unity_user');
-      showMsg('Logged out successfully');
       setTimeout(() => {
         window.location.reload();
       }, 500);
@@ -1325,7 +1322,6 @@ export default function App() {
           setIsAdmin(true);
           localStorage.setItem('isAdmin', 'true');
           setSiteAuthenticated(true);
-          showMsg('Admin access granted');
           return true;
         } else {
           showMsg('Invalid admin credentials', 'error');
@@ -3872,7 +3868,6 @@ export default function App() {
               setIsAdmin(true);
               localStorage.setItem('isAdmin', 'true');
               setSiteAuthenticated(true);
-              showMsg('Admin access granted!', 'success');
             }}
             initialAdminPass={initialAdminPass}
           />
