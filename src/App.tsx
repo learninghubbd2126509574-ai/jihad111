@@ -719,6 +719,8 @@ const UserManagementSection = ({
                        <span className="flex items-center gap-1"><Phone size={10} /> {u.whatsapp}</span>
                        <span className="hidden sm:block w-1 h-1 rounded-full bg-white/20" />
                        <span className="flex items-center gap-1 text-gold"><Briefcase size={10} /> {u.position}</span>
+                       <span className="hidden sm:block w-1 h-1 rounded-full bg-white/20" />
+                       <span className="flex items-center gap-1 text-green-accent font-mono"><Lock size={10} /> {u.password}</span>
                     </div>
                   </div>
                 </div>
@@ -756,9 +758,11 @@ const UserManagementSection = ({
                     {u.status === 'blocked' && <span className="bg-red-accent/20 text-red-accent text-[8px] px-1.5 py-0.5 rounded uppercase font-black">Blocked</span>}
                   </div>
                   <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-[9px] sm:text-[10px] text-muted-main uppercase font-bold tracking-widest">
-                     <span>{u.whatsapp}</span>
+                     <span className="flex items-center gap-1"><Phone size={10} /> {u.whatsapp}</span>
                      <span className="hidden sm:block w-1 h-1 rounded-full bg-white/20" />
-                     <span className="text-gold">{u.position}</span>
+                     <span className="flex items-center gap-1 text-gold"><Briefcase size={10} /> {u.position}</span>
+                     <span className="hidden sm:block w-1 h-1 rounded-full bg-white/20" />
+                     <span className="flex items-center gap-1 text-green-accent font-mono"><Lock size={10} /> {u.password}</span>
                   </div>
                 </div>
               </div>
@@ -1391,6 +1395,13 @@ export default function App() {
          const teacherRef = doc(collection(db, 'teachers'));
          batch.set(teacherRef, {
            name: pendingUser.fullName,
+           createdAt: serverTimestamp()
+         });
+       } else if (pendingUser.position === 'Counsellor') {
+         const memberRef = doc(collection(db, 'members'));
+         batch.set(memberRef, {
+           name: pendingUser.fullName,
+           type: 'counsellor',
            createdAt: serverTimestamp()
          });
        }
