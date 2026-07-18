@@ -102,6 +102,26 @@ interface Member {
   createdAt: any;
 }
 
+const PasswordDisplay: React.FC<{ password?: string }> = ({ password }) => {
+  const [show, setShow] = useState(false);
+  if (!password) return <span className="opacity-40 italic">No password</span>;
+  
+  return (
+    <button 
+      onClick={(e) => {
+        e.stopPropagation();
+        setShow(!show);
+      }}
+      className="flex items-center gap-1 text-green-accent font-mono hover:opacity-80 transition-all group"
+      title="Click to view password"
+    >
+      <Lock size={10} className={show ? 'text-gold' : ''} /> 
+      <span>{show ? password : '••••••••'}</span>
+      {show ? <EyeOff size={8} className="opacity-0 group-hover:opacity-100 transition-opacity" /> : <Eye size={8} className="opacity-0 group-hover:opacity-100 transition-opacity" />}
+    </button>
+  );
+};
+
 interface Result {
   id: string;
   memberId: string;
@@ -720,7 +740,7 @@ const UserManagementSection = ({
                        <span className="hidden sm:block w-1 h-1 rounded-full bg-white/20" />
                        <span className="flex items-center gap-1 text-gold"><Briefcase size={10} /> {u.position}</span>
                        <span className="hidden sm:block w-1 h-1 rounded-full bg-white/20" />
-                       <span className="flex items-center gap-1 text-green-accent font-mono"><Lock size={10} /> {u.password}</span>
+                       <PasswordDisplay password={u.password} />
                     </div>
                   </div>
                 </div>
@@ -762,7 +782,7 @@ const UserManagementSection = ({
                      <span className="hidden sm:block w-1 h-1 rounded-full bg-white/20" />
                      <span className="flex items-center gap-1 text-gold"><Briefcase size={10} /> {u.position}</span>
                      <span className="hidden sm:block w-1 h-1 rounded-full bg-white/20" />
-                     <span className="flex items-center gap-1 text-green-accent font-mono"><Lock size={10} /> {u.password}</span>
+                     <PasswordDisplay password={u.password} />
                   </div>
                 </div>
               </div>
@@ -2980,6 +3000,8 @@ export default function App() {
               onSubmit={submitResult}
               accentColor="gold"
               approvedUsers={approvedUsers}
+              isAdmin={isAdmin}
+              currentMemberId={myMember?.id || null}
             />
 
             <Board 
@@ -2991,6 +3013,8 @@ export default function App() {
               onSubmit={submitResult}
               accentColor="blue"
               approvedUsers={approvedUsers}
+              isAdmin={isAdmin}
+              currentMemberId={myMember?.id || null}
             />
           </motion.div>
         )}
@@ -3854,9 +3878,11 @@ interface BoardProps {
   onSubmit: (id: string, lead: number, convert: number, personalLead: number) => void;
   accentColor: 'gold' | 'blue';
   approvedUsers?: UserRegistration[];
+  isAdmin: boolean;
+  currentMemberId: string | null;
 }
 
-const Board: React.FC<BoardProps> = ({ title, icon, members, results, timerActive, onSubmit, accentColor, approvedUsers }) => {
+const Board: React.FC<BoardProps> = ({ title, icon, members, results, timerActive, onSubmit, accentColor, approvedUsers, isAdmin, currentMemberId }) => {
   return (
     <div className="mb-12">
       <div className="flex items-center gap-4 mb-6">
@@ -3885,6 +3911,8 @@ const Board: React.FC<BoardProps> = ({ title, icon, members, results, timerActiv
               accentColor={accentColor}
               rank={i + 1}
               approvedUsers={approvedUsers}
+              isAdmin={isAdmin}
+              isMe={m.id === currentMemberId}
             />
           ))
         )}
@@ -3901,9 +3929,11 @@ interface MemberCardProps {
   accentColor: 'gold' | 'blue';
   rank: number;
   approvedUsers?: UserRegistration[];
+  isAdmin: boolean;
+  isMe: boolean;
 }
 
-const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, onSubmit, accentColor, rank, approvedUsers }) => {
+const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, onSubmit, accentColor, rank, approvedUsers, isAdmin, isMe }) => {
   const [lead, setLead] = useState<string>('');
   const [convert, setConvert] = useState<string>('');
   const [personalLead, setPersonalLead] = useState<string>('');
@@ -4008,13 +4038,13 @@ const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, on
                 <span className="text-sm">{result.personalLead}</span>
               </div>
             </div>
-            {timerActive && (
+            {timerActive && (isAdmin || isMe) && (
               <button onClick={() => setIsEditing(true)} className="p-2 text-muted-main hover:text-gold transition-colors">
                 <Pencil size={18} />
               </button>
             )}
           </div>
-        ) : (
+        ) : (isAdmin || isMe) ? (
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
             <div className="grid grid-cols-3 gap-2 flex-1">
               <div className="flex flex-col gap-1">
@@ -4068,6 +4098,10 @@ const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, on
                 {isEditing ? 'Update' : 'Submit'}
               </button>
             </div>
+          </div>
+        ) : (
+          <div className="text-[10px] text-muted-main italic opacity-60 px-4">
+            Only the owner can submit results
           </div>
         )}
       </div>
