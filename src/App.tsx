@@ -4246,6 +4246,29 @@ export default function App() {
     }
   };
 
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
+
+  const handleInstallApp = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        setDeferredPrompt(null);
+      }
+    } else {
+      alert('To install the app, click the three dots (menu) in your browser and select "Install app" or "Add to Home screen".');
+    }
+  };
+
   // Stats & Ranking
   const { stats, topLeader, topTrainer, topOverall, sortedLeaders, sortedTrainers, sortedLeaderRanking, sortedTrainerRanking, sortedLeadersByRanking, sortedTrainersByRanking } = useMemo(() => {
     let totalLeads = 0;
@@ -4757,19 +4780,13 @@ export default function App() {
                   <button 
                     onClick={() => { 
                       setShowMenu(false); 
-                      // Trigger download of the APK (placeholder or user-supplied)
-                      const link = document.createElement('a');
-                      link.href = '/app-release.apk';
-                      link.download = 'UnityEarning.apk';
-                      document.body.appendChild(link);
-                      link.click();
-                      document.body.removeChild(link);
+                      handleInstallApp();
                     }}
                     className="w-full flex items-center justify-between p-4 rounded-xl bg-green-accent/10 border border-green-accent/30 hover:bg-green-accent/20 transition-all mb-3 group"
                   >
                     <div className="flex items-center gap-3">
                       <Smartphone className="text-green-accent" size={18} />
-                      <span className="text-sm font-bold text-white">Download App</span>
+                      <span className="text-sm font-bold text-white">Install App</span>
                     </div>
                     <Download size={16} className="text-green-accent" />
                   </button>
