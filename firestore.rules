@@ -60,31 +60,36 @@ service cloud.firestore {
 
     function isValidUserRegistration(data) {
       return data.keys().hasAll(['fullName', 'whatsapp', 'position', 'password', 'status', 'createdAt']) &&
-             data.keys().hasOnly(['fullName', 'whatsapp', 'position', 'password', 'status', 'createdAt', 'id']) &&
+             data.keys().hasOnly(['fullName', 'whatsapp', 'position', 'password', 'status', 'createdAt', 'id', 'profilePic']) &&
              data.fullName is string && data.fullName.size() > 0 && data.fullName.size() < 100 &&
              data.whatsapp is string && data.whatsapp.size() > 0 && data.whatsapp.size() < 20 &&
              data.position in ["Team Leader", "Team Trainer", "STL", "Teacher", "Counsellor"] &&
              data.password is string && data.password.size() > 0 && data.password.size() < 100 &&
-             data.status in ["pending", "active", "blocked"];
+             data.status in ["pending", "active", "blocked"] &&
+             (!('profilePic' in data) || (data.profilePic is string && data.profilePic.size() < 1000000));
     }
 
     function isValidUserUpdate(data) {
       return (data.keys().hasOnly(['password']) && data.password is string && data.password.size() > 0 && data.password.size() < 100) ||
+             (data.keys().hasOnly(['profilePic']) && data.profilePic is string && data.profilePic.size() < 1000000) ||
              isValidUserRegistration(data);
     }
 
     function isValidMember(data) {
       return data.keys().hasAll(['name', 'type', 'createdAt']) &&
+             data.keys().hasOnly(['name', 'type', 'createdAt', 'profilePic', 'whatsapp']) &&
              data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
-             data.type in ['leader', 'trainer'];
+             data.type in ['leader', 'trainer'] &&
+             (!('profilePic' in data) || (data.profilePic is string && data.profilePic.size() < 1000000));
     }
 
     function isValidResult(data) {
       return data.keys().hasAll(['memberId', 'lead', 'convert', 'submitted', 'updatedAt']) &&
              data.keys().hasOnly(['memberId', 'lead', 'convert', 'submitted', 'updatedAt', 'personalLead']) &&
              data.memberId is string && data.memberId.size() < 100 &&
-             data.lead is number && data.lead >= 0 && data.lead < 1000 &&
-             data.convert is number && data.convert >= 0 && data.convert < 1000 &&
+             data.lead is number && data.lead >= 0 && data.lead < 10000 &&
+             data.convert is number && data.convert >= 0 && data.convert < 10000 &&
+             (!('personalLead' in data) || (data.personalLead is number && data.personalLead >= 0 && data.personalLead < 10000)) &&
              data.submitted is bool;
     }
 
@@ -138,19 +143,26 @@ service cloud.firestore {
       allow get: if true;
       allow list: if isAdmin();
       allow create: if isAdmin() && isValidUserRegistration(request.resource.data) && isValidId(whatsapp);
-      allow update: if isAdmin() && isValidUserUpdate(request.resource.data) && isValidId(whatsapp);
+      allow update: if isAdmin() || (
+        isValidUserUpdate(request.resource.data) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['profilePic'])
+      );
       allow delete: if isAdmin();
     }
 
     match /members/{memberId} {
       allow read: if true;
-      allow create, update: if isAdmin() && isValidMember(request.resource.data) && isValidId(memberId);
+      allow create: if isAdmin() && isValidMember(request.resource.data) && isValidId(memberId);
+      allow update: if isAdmin() || (
+        isValidMember(request.resource.data) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['profilePic'])
+      );
       allow delete: if isAdmin();
     }
 
     match /results/{resultId} {
       allow read: if true;
-      allow create, update: if (isValidResult(request.resource.data)) && isValidId(resultId);
+      allow create, update: if isAdmin() || (isValidResult(request.resource.data) && isValidId(resultId));
       allow delete: if isAdmin();
     }
 
@@ -233,6 +245,20 @@ service cloud.firestore {
       allow read: if true;
       allow create, update: if isAdmin() && isValidQuickLink(request.resource.data) && isValidId(id);
       allow delete: if isAdmin();
+    }
+
+    match /userBalances/{whatsapp} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (request.auth.uid == whatsapp || isAdmin());
+    }
+
+    match /submissionLogs/{logId} {
+      allow read, create: if isAuthenticated();
+      allow update, delete: if isAdmin();
+    }
+
+    match /auditLogs/{logId} {
+      allow read, write: if isAdmin();
     }
 
     match /systemConfig/{id} {

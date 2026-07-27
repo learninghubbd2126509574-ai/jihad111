@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
   collection, 
   doc, 
@@ -19,6 +19,7 @@ import {
   orderBy, 
   limit,
   serverTimestamp,
+  startAfter,
   getDoc,
   getDocFromServer,
   increment
@@ -33,7 +34,8 @@ import {
   signInAnonymously,
   type User as FirebaseUser
 } from 'firebase/auth';
-import { db, auth } from './firebase';
+import { db, auth, storage } from './firebase';
+import { ref, uploadBytes, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   User,
@@ -57,7 +59,10 @@ import {
   Bell,
   Menu,
   ChevronRight,
+  ArrowRight,
   Briefcase,
+  Search,
+  FileText,
   MapPin,
   Lock,
   Smartphone,
@@ -76,6 +81,7 @@ import {
   Award,
   Medal,
   Crown,
+  Coins,
   Globe,
   Facebook,
   Youtube,
@@ -92,8 +98,25 @@ import {
   Power,
   Camera,
   Upload,
-  CheckSquare
+  CheckSquare,
+  RotateCcw, Gift
 } from 'lucide-react';
+
+import { 
+  format, 
+  startOfMonth, 
+  endOfMonth, 
+  startOfWeek, 
+  endOfWeek, 
+  differenceInCalendarDays,
+  eachDayOfInterval, 
+  isSameMonth, 
+  isSameDay, 
+  addMonths, 
+  subMonths,
+  parseISO
+} from 'date-fns';
+import { bn } from 'date-fns/locale';
 
 // --- Types ---
 interface Member {
@@ -256,6 +279,41 @@ interface PaymentMethods {
   upay?: string;
 }
 
+interface UserBalance {
+  id?: string;
+  whatsapp: string;
+  userName: string;
+  balance: number;
+  waivedFines: number;
+  waivedDays?: string[];
+  manualAdjustments: number;
+  updatedAt?: any;
+}
+
+interface SubmissionLog {
+  id?: string;
+  whatsapp?: string;
+  memberId: string;
+  memberName?: string;
+  date: string;
+  lead: number;
+  convert: number;
+  personalLead: number;
+  submittedAt: any;
+}
+
+interface AuditLog {
+  id?: string;
+  whatsapp: string;
+  userName: string;
+  action: string;
+  amount?: number;
+  reason?: string;
+  date?: string;
+  performedBy: string;
+  createdAt: any;
+}
+
 interface Config {
   timerActive: boolean;
   timerEndTime: number;
@@ -279,6 +337,14 @@ interface Config {
   autoTimerTime?: string;
   lastAutoStartTime?: string;
   totalConverts?: number;
+  fineAmount?: number;
+  workingDaysInMonth?: number;
+  fineSystemActive?: boolean;
+  fineStartDate?: string;
+  finesResetAt?: any;
+  giftBoxActive?: boolean;
+  giftBoxTitle?: string;
+  giftBoxContent?: string;
 }
 
 enum OperationType {
@@ -465,58 +531,85 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: {
   };
 
   return (
-    <div className="min-h-screen bg-bg flex flex-col items-center justify-center p-6 relative overflow-hidden font-sans">
-      {/* Background Decorative Elements */}
-      <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none bg-bg">
-        <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-blue-accent/5 blur-[120px] animate-pulse" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-gold/5 blur-[120px] animate-pulse" style={{ animationDelay: '2s' }} />
+    <div className="min-h-screen bg-[#051126] text-white flex flex-col items-center justify-center p-2.5 sm:p-6 relative overflow-hidden font-sans">
+      {/* Background Decorative Gradient Waves & Grid */}
+      <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+        {/* Top Left Organic Glow Curve */}
+        <div className="absolute top-[-20%] left-[-20%] w-[80%] h-[50%] rounded-full bg-gradient-to-br from-[#F5C542]/15 via-[#072454]/40 to-transparent blur-[100px]" />
+        {/* Bottom Right Glow Curve */}
+        <div className="absolute bottom-[-20%] right-[-20%] w-[80%] h-[50%] rounded-full bg-gradient-to-tl from-[#F5C542]/10 via-[#0a295c]/40 to-transparent blur-[100px]" />
+        
+        {/* Dot Grid Pattern in Top Right */}
+        <div className="absolute top-6 right-6 w-48 h-48 bg-[radial-gradient(#F5C542_1.5px,transparent_1.5px)] [background-size:16px_16px] opacity-20" />
+        
+        {/* Bottom Abstract Gold Lines */}
+        <svg className="absolute bottom-0 left-0 right-0 w-full opacity-30 pointer-events-none" viewBox="0 0 1440 320" fill="none">
+          <path d="M0,192L60,202.7C120,213,240,235,360,224C480,213,600,171,720,165.3C840,160,960,192,1080,197.3C1200,203,1320,181,1380,170.7L1440,160" stroke="#F5C542" strokeWidth="1.5" />
+        </svg>
       </div>
 
-      <div 
-        className="relative z-10 w-full max-w-[460px] bg-surface border border-gold/20 rounded-[20px] p-6 sm:p-10 shadow-xl"
+      {/* Main Container Card - Mobile App Frame */}
+      <motion.div 
+        initial={{ opacity: 0, y: 25, scale: 0.97 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.45, ease: "easeOut" }}
+        className="relative z-10 w-full max-w-[420px] bg-[#071836]/90 backdrop-blur-3xl border border-[#F5C542]/30 rounded-[28px] sm:rounded-[32px] p-5 sm:p-7 shadow-[0_30px_90px_rgba(3,11,30,0.95)] overflow-hidden"
       >
-        {/* Card Top Glow Border */}
-        <div className="absolute top-0 left-[10%] right-[10%] h-[2px] bg-gradient-to-r from-transparent via-gold to-transparent opacity-50" />
+        {/* Top Metallic Gold Glow */}
+        <div className="absolute top-0 left-8 right-8 h-[2px] bg-gradient-to-r from-transparent via-[#F5C542] to-transparent shadow-[0_0_15px_#F5C542]" />
 
-        {/* Logo Section */}
-        <div className="flex flex-col items-center gap-2 mb-8">
-          <div className="w-[58px] h-[58px] bg-gradient-to-br from-[#0a1229] to-[#0d1c4a] border-1.5 border-gold/25 rounded-2xl flex items-center justify-center shadow-[0_8px_30px_rgba(201,168,76,0.15)]">
-            <svg viewBox="0 0 40 40" className="w-8 h-8">
-              <circle cx="20" cy="20" r="18" stroke="#c9a84c" strokeWidth="1.5" opacity="0.4" fill="none" />
-              {/* Unity 'U' Logo - Polished Curve */}
-              <path d="M13 10V22C13 25.866 16.134 29 20 29C23.866 29 27 25.866 27 22V10" stroke="#f0d080" strokeWidth="3" strokeLinecap="round" fill="none" />
-              <circle cx="20" cy="8" r="2" fill="#f0d080" />
-            </svg>
+        {/* Header - Brand Logo & Titles */}
+        <div className="flex flex-col items-center text-center mb-6">
+          {/* Circular Gold Emblem Logo */}
+          <div className="relative mb-3">
+            <div className="absolute -inset-2 rounded-full bg-[#F5C542]/20 blur-md animate-pulse" />
+            <div className="relative w-18 h-18 sm:w-20 sm:h-20 bg-gradient-to-b from-[#0A2046] to-[#040D1F] border-2 border-[#F5C542] rounded-full flex items-center justify-center shadow-[0_0_25px_rgba(245,197,66,0.3)]">
+              <svg viewBox="0 0 40 40" className="w-10 h-10 sm:w-11 sm:h-11">
+                <circle cx="20" cy="20" r="18" stroke="#F5C542" strokeWidth="1.5" opacity="0.4" fill="none" />
+                <path d="M13 11V22C13 25.866 16.134 29 20 29C23.866 29 27 25.866 27 22V11" stroke="#F5C542" strokeWidth="3.5" strokeLinecap="round" fill="none" />
+                <circle cx="20" cy="8" r="2.5" fill="#F5C542" />
+              </svg>
+            </div>
           </div>
-          <div className="text-center">
-            <h1 className="font-serif text-[1.3rem] font-bold text-gold2 tracking-[1px]">Unity Earning</h1>
-            <p className="text-[0.7rem] font-medium text-muted-main uppercase tracking-[3px]">E-learning Platform</p>
+          
+          <h1 className="text-2xl font-extrabold text-white tracking-tight flex items-center gap-1.5 justify-center">
+            Unity <span className="text-[#F5C542]">Earning</span>
+          </h1>
+          <p className="text-[10px] font-bold tracking-[3.5px] uppercase text-[#F5C542]/90 mt-1">
+            E-Learning Platform
+          </p>
+
+          {/* Gold Divider Line with Centered Glowing Dot */}
+          <div className="relative w-full max-w-[200px] h-[1px] bg-gradient-to-r from-transparent via-[#F5C542]/40 to-transparent mt-3.5 mb-1 flex items-center justify-center">
+            <div className="w-1.5 h-1.5 rounded-full bg-[#F5C542] shadow-[0_0_8px_#F5C542]" />
           </div>
         </div>
 
-        {/* Triple Tabs */}
-        <div className="flex gap-1.5 bg-white/5 border border-white/5 rounded-xl p-1 mb-8">
+        {/* Segmented Mode Switcher / Separated Navigation Tabs */}
+        <div className="grid grid-cols-3 gap-2 bg-[#040E21]/90 border border-[#F5C542]/20 rounded-[22px] p-1.5 mb-6 shadow-inner">
           {[
-            { id: 'login', icon: <User size={14} />, label: 'User Login' },
-            { id: 'admin', icon: <Shield size={14} />, label: 'Admin Login' },
-            { id: 'register', icon: <UserPlus size={14} />, label: 'Register' }
+            { id: 'login', icon: <User size={13} />, label: 'User Login' },
+            { id: 'admin', icon: <Shield size={13} />, label: 'Admin Login' },
+            { id: 'register', icon: <UserPlus size={13} />, label: 'Register' }
           ].map((tab) => (
             <button
               key={tab.id}
+              type="button"
               onClick={() => setMode(tab.id as any)}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-[0.73rem] font-semibold transition-all ${
+              className={`flex items-center justify-center gap-1 sm:gap-1.5 py-2.5 px-1.5 rounded-[16px] text-[10px] sm:text-[11px] font-bold transition-all duration-200 border ${
                 mode === tab.id 
-                  ? 'bg-gradient-to-br from-gold/20 to-gold/10 text-gold2 shadow-lg border border-gold/20' 
-                  : 'text-muted-main hover:text-white'
+                  ? 'bg-gradient-to-r from-[#F5C542] via-[#E5B532] to-[#F5C542] border-[#F5C542] text-[#051126] shadow-[0_4px_15px_rgba(245,197,66,0.35)] font-black' 
+                  : 'bg-white/5 border-white/5 text-white/70 hover:text-white hover:bg-white/10'
               }`}
             >
-              {tab.icon}
-              {tab.label}
+              <span className="shrink-0">{tab.icon}</span>
+              <span className="whitespace-nowrap">{tab.label}</span>
             </button>
           ))}
         </div>
 
-        <div className="space-y-6">
+        {/* Dynamic Form Content */}
+        <div className="space-y-5">
           {mode === 'admin' ? (
             <form onSubmit={async (e) => {
               e.preventDefault();
@@ -526,23 +619,26 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: {
               } finally {
                 setLoading(false);
               }
-            }} className="space-y-6">
-              <div className="flex items-center justify-center gap-3 bg-gold/10 border border-gold/25 rounded-xl py-2.5 px-4 mx-auto w-fit">
-                 <Shield size={14} className="text-gold" />
-                 <span className="text-[0.75rem] font-bold text-gold uppercase tracking-widest">Admin Access Only</span>
+            }} className="space-y-5">
+              <div className="flex items-center justify-center gap-2 bg-[#F5C542]/10 border border-[#F5C542]/30 rounded-2xl py-2.5 px-4">
+                 <Shield size={15} className="text-[#F5C542]" />
+                 <span className="text-[10px] font-bold uppercase tracking-[2px] text-[#F5C542]">Admin Key Protection</span>
               </div>
               
-              <div className="space-y-1.5">
-                <label className="text-[0.7rem] font-bold text-muted-main uppercase tracking-widest block pl-1">Admin Password</label>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold uppercase tracking-[1.5px] text-white/70 flex items-center gap-1.5 pl-1">
+                  <Lock size={12} className="text-[#F5C542]" />
+                  ACCESS PASSWORD
+                </label>
                 <div className="relative">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-main" size={16} />
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40" size={17} />
                   <input 
                     required
                     type="password"
-                    placeholder="Enter Admin password"
+                    placeholder="••••••••••••"
                     value={password}
                     onChange={e => setPassword(e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl py-3.5 pl-12 pr-4 text-text-main outline-none focus:border-gold/50 focus:bg-gold/5 transition-all text-sm font-mono"
+                    className="w-full bg-[#040D1F]/80 border border-[#F5C542]/20 rounded-2xl py-3.5 pl-11 pr-4 text-white text-sm outline-none focus:border-[#F5C542] focus:ring-1 focus:ring-[#F5C542]/30 transition-all font-mono"
                   />
                 </div>
               </div>
@@ -550,56 +646,64 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: {
               <button 
                 type="submit"
                 disabled={loading}
-                className="w-full py-4 mt-2 bg-gradient-to-r from-gold to-gold2 rounded-xl text-bg font-serif font-bold tracking-wider hover:opacity-90 active:scale-95 transition-all shadow-lg shadow-gold/20 disabled:opacity-50"
+                className="w-full relative py-4 bg-gradient-to-r from-[#F5C542] via-[#E5B532] to-[#D5A522] rounded-2xl text-[#051126] font-extrabold text-sm tracking-wider uppercase shadow-[0_8px_25px_rgba(245,197,66,0.35)] hover:shadow-[0_12px_32px_rgba(245,197,66,0.5)] active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                {loading ? 'Processing...' : 'Admin Sign In'}
+                <span>{loading ? 'Authenticating...' : 'Sign In'}</span>
+                {!loading && <ArrowRight size={18} />}
               </button>
             </form>
           ) : (
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={handleSubmit} className="space-y-4">
               {mode === 'register' && (
                 <div className="space-y-1.5">
-                  <label className="text-[0.7rem] font-bold text-muted-main uppercase tracking-widest block pl-1">Full Name</label>
+                  <label className="text-[10px] font-bold uppercase tracking-[1.5px] text-white/70 flex items-center gap-1.5 pl-1">
+                    <UserCircle size={12} className="text-[#F5C542]" />
+                    FULL NAME
+                  </label>
                   <div className="relative">
-                    <UserCircle className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-main" size={16} />
+                    <UserCircle className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40" size={17} />
                     <input 
                       required
                       type="text"
                       placeholder="Your full name"
                       value={fullName}
                       onChange={e => setFullName(e.target.value)}
-                      className="w-full bg-white/5 border border-white/10 rounded-xl py-3.5 pl-12 pr-4 text-text-main outline-none focus:border-gold/50 focus:bg-gold/5 transition-all text-sm"
+                      className="w-full bg-[#040D1F]/80 border border-[#F5C542]/20 rounded-2xl py-3.5 pl-11 pr-4 text-white text-sm outline-none focus:border-[#F5C542] focus:ring-1 focus:ring-[#F5C542]/30 transition-all"
                     />
                   </div>
                 </div>
               )}
 
               <div className="space-y-1.5">
-                <label className="text-[0.7rem] font-bold text-muted-main uppercase tracking-widest block pl-1">
-                  {mode === 'login' ? 'WhatsApp Number' : 'Personal Number'}
+                <label className="text-[10px] font-bold uppercase tracking-[1.5px] text-white/70 flex items-center gap-1.5 pl-1">
+                  <Smartphone size={12} className="text-[#F5C542]" />
+                  {mode === 'login' ? 'WHATSAPP NUMBER' : 'PERSONAL NUMBER'}
                 </label>
                 <div className="relative">
-                  <Smartphone className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-main" size={16} />
+                  <Smartphone className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40" size={17} />
                   <input 
                     required
                     type="tel"
                     placeholder="017XXXXXXXX"
                     value={whatsapp}
                     onChange={e => setWhatsapp(e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl py-3.5 pl-12 pr-4 text-text-main outline-none focus:border-gold/50 focus:bg-gold/5 transition-all text-sm font-mono"
+                    className="w-full bg-[#040D1F]/80 border border-[#F5C542]/20 rounded-2xl py-3.5 pl-11 pr-4 text-white text-sm font-mono outline-none focus:border-[#F5C542] focus:ring-1 focus:ring-[#F5C542]/30 transition-all"
                   />
                 </div>
               </div>
 
               {mode === 'register' && (
                 <div className="space-y-1.5">
-                  <label className="text-[0.7rem] font-bold text-muted-main uppercase tracking-widest block pl-1">Position</label>
+                  <label className="text-[10px] font-bold uppercase tracking-[1.5px] text-white/70 flex items-center gap-1.5 pl-1">
+                    <Briefcase size={12} className="text-[#F5C542]" />
+                    POSITION ROLE
+                  </label>
                   <div className="relative">
-                    <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-main" size={16} />
+                    <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40" size={17} />
                     <select 
                       value={position}
                       onChange={e => setPosition(e.target.value)}
-                      className="w-full bg-white/5 border border-white/10 rounded-xl py-3.5 pl-12 pr-4 text-text-main outline-none focus:border-gold/50 focus:bg-gold/5 transition-all appearance-none text-sm"
+                      className="w-full bg-[#040D1F]/90 border border-[#F5C542]/20 rounded-2xl py-3.5 pl-11 pr-4 text-white text-sm outline-none focus:border-[#F5C542] focus:ring-1 focus:ring-[#F5C842]/30 transition-all appearance-none cursor-pointer"
                     >
                       <option value="Team Leader">Team Leader</option>
                       <option value="Team Trainer">Team Trainer</option>
@@ -607,49 +711,66 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: {
                       <option value="Teacher">Teacher</option>
                       <option value="Counsellor">Counsellor</option>
                     </select>
+                    <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 rotate-90 text-white/40 pointer-events-none" size={16} />
                   </div>
                 </div>
               )}
 
               <div className="space-y-1.5">
-                <label className="text-[0.7rem] font-bold text-muted-main uppercase tracking-widest block pl-1">
-                  {mode === 'login' ? 'Access Password' : 'Create Password'}
+                <label className="text-[10px] font-bold uppercase tracking-[1.5px] text-white/70 flex items-center gap-1.5 pl-1">
+                  <Lock size={12} className="text-[#F5C542]" />
+                  {mode === 'login' ? 'ACCESS PASSWORD' : 'CREATE PASSWORD'}
                 </label>
                 <div className="relative">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-main" size={16} />
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40" size={17} />
                   <input 
                     required
                     type={showPass ? "text" : "password"}
-                    placeholder="••••••••"
+                    placeholder="••••••••••••"
                     value={password}
                     onChange={e => setPassword(e.target.value)}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl py-3.5 pl-12 pr-12 text-text-main outline-none focus:border-gold/50 focus:bg-gold/5 transition-all text-sm"
+                    className="w-full bg-[#040D1F]/80 border border-[#F5C542]/20 rounded-2xl py-3.5 pl-11 pr-11 text-white text-sm outline-none focus:border-[#F5C542] focus:ring-1 focus:ring-[#F5C542]/30 transition-all"
                   />
                   <button 
                     type="button"
                     onClick={() => setShowPass(!showPass)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-main hover:text-gold transition-colors"
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 hover:text-[#F5C542] transition-colors p-1"
                   >
                     {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
                 </div>
               </div>
 
+              {/* Remember Me & Forgot Password */}
+              {mode === 'login' && (
+                <div className="flex items-center justify-between text-xs pt-1">
+                  <label className="flex items-center gap-2 cursor-pointer text-white/70 hover:text-white transition-colors">
+                    <input type="checkbox" className="rounded border-white/20 bg-white/5 text-[#F5C542] focus:ring-0 w-3.5 h-3.5" />
+                    <span>Remember me</span>
+                  </label>
+                  <button type="button" onClick={() => alert("Please contact your administrator for password reset.")} className="text-[#F5C542] hover:underline font-medium">
+                    Forgot Password?
+                  </button>
+                </div>
+              )}
+
+              {/* Main Submit Button */}
               <button 
                 type="submit"
                 disabled={loading}
-                className="w-full py-4 mt-2 bg-gradient-to-r from-gold via-gold2 to-gold rounded-xl text-bg font-serif font-bold tracking-wider hover:opacity-90 active:scale-95 transition-all shadow-[0_4px_20px_rgba(201,168,76,0.3)] disabled:opacity-50"
+                className="w-full relative py-4 mt-3 bg-gradient-to-r from-[#F5C542] via-[#E5B532] to-[#D5A522] rounded-2xl text-[#051126] font-extrabold text-sm tracking-wider uppercase shadow-[0_8px_25px_rgba(245,197,66,0.35)] hover:shadow-[0_12px_32px_rgba(245,197,66,0.5)] active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                {loading ? 'Please wait...' : (mode === 'login' ? 'Sign In' : 'Create Account')}
+                <span>{loading ? 'Please wait...' : (mode === 'login' ? 'Sign In' : 'Create Account')}</span>
+                {!loading && <ArrowRight size={18} />}
               </button>
 
-              <div className="text-center pt-2">
-                <p className="text-[0.8rem] text-muted-main">
+              <div className="text-center pt-3">
+                <p className="text-xs text-white/60">
                   {mode === 'login' ? "Don't have an account? " : "Already have an account? "}
                   <button 
                     type="button"
                     onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
-                    className="text-gold2 font-bold hover:text-white transition-colors border-b border-gold/30 hover:border-white"
+                    className="text-[#F5C542] font-bold underline hover:text-white transition-colors ml-1"
                   >
                     {mode === 'login' ? 'Register Here' : 'Login Here'}
                   </button>
@@ -659,12 +780,16 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: {
           )}
         </div>
 
-        <div className="mt-8 pt-6 border-t border-white/5 text-center">
-          <p className="text-[0.66rem] text-muted-main/45 tracking-widest uppercase font-black">
-            © 2025 Unity Digital Agency · All rights reserved
+        {/* Security Shield Icon & Footer */}
+        <div className="mt-8 pt-5 border-t border-white/10 flex flex-col items-center gap-2 text-center">
+          <div className="w-9 h-9 rounded-full bg-[#F5C542]/10 border border-[#F5C542]/30 flex items-center justify-center text-[#F5C542] shadow-[0_0_12px_rgba(245,197,66,0.2)]">
+            <Shield size={18} />
+          </div>
+          <p className="text-[9px] text-white/40 uppercase tracking-[2px] font-black mt-1">
+            © 2025 UNITY DIGITAL AGENCY ALL RIGHTS RESERVED
           </p>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 };
@@ -824,6 +949,1423 @@ const UserManagementSection = ({
   );
 };
 
+const MonthlySubmissionSummaryCard = ({ 
+  userStats, 
+  userName,
+  profilePic,
+  onOpenCalendar
+}: { 
+  userStats: any; 
+  userName?: string;
+  profilePic?: string;
+  onOpenCalendar?: () => void;
+}) => {
+  if (!userStats) return null;
+
+  const statusConfig = {
+    Submitted: {
+      label: 'Submitted',
+      badgeClass: 'bg-green-accent/15 text-green-accent',
+      dotClass: 'bg-green-accent'
+    },
+    Pending: {
+      label: 'Pending',
+      badgeClass: 'bg-gold/15 text-gold',
+      dotClass: 'bg-gold'
+    },
+    Missed: {
+      label: 'Missed',
+      badgeClass: 'bg-red-accent/15 text-red-accent',
+      dotClass: 'bg-red-accent'
+    }
+  };
+
+  const currentStatus = statusConfig[userStats.submissionStatus as 'Submitted' | 'Pending' | 'Missed'] || statusConfig.Pending;
+
+  return (
+    <div className="bg-gradient-to-br from-amber-500/10 via-surface/90 to-surface border border-amber-500/40 rounded-[2rem] p-4 sm:p-5 mb-4 relative overflow-hidden shadow-xl group">
+      <div className="absolute -top-10 -right-10 w-32 h-32 bg-amber-500/5 blur-3xl rounded-full" />
+      
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 relative z-10">
+        <div className="flex items-center gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center overflow-hidden shadow-inner flex-shrink-0">
+            {profilePic ? (
+              <img src={profilePic} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+            ) : (
+              <User className="text-amber-400" size={28} />
+            )}
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h3 className="text-base sm:text-lg font-black text-white font-serif truncate">আমার অ্যাকাউন্ট সামারি</h3>
+              <span className="bg-amber-500 text-bg text-[9px] font-black px-1.5 py-0.5 rounded uppercase flex-shrink-0">আপনি</span>
+            </div>
+            <div className="flex items-center gap-3 mt-0.5">
+              <p className="text-[11px] text-muted-main font-medium truncate">{userName}</p>
+              <span className="w-1 h-1 bg-white/20 rounded-full flex-shrink-0" />
+              <div className={`flex items-center gap-1.5 text-[10px] font-bold ${currentStatus.badgeClass} px-0 py-0 flex-shrink-0`}>
+                <div className={`w-1.5 h-1.5 rounded-full ${currentStatus.dotClass}`} />
+                আজ: {currentStatus.label}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {onOpenCalendar && (
+            <button 
+              onClick={onOpenCalendar}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-[9px] font-black text-white uppercase tracking-wider transition-all active:scale-[0.98] shadow-lg"
+            >
+              <Calendar size={12} className="text-amber-400" />
+              Calendar
+            </button>
+          )}
+        </div>
+      </div>
+
+        <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 w-full lg:w-auto lg:min-w-[450px]">
+          <div className="bg-bg/40 border border-white/5 p-2 rounded-xl text-center">
+            <span className="block text-[8px] text-muted-main uppercase font-bold mb-0.5">মোট দিন</span>
+            <span className="text-xs font-black text-white font-serif">{userStats.totalWorkingDays}</span>
+          </div>
+          <div className="bg-bg/40 border border-green-500/10 p-2 rounded-xl text-center">
+            <span className="block text-[8px] text-green-400 uppercase font-bold mb-0.5">জমা</span>
+            <span className="text-xs font-black text-green-400 font-serif">{userStats.submittedDays}</span>
+          </div>
+          <div className="bg-bg/40 border border-red-500/10 p-2 rounded-xl text-center">
+            <span className="block text-[8px] text-red-400 uppercase font-bold mb-0.5">মিসড</span>
+            <span className="text-xs font-black text-red-400 font-serif">{userStats.missedDays}</span>
+          </div>
+          <div className="bg-bg/40 border border-white/5 p-2 rounded-xl text-center">
+            <span className="block text-[8px] text-muted-main uppercase font-bold mb-0.5">বাকি</span>
+            <span className="text-xs font-black text-white font-serif">{userStats.remainingDays}</span>
+          </div>
+          <div className="bg-bg/40 border border-amber-500/20 p-2 rounded-xl text-center">
+            <span className="block text-[8px] text-amber-400 uppercase font-bold mb-0.5">জরিমানা</span>
+            <span className="text-xs font-black text-amber-400 font-serif">
+              {userStats.isFineSystemActive === false ? 'বন্ধ' : `৳${userStats.totalFine}`}
+            </span>
+          </div>
+        </div>
+      </div>
+  );
+};
+
+interface AllMembersSubmissionSheetProps {
+  approvedUsers: UserRegistration[];
+  members: Member[];
+  userBalances: Record<string, UserBalance>;
+  computeUserSubmissionStats: (userWhatsapp: string, memberId?: string) => any;
+  currentAuthUser: UserRegistration | null;
+  results: Record<string, Result>;
+  isAdmin?: boolean;
+  config?: Config;
+  onUpdateFine?: (amount: number) => Promise<void>;
+  onToggleFineSystem?: (active: boolean) => Promise<void>;
+  onClearAllFines?: () => Promise<void>;
+  onAllReset?: () => Promise<void>;
+  onShowCalendar?: (whatsapp: string, name: string, memberId?: string) => void;
+}
+
+const AllMembersSubmissionSheet: React.FC<AllMembersSubmissionSheetProps> = ({
+  approvedUsers,
+  members,
+  userBalances,
+  computeUserSubmissionStats,
+  currentAuthUser,
+  results,
+  isAdmin,
+  config,
+  onUpdateFine,
+  onToggleFineSystem,
+  onClearAllFines,
+  onAllReset,
+  onShowCalendar
+}) => {
+  const [search, setSearch] = useState('');
+  const [filterRole, setFilterRole] = useState<'all' | 'leaders' | 'trainers' | 'missed'>('all');
+
+  const userList = useMemo(() => {
+    const list: Array<{
+      key: string;
+      name: string;
+      position: string;
+      whatsapp: string;
+      memberId?: string;
+      profilePic?: string;
+      isLeader: boolean;
+      isTrainer: boolean;
+    }> = [];
+
+    const addedWhatsapp = new Set<string>();
+    const addedNames = new Set<string>();
+
+    approvedUsers.forEach(u => {
+      addedWhatsapp.add(u.whatsapp);
+      addedNames.add(u.fullName.trim().toLowerCase());
+      const isLeader = u.position === 'Team Leader';
+      const isTrainer = u.position === 'Team Trainer';
+      const matchedMember = members.find(m => m.name.trim().toLowerCase() === u.fullName.trim().toLowerCase());
+      list.push({
+        key: u.whatsapp,
+        name: u.fullName,
+        position: u.position || 'Team Member',
+        whatsapp: u.whatsapp,
+        memberId: matchedMember?.id,
+        profilePic: u.profilePic,
+        isLeader,
+        isTrainer
+      });
+    });
+
+    members.forEach(m => {
+      if (!addedNames.has(m.name.trim().toLowerCase())) {
+        list.push({
+          key: m.id,
+          name: m.name,
+          position: m.type === 'leader' ? 'Team Leader' : m.type === 'trainer' ? 'Team Trainer' : 'Member',
+          whatsapp: '',
+          memberId: m.id,
+          isLeader: m.type === 'leader',
+          isTrainer: m.type === 'trainer'
+        });
+      }
+    });
+
+    return list;
+  }, [approvedUsers, members]);
+
+  const itemsWithStats = useMemo(() => {
+    return userList.map(u => {
+      const stats = computeUserSubmissionStats ? computeUserSubmissionStats(u.whatsapp, u.memberId) : {};
+      const todaySubmitted = (u.memberId && results[u.memberId]?.submitted) || false;
+      return {
+        ...u,
+        stats,
+        todaySubmitted
+      };
+    });
+  }, [userList, computeUserSubmissionStats, results]);
+
+  const filteredItems = useMemo(() => {
+    return itemsWithStats.filter(item => {
+      if (item.position === 'STL') return false;
+      const matchesSearch = item.name.toLowerCase().includes(search.toLowerCase()) ||
+        item.whatsapp.includes(search) ||
+        item.position.toLowerCase().includes(search.toLowerCase());
+      
+      if (!matchesSearch) return false;
+
+      if (filterRole === 'leaders') return item.isLeader;
+      if (filterRole === 'trainers') return item.isTrainer;
+      if (filterRole === 'missed') return item.stats?.isTodaySubmitted === false || !item.todaySubmitted;
+
+      return true;
+    });
+  }, [itemsWithStats, search, filterRole]);
+
+  return (
+    <div className="bg-surface/60 border border-border rounded-[28px] p-4 sm:p-5 shadow-2xl space-y-4">
+      {config?.fineSystemActive === false && (
+        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-3">
+          <AlertTriangle size={18} className="flex-shrink-0" />
+          <span>জরিমানা সিস্টেম বর্তমানে অ্যাডমিন দ্বারা বন্ধ রাখা হয়েছে। নতুন কোনো জরিমানা যুক্ত হচ্ছে না।</span>
+        </div>
+      )}
+
+      <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+        <div className="relative flex-1">
+          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-main" />
+          <input 
+            type="text" 
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="নাম বা অবস্থান দিয়ে খুঁজুন..."
+            className="w-full bg-bg border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-xs font-bold text-white outline-none focus:border-amber-400 transition-all"
+          />
+        </div>
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 custom-scrollbar">
+          {[
+            { id: 'all', label: 'সকল মেম্বার' },
+            { id: 'leaders', label: 'লিডারগণ' },
+            { id: 'trainers', label: 'ট্রেনারগণ' },
+            { id: 'missed', label: 'আজকে মিসড' }
+          ].map((f) => (
+            <button
+              key={f.id}
+              onClick={() => setFilterRole(f.id as any)}
+              className={`px-3 py-1.5 rounded-xl text-[11px] font-black whitespace-nowrap border transition-all ${
+                filterRole === f.id
+                  ? 'bg-amber-400 text-bg border-amber-400 shadow-lg'
+                  : 'bg-white/5 text-muted-main border-white/10 hover:border-white/20'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {filteredItems.length === 0 ? (
+          <div className="text-center py-12 text-xs italic text-muted-main border border-dashed border-white/10 rounded-2xl">
+            কোনো মেম্বার পাওয়া যায়নি
+          </div>
+        ) : (
+          filteredItems.map(item => {
+            const isMe = currentAuthUser?.whatsapp === item.whatsapp;
+            const stats = item.stats || {};
+            const isSubmitted = item.todaySubmitted;
+
+            return (
+              <div 
+                key={item.key} 
+                className={`p-4 rounded-2xl border transition-all ${
+                  isMe 
+                    ? 'bg-amber-500/10 border-amber-500/40 shadow-lg' 
+                    : 'bg-bg/40 border-white/5 hover:border-white/20'
+                }`}
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-11 h-11 rounded-xl bg-surface border border-white/10 overflow-hidden flex items-center justify-center font-black text-amber-400 flex-shrink-0">
+                      {item.profilePic ? (
+                        <img src={item.profilePic} alt={item.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      ) : (
+                        item.name[0]?.toUpperCase()
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-bold text-white text-base truncate">{item.name}</h4>
+                        {isMe && (
+                          <span className="bg-amber-400 text-bg text-[9px] font-black px-1.5 py-0.5 rounded-md uppercase flex-shrink-0">
+                            আপনি
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                        <span className="text-[10px] text-muted-main font-semibold">
+                          {item.position}
+                        </span>
+                        <span className="text-white/20">•</span>
+                        <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${
+                          isSubmitted 
+                            ? 'bg-green-500/10 text-green-400 border-green-500/20' 
+                            : 'bg-red-500/10 text-red-400 border-red-500/20'
+                        }`}>
+                          {isSubmitted ? 'আজকে সাবমিটেড ✓' : 'আজকে সাবমিট করা হয়নি ✗'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col xl:flex-row xl:items-center gap-3 pt-2 xl:pt-0 border-t xl:border-t-0 border-white/5">
+                    <div className="grid grid-cols-3 gap-2 flex-1">
+                      <div className="bg-surface/80 border border-white/5 px-3 py-2 rounded-xl text-center">
+                        <span className="block text-[8px] text-muted-main uppercase font-bold">সাবমিটকৃত</span>
+                        <span className="text-xs font-black text-green-accent font-serif">{stats.submittedDays || 0} দিন</span>
+                      </div>
+
+                      <div className="bg-surface/80 border border-red-500/20 px-3 py-2 rounded-xl text-center">
+                        <span className="block text-[8px] text-red-400 uppercase font-bold">মিসড দিন</span>
+                        <span className="text-xs font-black text-red-400 font-serif">{stats.missedDays || 0} দিন</span>
+                      </div>
+
+                      <div className="bg-surface/80 border border-amber-500/20 px-3 py-2 rounded-xl text-center">
+                        <span className="block text-[8px] text-gold uppercase font-bold">চার্জ/জরিমানা</span>
+                        <span className="text-xs font-black text-gold font-serif">
+                          {stats.isFineSystemActive === false ? 'বন্ধ' : `৳${stats.totalFine || 0}`}
+                        </span>
+                      </div>
+                    </div>
+
+                    {onShowCalendar && (
+                      <button 
+                        onClick={() => onShowCalendar(item.whatsapp, item.name, item.id)}
+                        className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-amber-400 text-[9px] font-black uppercase tracking-wider transition-all active:scale-95 shadow-lg"
+                      >
+                        <Calendar size={12} />
+                        <span className="xl:hidden">ক্যালেন্ডার</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+};
+
+const FineSettingsManager = ({
+  config,
+  onUpdateFine,
+  onToggleFineSystem,
+  onClearAllFines,
+  onAllReset
+}: {
+  config: Config;
+  onUpdateFine: (amount: number) => Promise<void>;
+  onToggleFineSystem?: (active: boolean) => Promise<void>;
+  onClearAllFines?: () => Promise<void>;
+  onAllReset?: () => Promise<void>;
+}) => {
+  const [fineInput, setFineInput] = useState<string>(config.fineAmount?.toString() || '10');
+  const [saving, setSaving] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [showAllResetConfirm, setShowAllResetConfirm] = useState(false);
+
+  const fineSystemActive = config.fineSystemActive !== false;
+
+  useEffect(() => {
+    if (config.fineAmount !== undefined) {
+      setFineInput(config.fineAmount.toString());
+    }
+  }, [config.fineAmount]);
+
+  const handleSave = async (amount: number) => {
+    setSaving(true);
+    try {
+      await onUpdateFine(amount);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="p-5 sm:p-6 bg-surface/50 border border-border2 rounded-[1.5rem] sm:rounded-[2rem] shadow-2xl relative overflow-hidden space-y-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <div className="p-3 bg-red-accent/10 rounded-2xl text-red-accent border border-red-accent/20">
+            <Wallet size={22} />
+          </div>
+          <div>
+            <h3 className="text-lg font-serif font-black text-white">Fine & Penalty Settings (জরিমানা ম্যানেজমেন্ট)</h3>
+            <p className="text-[10px] text-muted-main uppercase tracking-widest mt-0.5">প্রতিদিনের মিসড সাবমিশন ফাইন ও ক্লিয়ার ডাটা অপশন</p>
+          </div>
+        </div>
+
+        {/* Fine System Active Status Badge */}
+        <div className={`px-3 py-1.5 rounded-full border text-xs font-black flex items-center gap-2 self-start sm:self-auto ${
+          fineSystemActive ? 'bg-green-500/10 text-green-400 border-green-500/20' : 'bg-red-500/10 text-red-400 border-red-500/20'
+        }`}>
+          <Power size={14} />
+          <span>জরিমানা সিস্টেম: {fineSystemActive ? 'চালু (Active)' : 'বন্ধ (Disabled)'}</span>
+        </div>
+      </div>
+
+      {/* Toggle Fine System Switch Box */}
+      {onToggleFineSystem && (
+        <div className="p-4 rounded-2xl bg-bg/60 border border-white/5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div>
+            <h4 className="text-xs font-bold text-white flex items-center gap-2">
+              <Power size={14} className={fineSystemActive ? 'text-green-400' : 'text-red-400'} />
+              জরিমানা সিস্টেম চালুকরণ / বন্ধকরণ
+            </h4>
+            <p className="text-[10px] text-muted-main mt-0.5">
+              {fineSystemActive 
+                ? 'বর্তমানে মিসড সাবমিশনের জন্য দৈনিক জরিমানা যুক্ত হচ্ছে। চাইলে বন্ধ করতে পারেন।' 
+                : 'বর্তমানে জরিমানা সিস্টেম বন্ধ রয়েছে। কোনো ব্যবহারকারীর জরিমানা যুক্ত হবে না।'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onToggleFineSystem(!fineSystemActive)}
+            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider border transition-all flex items-center gap-2 ${
+              fineSystemActive 
+                ? 'bg-red-500/10 text-red-400 border-red-500/30 hover:bg-red-500/20' 
+                : 'bg-green-500/10 text-green-400 border-green-500/30 hover:bg-green-500/20'
+            }`}
+          >
+            <Power size={14} />
+            {fineSystemActive ? 'সিস্টেম বন্ধ করুন' : 'সিস্টেম চালু করুন'}
+          </button>
+        </div>
+      )}
+
+      {/* Fine Amount Settings */}
+      <div className="bg-bg/50 border border-white/5 p-4 sm:p-5 rounded-2xl space-y-4">
+        <div className="flex items-center justify-between bg-red-accent/5 border border-red-accent/20 p-3.5 rounded-xl">
+          <span className="text-xs text-muted-main font-bold">বর্তমান সক্রিয় ফাইন হার:</span>
+          <span className="text-lg font-serif font-black text-red-accent">৳{config.fineAmount || 10} / দিন</span>
+        </div>
+
+        <div>
+          <label className="block text-[10px] text-muted-main uppercase font-black tracking-widest mb-2">
+            দ্রুত নির্বাচন করুন (Quick Select Rate)
+          </label>
+          <div className="grid grid-cols-5 gap-2 mb-4">
+            {[10, 15, 20, 25, 50].map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                onClick={() => {
+                  setFineInput(preset.toString());
+                  handleSave(preset);
+                }}
+                className={`py-2 rounded-xl text-xs font-black border transition-all ${
+                  (config.fineAmount || 10) === preset
+                    ? 'bg-red-accent text-white border-red-accent shadow-lg'
+                    : 'bg-white/5 text-muted-main border-white/10 hover:border-red-accent/40'
+                }`}
+              >
+                ৳{preset}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div className="relative flex-1">
+            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-main font-bold text-sm">৳</span>
+            <input 
+              type="number"
+              value={fineInput}
+              onChange={(e) => setFineInput(e.target.value)}
+              placeholder="10"
+              className="w-full bg-bg border border-white/10 rounded-xl py-3 pl-8 pr-3 text-white text-sm font-bold outline-none focus:border-red-accent"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              const val = parseInt(fineInput) || 0;
+              handleSave(val);
+            }}
+            disabled={saving}
+            className="px-5 py-3 rounded-xl bg-red-accent hover:bg-red-600 text-white text-xs font-black uppercase tracking-wider shadow-lg active:scale-95 disabled:opacity-40 transition-all"
+          >
+            {saving ? 'Saving...' : 'সেভ করুন'}
+          </button>
+        </div>
+      </div>
+
+      {/* Clear Data Section */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {onClearAllFines && (
+          <div className="p-4 rounded-2xl bg-amber-500/5 border border-amber-500/20 flex flex-col items-start justify-between gap-4">
+            <div>
+              <h4 className="text-xs font-bold text-amber-400 flex items-center gap-2">
+                <RotateCcw size={16} /> জরিমানা ডাটা রিসেট (Fines Reset)
+              </h4>
+              <p className="text-[10px] text-muted-main mt-0.5">
+                শুধুমাত্র ইউজারদের জরিমানা ও ব্যালেন্স ক্লিয়ার করে আজ থেকে নতুন করে ফাইন হিসাব শুরু হবে।
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowClearConfirm(true)}
+              className="w-full px-4 py-2.5 rounded-xl bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 text-xs font-black uppercase tracking-wider border border-amber-500/30 flex items-center justify-center gap-2 transition-all"
+            >
+              <RotateCcw size={14} />
+              Reset Fines
+            </button>
+          </div>
+        )}
+
+        {onAllReset && (
+          <div className="p-4 rounded-2xl bg-red-500/5 border border-red-500/20 flex flex-col items-start justify-between gap-4">
+            <div>
+              <h4 className="text-xs font-bold text-red-400 flex items-center gap-2">
+                <Trash2 size={16} /> সম্পূর্ণ ডাটা রিসেট (All Reset)
+              </h4>
+              <p className="text-[10px] text-muted-main mt-0.5">
+                সকল জরিমানা, মিসড ডে, সাবমিট হিস্টোরি এবং র্যাঙ্কিং স্কোর সম্পূর্ণ মুছে নতুন করে শুরু হবে।
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowAllResetConfirm(true)}
+              className="w-full px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-black uppercase tracking-wider shadow-lg flex items-center justify-center gap-2 transition-all"
+            >
+              <Trash2 size={14} />
+              All Reset
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Clear Confirmation Modal */}
+      {showClearConfirm && (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm">
+          <div className="bg-surface border border-amber-500/30 p-6 rounded-2xl max-w-sm w-full shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-amber-400">
+              <AlertTriangle size={24} />
+              <h3 className="text-lg font-bold">জরিমানা রিসেট নিশ্চিতকরণ</h3>
+            </div>
+            <p className="text-xs text-muted-main leading-relaxed">
+              আপনি কি নিশ্চিত যে সকল জরিমানা ও ব্যালেন্স ক্লিয়ার করে আজ থেকে নতুন করে হিসাব শুরু করতে চান?
+            </p>
+            <div className="flex gap-3 pt-2">
+              <button 
+                onClick={() => setShowClearConfirm(false)}
+                className="flex-1 py-2.5 rounded-xl border border-white/10 text-xs font-bold text-muted-main hover:bg-white/5 transition-all"
+              >
+                বাতিল
+              </button>
+              <button 
+                disabled={resetting}
+                onClick={async () => {
+                  setResetting(true);
+                  if (onClearAllFines) await onClearAllFines();
+                  setResetting(false);
+                  setShowClearConfirm(false);
+                }}
+                className={`flex-1 py-2.5 rounded-xl bg-amber-600 text-white text-xs font-black uppercase tracking-wider hover:bg-amber-700 transition-all shadow-lg flex items-center justify-center gap-2 ${resetting ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                {resetting ? <RotateCcw size={14} className="animate-spin" /> : 'রিসেট করুন'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* All Reset Confirmation Modal */}
+      {showAllResetConfirm && (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm">
+          <div className="bg-surface border border-red-500/30 p-6 rounded-2xl max-w-sm w-full shadow-2xl space-y-4">
+            <div className="flex items-center gap-3 text-red-400">
+              <AlertTriangle size={24} />
+              <h3 className="text-lg font-bold text-red-500">সম্পূর্ণ রিসেট নিশ্চিতকরণ</h3>
+            </div>
+            <p className="text-xs text-muted-main leading-relaxed">
+              আপনি কি নিশ্চিত? All Reset করলে পূর্বের সকল হিসাব মুছে যাবে এবং আজকের তারিখ থেকে নতুন করে গণনা শুরু হবে।
+            </p>
+            <div className="flex gap-3 pt-2">
+              <button 
+                onClick={() => setShowAllResetConfirm(false)}
+                className="flex-1 py-2.5 rounded-xl border border-white/10 text-xs font-bold text-muted-main hover:bg-white/5 transition-all"
+              >
+                বাতিল
+              </button>
+              <button 
+                disabled={resetting}
+                onClick={async () => {
+                  setResetting(true);
+                  if (onAllReset) await onAllReset();
+                  setResetting(false);
+                  setShowAllResetConfirm(false);
+                }}
+                className={`flex-1 py-2.5 rounded-xl bg-red-600 text-white text-xs font-black uppercase tracking-wider hover:bg-red-700 transition-all shadow-lg flex items-center justify-center gap-2 ${resetting ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                {resetting ? <RotateCcw size={14} className="animate-spin" /> : 'All Reset'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const BalanceManagementSection = ({
+  approvedUsers,
+  members,
+  userBalances,
+  auditLogs,
+  onUpdateBalance,
+  onWaiveFine,
+  onRemoveDayFine,
+  onRecalculateFine,
+  computeUserSubmissionStats
+}: {
+  approvedUsers: UserRegistration[];
+  members: Member[];
+  userBalances: Record<string, UserBalance>;
+  auditLogs: AuditLog[];
+  onUpdateBalance: (whatsapp: string, userName: string, amount: number, isDeduct: boolean, reason: string) => Promise<void>;
+  onWaiveFine: (whatsapp: string, userName: string, amount: number, reason: string) => Promise<void>;
+  onRemoveDayFine: (whatsapp: string, userName: string, dateStr: string, reason: string) => Promise<void>;
+  onRecalculateFine: (whatsapp: string, userName: string) => Promise<void>;
+  computeUserSubmissionStats?: (userWhatsapp: string, memberId?: string) => any;
+}) => {
+  const [selectedUserKey, setSelectedUserKey] = useState<string>('');
+  const [addAmount, setAddAmount] = useState<string>('');
+  const [addReason, setAddReason] = useState<string>('');
+  const [waiveAmount, setWaiveAmount] = useState<string>('');
+  const [waiveReason, setWaiveReason] = useState<string>('');
+  const [removeDate, setRemoveDate] = useState<string>('');
+  const [removeReason, setRemoveReason] = useState<string>('');
+  const [activeTab, setActiveTab] = useState<'overview' | 'add' | 'deduct' | 'waive' | 'remove_day' | 'logs'>('overview');
+  const [busy, setBusy] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Quick Action modal/inline box state
+  const [quickUser, setQuickUser] = useState<{ key: string; name: string; type: 'add' | 'deduct' | 'waive' | 'remove_day' } | null>(null);
+  const [quickAmount, setQuickAmount] = useState('');
+  const [quickDate, setQuickDate] = useState(new Date().toISOString().split('T')[0]);
+  const [quickReason, setQuickReason] = useState('');
+
+  const userOptions = useMemo(() => {
+    const list: { key: string; name: string; position?: string; whatsapp: string; memberId?: string }[] = [];
+    approvedUsers.forEach(u => {
+      const cleanName = u.fullName.trim().toLowerCase();
+      const matchedMember = members.find(m => m.name.trim().toLowerCase() === cleanName);
+      list.push({ 
+        key: u.whatsapp, 
+        name: u.fullName, 
+        position: u.position, 
+        whatsapp: u.whatsapp,
+        memberId: matchedMember?.id
+      });
+    });
+    members.forEach(m => {
+      const cleanName = m.name.trim().toLowerCase();
+      if (!list.some(x => x.name.trim().toLowerCase() === cleanName)) {
+        list.push({ 
+          key: m.id, 
+          name: m.name, 
+          position: m.type === 'leader' ? 'Team Leader' : m.type === 'trainer' ? 'Team Trainer' : 'Team Member', 
+          whatsapp: '', 
+          memberId: m.id 
+        });
+      }
+    });
+    return list;
+  }, [approvedUsers, members]);
+
+  const overviewList = useMemo(() => {
+    if (!searchQuery) return userOptions;
+    const q = searchQuery.toLowerCase();
+    return userOptions.filter(u => u.name.toLowerCase().includes(q) || (u.position && u.position.toLowerCase().includes(q)) || u.key.includes(q));
+  }, [userOptions, searchQuery]);
+
+  useEffect(() => {
+    if (!selectedUserKey && userOptions.length > 0) {
+      setSelectedUserKey(userOptions[0].key);
+    }
+  }, [userOptions, selectedUserKey]);
+
+  const selectedUser = userOptions.find(u => u.key === selectedUserKey);
+  const selectedStats = selectedUser && computeUserSubmissionStats ? computeUserSubmissionStats(selectedUser.whatsapp, selectedUser.memberId) : null;
+
+  const handleFineAdjustSubmit = async (isDeduct: boolean) => {
+    if (!selectedUser) return;
+    const amt = parseFloat(addAmount);
+    if (isNaN(amt) || amt <= 0) return;
+    setBusy(true);
+    try {
+      await onUpdateBalance(selectedUser.key, selectedUser.name, amt, isDeduct, addReason || (isDeduct ? 'ফাইন কমানো হয়েছে' : 'ফাইন বাড়ানো হয়েছে'));
+      setAddAmount('');
+      setAddReason('');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleWaiveSubmit = async () => {
+    if (!selectedUser) return;
+    const amt = parseFloat(waiveAmount);
+    if (isNaN(amt) || amt <= 0) return;
+    setBusy(true);
+    try {
+      await onWaiveFine(selectedUser.key, selectedUser.name, amt, waiveReason || 'এডমিন কর্তৃক জরিমানা মওকুফ');
+      setWaiveAmount('');
+      setWaiveReason('');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRemoveDaySubmit = async () => {
+    if (!selectedUser || !removeDate) return;
+    setBusy(true);
+    try {
+      await onRemoveDayFine(selectedUser.key, selectedUser.name, removeDate, removeReason || `${removeDate} তারিখের মিসড দিন রিমুভ করা হয়েছে`);
+      setRemoveDate('');
+      setRemoveReason('');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleQuickSubmit = async () => {
+    if (!quickUser) return;
+    setBusy(true);
+    try {
+      if (quickUser.type === 'add') {
+        const amt = parseFloat(quickAmount);
+        if (!isNaN(amt) && amt > 0) {
+          await onUpdateBalance(quickUser.key, quickUser.name, amt, false, quickReason || 'ফাইন বাড়ানো হয়েছে');
+        }
+      } else if (quickUser.type === 'deduct') {
+        const amt = parseFloat(quickAmount);
+        if (!isNaN(amt) && amt > 0) {
+          await onUpdateBalance(quickUser.key, quickUser.name, amt, true, quickReason || 'ফাইন কমানো হয়েছে');
+        }
+      } else if (quickUser.type === 'waive') {
+        const amt = parseFloat(quickAmount);
+        if (!isNaN(amt) && amt > 0) {
+          await onWaiveFine(quickUser.key, quickUser.name, amt, quickReason || 'জরিমানা মওকুফ');
+        }
+      } else if (quickUser.type === 'remove_day') {
+        if (quickDate) {
+          await onRemoveDayFine(quickUser.key, quickUser.name, quickDate, quickReason || `${quickDate} তারিখের মিসড দিন বাদ দেওয়া হয়েছে`);
+        }
+      }
+      setQuickUser(null);
+      setQuickAmount('');
+      setQuickReason('');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="p-5 sm:p-6 bg-surface/50 border border-border2 rounded-[1.5rem] sm:rounded-[2rem] shadow-2xl relative overflow-hidden space-y-6">
+      <div className="flex items-center gap-3.5">
+        <div className="p-3 bg-gold/10 rounded-2xl text-gold border border-gold/20">
+          <Wallet size={22} />
+        </div>
+        <div>
+          <h3 className="text-lg font-serif font-black text-white">টিম মেম্বারদের জরিমানা ও মিসড দিন ব্যবস্থাপনা</h3>
+          <p className="text-[10px] text-muted-main uppercase tracking-widest mt-0.5">নামের পাশে মিসড দিন ও ফাইন শো করবে। এডমিন চাইলে ফাইন বাড়াতে, কমাতে, মওকুফ করতে বা মিসড দিন বাদ দিতে পারবেন।</p>
+        </div>
+      </div>
+
+      <div className="flex bg-bg p-1 rounded-xl border border-white/5 overflow-x-auto custom-scrollbar gap-1">
+        {[
+          { id: 'overview', label: 'মেম্বার লিস্ট' },
+          { id: 'add', label: '+ ফাইন বাড়ান' },
+          { id: 'deduct', label: '- ফাইন কমান' },
+          { id: 'waive', label: '🛡️ ক্ষমা/মওকুফ' },
+          { id: 'remove_day', label: '📅 মিসড দিন রিমুভ' },
+          { id: 'logs', label: 'অডিট লগ' }
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setActiveTab(tab.id as any)}
+            className={`flex-1 min-w-[95px] py-2 px-2.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all whitespace-nowrap ${
+              activeTab === tab.id
+                ? 'bg-gold text-bg shadow'
+                : 'text-muted-main hover:text-white'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'overview' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="🔍 টিম লিডার বা ট্রেনার খুঁজুন..."
+              className="w-full bg-surface border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white outline-none focus:border-gold"
+            />
+          </div>
+
+          <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1 custom-scrollbar">
+            {overviewList.length === 0 ? (
+              <div className="text-center py-10 text-xs text-muted-main italic">
+                কোনো টিম লিডার বা ট্রেনার পাওয়া যায়নি...
+              </div>
+            ) : (
+              overviewList.map((item) => {
+                const stats = computeUserSubmissionStats ? computeUserSubmissionStats(item.whatsapp, item.memberId) : {
+                  submittedDays: 0,
+                  missedDays: 0,
+                  totalFine: 0
+                };
+
+                const isQuickActive = quickUser?.key === item.key;
+
+                return (
+                  <div key={item.key} className="p-4 bg-surface rounded-2xl border border-white/10 hover:border-gold/30 transition-all space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/5 pb-2.5">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-gold/10 text-gold flex items-center justify-center font-bold text-xs border border-gold/20">
+                          {item.name.charAt(0)}
+                        </div>
+                        <div>
+                          <div className="font-bold text-sm text-white flex items-center gap-2">
+                            <span>{item.name}</span>
+                            <span className="text-[9px] px-2 py-0.5 rounded-md bg-white/5 text-gold border border-gold/20 font-mono">
+                              {item.position || 'Member'}
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-muted-main opacity-60 font-mono">{item.key}</div>
+                        </div>
+                      </div>
+
+                      {/* Action Buttons Row */}
+                      <div className="flex flex-wrap items-center gap-1.5 self-end sm:self-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedUserKey(item.key);
+                            setQuickUser({ key: item.key, name: item.name, type: 'add' });
+                            setQuickAmount('');
+                            setQuickReason('');
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-red-accent/10 hover:bg-red-accent text-red-accent hover:text-white border border-red-accent/30 text-[10px] font-black transition-all"
+                        >
+                          + ফাইন বাড়ান
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedUserKey(item.key);
+                            setQuickUser({ key: item.key, name: item.name, type: 'deduct' });
+                            setQuickAmount('');
+                            setQuickReason('');
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-green-accent/10 hover:bg-green-accent text-green-accent hover:text-bg border border-green-accent/30 text-[10px] font-black transition-all"
+                        >
+                          - ফাইন কমান
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedUserKey(item.key);
+                            setQuickUser({ key: item.key, name: item.name, type: 'waive' });
+                            setQuickAmount('');
+                            setQuickReason('');
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-gold/10 hover:bg-gold text-gold hover:text-bg border border-gold/30 text-[10px] font-black transition-all"
+                        >
+                          🛡️ মওকুফ
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedUserKey(item.key);
+                            setQuickUser({ key: item.key, name: item.name, type: 'remove_day' });
+                            setQuickDate(new Date().toISOString().split('T')[0]);
+                            setQuickReason('');
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-purple-500/10 hover:bg-purple-500 text-purple-400 hover:text-white border border-purple-500/30 text-[10px] font-black transition-all"
+                        >
+                          📅 দিন রিমুভ
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Stats Grid - 3 Clean Columns (No Balance) */}
+                    <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                      <div className="p-2.5 bg-bg/50 rounded-xl border border-white/5">
+                        <span className="block text-[9px] text-muted-main uppercase font-bold">সাবমিটকৃত দিন</span>
+                        <span className="font-black text-green-accent">{stats.submittedDays} দিন</span>
+                      </div>
+                      <div className="p-2.5 bg-bg/50 rounded-xl border border-white/5">
+                        <span className="block text-[9px] text-muted-main uppercase font-bold">মিসড দিন</span>
+                        <span className="font-black text-red-accent">{stats.missedDays} দিন</span>
+                      </div>
+                      <div className="p-2.5 bg-bg/50 rounded-xl border border-white/5">
+                        <span className="block text-[9px] text-muted-main uppercase font-bold">মোট জরিমানা</span>
+                        <span className="font-black text-gold">৳{stats.totalFine}</span>
+                      </div>
+                    </div>
+
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeTab !== 'overview' && activeTab !== 'logs' && (
+        <div className="bg-bg/50 border border-white/5 p-4 rounded-2xl">
+          <label className="block text-[10px] text-muted-main uppercase font-black tracking-widest mb-2">
+            ইউজার নির্বাচন করুন (Select Member)
+          </label>
+          <select
+            value={selectedUserKey}
+            onChange={(e) => setSelectedUserKey(e.target.value)}
+            className="w-full bg-surface border border-white/10 rounded-xl py-3 px-4 text-white font-bold text-sm outline-none focus:border-gold"
+          >
+            {userOptions.map((u) => (
+              <option key={u.key} value={u.key}>
+                {u.name} ({u.position || 'Member'}) - {u.key}
+              </option>
+            ))}
+          </select>
+
+          {selectedUser && selectedStats && (
+            <div className="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-white/5 text-center">
+              <div className="p-2.5 bg-surface/80 rounded-xl border border-white/5">
+                <span className="block text-[9px] text-muted-main uppercase font-bold">সাবমিটকৃত</span>
+                <span className="text-xs font-black text-green-accent font-serif">
+                  {selectedStats.submittedDays} দিন
+                </span>
+              </div>
+              <div className="p-2.5 bg-surface/80 rounded-xl border border-white/5">
+                <span className="block text-[9px] text-muted-main uppercase font-bold">মিসড দিন</span>
+                <span className="text-xs font-black text-red-accent font-serif">
+                  {selectedStats.missedDays} দিন
+                </span>
+              </div>
+              <div className="p-2.5 bg-surface/80 rounded-xl border border-white/5">
+                <span className="block text-[9px] text-muted-main uppercase font-bold">মোট জরিমানা</span>
+                <span className="text-xs font-black text-gold font-serif">
+                  ৳{selectedStats.totalFine}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab !== 'overview' && (
+        <div className="bg-bg/40 border border-white/5 p-4 rounded-2xl">
+          {(activeTab === 'add' || activeTab === 'deduct') && (
+            <div className="space-y-3">
+              <h4 className="text-xs font-black text-white uppercase tracking-wider">
+                {activeTab === 'add' ? 'ফাইন বাড়ান (Increase Fine)' : 'ফাইন কমান (Decrease Fine)'}
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <input
+                  type="number"
+                  value={addAmount}
+                  onChange={(e) => setAddAmount(e.target.value)}
+                  placeholder="টাকার পরিমাণ (৳)"
+                  className="bg-surface border border-white/10 rounded-xl p-3 text-sm font-bold text-white outline-none focus:border-gold"
+                />
+                <input
+                  type="text"
+                  value={addReason}
+                  onChange={(e) => setAddReason(e.target.value)}
+                  placeholder="কারণ / নোট (e.g. বিলম্ব ফি)"
+                  className="bg-surface border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-gold"
+                />
+              </div>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => handleFineAdjustSubmit(activeTab === 'deduct')}
+                className={`w-full py-3 rounded-xl font-black text-xs uppercase tracking-wider shadow-lg active:scale-95 transition-all ${
+                  activeTab === 'add' ? 'bg-red-accent text-white hover:opacity-90' : 'bg-green-accent text-bg hover:opacity-90'
+                }`}
+              >
+                {busy ? 'প্রসেসিং...' : (activeTab === 'add' ? 'ফাইন বাড়ান' : 'ফাইন কমান')}
+              </button>
+            </div>
+          )}
+
+          {activeTab === 'waive' && (
+            <div className="space-y-3">
+              <h4 className="text-xs font-black text-white uppercase tracking-wider">
+                জরিমানা মওকুফ করুন (Waive Fine)
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <input
+                  type="number"
+                  value={waiveAmount}
+                  onChange={(e) => setWaiveAmount(e.target.value)}
+                  placeholder="মওকুফ টাকার পরিমাণ (৳)"
+                  className="bg-surface border border-white/10 rounded-xl p-3 text-sm font-bold text-white outline-none focus:border-gold"
+                />
+                <input
+                  type="text"
+                  value={waiveReason}
+                  onChange={(e) => setWaiveReason(e.target.value)}
+                  placeholder="কারণ / নোট (e.g. অসুস্থতা)"
+                  className="bg-surface border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-gold"
+                />
+              </div>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={handleWaiveSubmit}
+                className="w-full py-3 rounded-xl bg-gold text-bg font-black text-xs uppercase tracking-wider hover:opacity-90 active:scale-95 transition-all shadow-lg"
+              >
+                {busy ? 'প্রসেসিং...' : 'জরিমানা মওকুফ করুন'}
+              </button>
+            </div>
+          )}
+
+          {activeTab === 'remove_day' && (
+            <div className="space-y-3">
+              <h4 className="text-xs font-black text-white uppercase tracking-wider">
+                মিসড দিন বাদ দিন (Remove Missed Day)
+              </h4>
+              <p className="text-[11px] text-muted-main">
+                যেইদিন মেম্বার সাবমিট করতে পারে নাই, ওই তারিখ নির্বাচন করে বাদ দিলে তার মিসড দিন কমবে এবং জরিমানা মওকুফ হবে।
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <input
+                  type="date"
+                  value={removeDate}
+                  onChange={(e) => setRemoveDate(e.target.value)}
+                  className="bg-surface border border-white/10 rounded-xl p-3 text-sm font-bold text-white outline-none focus:border-gold"
+                />
+                <input
+                  type="text"
+                  value={removeReason}
+                  onChange={(e) => setRemoveReason(e.target.value)}
+                  placeholder="কারণ / নোট (e.g. অনুমোদিত ছুটি)"
+                  className="bg-surface border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-gold"
+                />
+              </div>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={handleRemoveDaySubmit}
+                className="w-full py-3 rounded-xl bg-purple-500 text-white font-black text-xs uppercase tracking-wider hover:opacity-90 active:scale-95 transition-all shadow-lg"
+              >
+                {busy ? 'প্রসেসিং...' : 'এই তারিখের মিসড দিন বাদ দিন'}
+              </button>
+            </div>
+          )}
+
+          {activeTab === 'logs' && (
+            <div className="space-y-3">
+              <h4 className="text-xs font-black text-white uppercase tracking-wider mb-2">
+                অডিট লগ (Audit Logs)
+              </h4>
+              <div className="space-y-2 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
+                {auditLogs.length === 0 ? (
+                  <div className="text-center py-8 text-xs text-muted-main italic">
+                    কোনো Audit Log পাওয়া যায়নি...
+                  </div>
+                ) : (
+                  auditLogs.map((log) => (
+                    <div key={log.id} className="p-3 bg-surface rounded-xl border border-white/5 text-xs">
+                      <div className="flex items-center justify-between text-white font-bold mb-1">
+                        <span>{log.userName}</span>
+                        <span className="text-[10px] text-gold font-mono">{log.action}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-[10px] text-muted-main">
+                        <span>{log.reason || 'No note'} {log.amount ? `(৳${log.amount})` : ''}</span>
+                        <span>{log.createdAt?.toDate ? log.createdAt.toDate().toLocaleString() : 'Just now'}</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Quick Action Modal Dialog */}
+      <AnimatePresence>
+        {quickUser && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => setQuickUser(null)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative w-full max-w-sm bg-surface border border-gold/30 p-5 rounded-2xl shadow-2xl space-y-4"
+            >
+              <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                <h3 className="text-sm font-black text-white">
+                  {quickUser.type === 'add' ? '➕ ফাইন বাড়ান' : quickUser.type === 'deduct' ? '➖ ফাইন কমান' : quickUser.type === 'waive' ? '🛡️ জরিমানা মওকুফ করুন' : '📅 মিসড দিন রিমুভ করুন'}
+                </h3>
+                <button type="button" onClick={() => setQuickUser(null)} className="w-6 h-6 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 text-muted-main hover:text-white transition-colors">
+                  ✕
+                </button>
+              </div>
+              
+              <div className="text-xs text-muted-main mb-2">
+                User: <span className="text-white font-bold">{quickUser.name}</span>
+              </div>
+
+              <div className="space-y-3">
+                {quickUser.type === 'remove_day' ? (
+                  <div>
+                    <label className="block text-[10px] text-muted-main font-bold uppercase mb-1">তারিখ নির্বাচন করুন</label>
+                    <input
+                      type="date"
+                      value={quickDate}
+                      onChange={(e) => setQuickDate(e.target.value)}
+                      className="w-full bg-bg border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-gold transition-colors"
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-[10px] text-muted-main font-bold uppercase mb-1">টাকার পরিমাণ (৳)</label>
+                    <input
+                      type="number"
+                      value={quickAmount}
+                      onChange={(e) => setQuickAmount(e.target.value)}
+                      placeholder="Enter amount..."
+                      className="w-full bg-bg border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-gold transition-colors"
+                    />
+                  </div>
+                )}
+                <div>
+                  <label className="block text-[10px] text-muted-main font-bold uppercase mb-1">কারণ / নোট (Optional)</label>
+                  <input
+                    type="text"
+                    value={quickReason}
+                    onChange={(e) => setQuickReason(e.target.value)}
+                    placeholder="Enter reason..."
+                    className="w-full bg-bg border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-gold transition-colors"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="button"
+                disabled={busy}
+                onClick={handleQuickSubmit}
+                className="w-full py-3 rounded-xl bg-gold text-bg font-black text-sm uppercase tracking-wider hover:bg-gold/90 transition-all shadow-[0_0_15px_rgba(245,197,66,0.3)] disabled:opacity-50 disabled:cursor-not-allowed mt-2"
+              >
+                {busy ? 'প্রসেসিং...' : 'কনফার্ম করুন'}
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+function GiftBoxOverlay({ config }: { config: Config }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [isDismissed, setIsDismissed] = useState(false);
+
+  if (!config.giftBoxActive || isDismissed) return null;
+
+  return (
+    <>
+      <div className="fixed bottom-16 left-4 z-[250] w-12 h-12">
+        <button
+          onClick={() => setIsOpen(true)}
+          className="w-full h-full bg-gradient-to-tr from-pink-600 to-orange-500 rounded-full shadow-[0_0_20px_rgba(236,72,153,0.5)] flex items-center justify-center text-white hover:scale-110 active:scale-95 transition-all overflow-visible group"
+        >
+          <Gift size={22} className="animate-bounce" />
+        </button>
+        <button 
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsDismissed(true);
+          }}
+          className="absolute -top-1 -right-1 flex h-4 w-4 bg-red-500 border border-white rounded-full items-center justify-center text-white hover:scale-110 active:scale-95 transition-all z-10 shadow-md cursor-pointer"
+        >
+          <X size={10} strokeWidth={4} />
+        </button>
+      </div>
+
+      <AnimatePresence>
+        {isOpen && (
+          <div className="fixed inset-0 z-[400] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => setIsOpen(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-sm bg-surface border border-pink-500/30 p-6 rounded-3xl shadow-2xl flex flex-col items-center text-center"
+            >
+              <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-pink-500 to-orange-400 flex items-center justify-center text-white shadow-lg mb-4">
+                <Gift size={32} />
+              </div>
+              <h3 className="text-xl font-black text-white mb-2">{config.giftBoxTitle || 'Surprise Gift!'}</h3>
+              <p className="text-sm text-muted-main mb-6 whitespace-pre-wrap">
+                {config.giftBoxContent || 'No details available right now.'}
+              </p>
+              <button
+                onClick={() => setIsOpen(false)}
+                className="w-full py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-sm transition-colors"
+              >
+                Close
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </>
+  );
+}
+
+const UserCalendarModal = ({ 
+  user, 
+  submissionLogs, 
+  onClose 
+}: { 
+  user: { whatsapp: string, name: string, memberId?: string }; 
+  submissionLogs: SubmissionLog[]; 
+  onClose: () => void; 
+}) => {
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+
+  const monthStart = startOfMonth(currentMonth);
+  const monthEnd = endOfMonth(monthStart);
+  const startDate = startOfWeek(monthStart);
+  const endDate = endOfWeek(monthEnd);
+
+  const days = eachDayOfInterval({
+    start: startDate,
+    end: endDate
+  });
+
+  const userLogs = useMemo(() => {
+    return submissionLogs.filter(log => {
+      if (user.memberId && log.memberId === user.memberId) return true;
+      if (user.whatsapp && log.whatsapp === user.whatsapp) return true;
+      return false;
+    });
+  }, [submissionLogs, user]);
+
+  const getDayStatus = (day: Date) => {
+    const dateStr = format(day, 'yyyy-MM-dd');
+    const log = userLogs.find(l => l.date === dateStr);
+    if (!log) return 'none';
+    return log.convert > 0 || log.lead > 0 ? 'submitted' : 'missed';
+  };
+
+  const nextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
+  const prevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
+
+  return (
+    <div className="fixed inset-0 z-[1100] flex items-center justify-center p-4 sm:p-6">
+      <motion.div 
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="absolute inset-0 bg-black/80 backdrop-blur-md"
+      />
+      <motion.div 
+        initial={{ scale: 0.9, opacity: 0, y: 20 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.9, opacity: 0, y: 20 }}
+        className="relative bg-surface border border-white/10 w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+      >
+        <div className="p-6 border-b border-white/5 flex items-center justify-between bg-gradient-to-br from-amber-500/10 to-transparent">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-amber-500/20 rounded-2xl text-amber-400">
+              <Calendar size={24} />
+            </div>
+            <div>
+              <h3 className="text-lg font-black text-white font-serif">{user.name}</h3>
+              <p className="text-[10px] text-muted-main uppercase tracking-widest font-bold">সাবমিশন ক্যালেন্ডার</p>
+            </div>
+          </div>
+          <button 
+            onClick={onClose}
+            className="p-2 hover:bg-white/10 rounded-full text-muted-main transition-colors"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="p-6 flex-1 overflow-y-auto custom-scrollbar">
+          <div className="flex items-center justify-between mb-6">
+            <h4 className="text-sm font-black text-white">
+              {format(currentMonth, 'MMMM yyyy', { locale: bn })}
+            </h4>
+            <div className="flex gap-2">
+              <button 
+                onClick={prevMonth}
+                className="p-2 hover:bg-white/5 rounded-xl border border-white/10 text-muted-main transition-all"
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <button 
+                onClick={nextMonth}
+                className="p-2 hover:bg-white/5 rounded-xl border border-white/10 text-muted-main transition-all"
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-7 gap-2 mb-2 text-center">
+            {['শনি', 'রবি', 'সোম', 'মঙ্গল', 'বুধ', 'বৃহ', 'শুক্র'].map(d => (
+              <div key={d} className="text-[10px] font-black text-muted-main uppercase tracking-wider">{d}</div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-7 gap-2">
+            {days.map((day, i) => {
+              const status = getDayStatus(day);
+              const isCurrentMonth = isSameMonth(day, monthStart);
+              const isToday = isSameDay(day, new Date());
+
+              return (
+                <div 
+                  key={i}
+                  className={`relative aspect-square flex items-center justify-center rounded-xl text-xs font-bold transition-all ${
+                    !isCurrentMonth ? 'opacity-20 grayscale' : ''
+                  } ${
+                    status === 'submitted' 
+                      ? 'bg-green-500 text-white shadow-[0_0_10px_rgba(34,197,94,0.3)]' 
+                      : status === 'missed'
+                      ? 'bg-red-500 text-white shadow-[0_0_10px_rgba(239,68,68,0.3)]'
+                      : isToday
+                      ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                      : 'bg-white/5 text-muted-main border border-white/5 hover:border-white/20'
+                  }`}
+                >
+                  {format(day, 'd')}
+                  {status !== 'none' && (
+                    <div className={`absolute bottom-1 w-1 h-1 rounded-full ${status === 'submitted' ? 'bg-white' : 'bg-white/50'}`} />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-8 grid grid-cols-2 gap-3">
+            <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-2xl flex items-center gap-3">
+              <div className="w-2 h-2 rounded-full bg-green-500" />
+              <div className="text-[10px] font-black text-green-400 uppercase">সাবমিট করা হয়েছে</div>
+            </div>
+            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-2xl flex items-center gap-3">
+              <div className="w-2 h-2 rounded-full bg-red-500" />
+              <div className="text-[10px] font-black text-red-400 uppercase">মিসড করেছেন</div>
+            </div>
+          </div>
+
+          <div className="mt-4 p-4 bg-bg/40 border border-white/5 rounded-2xl">
+            <div className="flex items-center gap-2 mb-3">
+              <AlertCircle size={14} className="text-amber-400" />
+              <h5 className="text-[10px] font-black text-white uppercase tracking-widest">সামারি</h5>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-[9px] text-muted-main uppercase font-bold">মোট জমা</p>
+                <p className="text-lg font-black text-green-400 font-serif">
+                  {userLogs.filter(l => l.convert > 0 || l.lead > 0).length} দিন
+                </p>
+              </div>
+              <div>
+                <p className="text-[9px] text-muted-main uppercase font-bold">মোট মিসড</p>
+                <p className="text-lg font-black text-red-400 font-serif">
+                  {userLogs.filter(l => l.convert === 0 && l.lead === 0).length} দিন
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <button 
+          onClick={onClose}
+          className="m-6 py-3 rounded-2xl bg-white/5 hover:bg-white/10 text-white font-black text-xs uppercase tracking-widest border border-white/10 transition-all active:scale-[0.98]"
+        >
+          বন্ধ করুন
+        </button>
+      </motion.div>
+    </div>
+  );
+};
+
 export default function App() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
@@ -875,7 +2417,7 @@ export default function App() {
   const [showSocialsModal, setShowSocialsModal] = useState(false);
   const [showNoticeModal, setShowNoticeModal] = useState(false);
   const [showCounsellingModal, setShowCounsellingModal] = useState(false);
-  const [userTab, setUserTab] = useState<'home' | 'submit' | 'links' | 'profile'>('home');
+  const [userTab, setUserTab] = useState<'home' | 'submit' | 'sheet' | 'links' | 'profile'>('home');
   const [savingPic, setSavingPic] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
@@ -884,8 +2426,13 @@ export default function App() {
 
   const [quickLinks, setQuickLinks] = useState<QuickLink[]>([]);
   const [showQuickLinksModal, setShowQuickLinksModal] = useState(false);
+
+  const [userBalances, setUserBalances] = useState<Record<string, UserBalance>>({});
+  const [submissionLogs, setSubmissionLogs] = useState<SubmissionLog[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   
   const [showConfirm, setShowConfirm] = useState<{ title: string, onConfirm: () => void } | null>(null);
+  const [showCalendarUser, setShowCalendarUser] = useState<{ whatsapp: string, name: string, memberId?: string } | null>(null);
   const [siteAuthenticated, setSiteAuthenticated] = useState(false);
   const [stlAuthenticated, setStlAuthenticated] = useState(false);
   const [showStlLoginModal, setShowStlLoginModal] = useState(false);
@@ -947,11 +2494,15 @@ export default function App() {
 
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       setUser(u);
-      if (localStorage.getItem('isAdmin') === 'true' && !u) {
+      // Auto-restore anonymous auth for both admins and regular users who are logged in
+      const isUserLoggedIn = localStorage.getItem('unity_user') !== null;
+      const isAdminLoggedIn = localStorage.getItem('isAdmin') === 'true';
+
+      if ((isAdminLoggedIn || isUserLoggedIn) && !u) {
         try {
           await signInAnonymously(auth);
         } catch (err) {
-          console.warn("Failed to automatically restore anonymous admin auth:", err);
+          console.warn("Failed to automatically restore anonymous auth:", err);
         }
       }
       setIsAuthReady(true);
@@ -1058,12 +2609,41 @@ export default function App() {
     let unsubDemoAttendance = () => {};
     let unsubPending = () => {};
     let unsubApproved = () => {};
+    let unsubBalances = () => {};
+    let unsubSubmissionLogs = () => {};
+    let unsubAuditLogs = () => {};
 
     if (isAuthReady && user) {
+      // Authenticated Users Listeners
+      unsubBalances = onSnapshot(collection(db, 'userBalances'), (snapshot) => {
+        const bMap: Record<string, UserBalance> = {};
+        snapshot.forEach(d => {
+          bMap[d.id] = { id: d.id, ...d.data() } as UserBalance;
+        });
+        setUserBalances(bMap);
+      }, (err) => handleFirestoreError(err, OperationType.GET, 'userBalances', showMsg));
+
+      unsubSubmissionLogs = onSnapshot(query(collection(db, 'submissionLogs'), orderBy('submittedAt', 'desc'), limit(500)), (snapshot) => {
+        const logs: SubmissionLog[] = [];
+        snapshot.forEach(d => {
+          logs.push({ id: d.id, ...d.data() } as SubmissionLog);
+        });
+        setSubmissionLogs(logs);
+      }, (err) => handleFirestoreError(err, OperationType.GET, 'submissionLogs', showMsg));
+
       const isActuallyAdmin = user.email === adminEmail || user.email === devEmail || user.isAnonymous || isAdmin;
       
       // If signed in via Firebase Auth with admin email
       if (isActuallyAdmin) {
+        // Admin Only Listeners
+        unsubAuditLogs = onSnapshot(query(collection(db, 'auditLogs'), orderBy('createdAt', 'desc'), limit(100)), (snapshot) => {
+          const logs: AuditLog[] = [];
+          snapshot.forEach(d => {
+            logs.push({ id: d.id, ...d.data() } as AuditLog);
+          });
+          setAuditLogs(logs);
+        }, (err) => handleFirestoreError(err, OperationType.GET, 'auditLogs', showMsg));
+
         unsubApps = onSnapshot(query(collection(db, 'applications'), orderBy('createdAt', 'desc')), (snapshot) => {
           const aList: Application[] = [];
           snapshot.forEach(d => aList.push({ id: d.id, ...d.data() } as Application));
@@ -1114,6 +2694,9 @@ export default function App() {
       unsubStlMembers();
       unsubDemoMembers();
       unsubQuickLinks();
+      unsubBalances();
+      unsubSubmissionLogs();
+      unsubAuditLogs();
       unsubApps();
       unsubAttendance();
       unsubStlAttendance();
@@ -1294,6 +2877,16 @@ export default function App() {
       };
 
       await setDoc(doc(db, 'pendingRegistrations', whatsapp), registrationData);
+      
+      // Ensure Firebase Auth session
+      try {
+        if (!auth.currentUser) {
+          await signInAnonymously(auth);
+        }
+      } catch (authErr) {
+        console.warn("Auth error during registration:", authErr);
+      }
+
       showMsg('Registration submitted! Wait for admin approval.', 'success');
       return true;
     } catch (err) {
@@ -1350,6 +2943,15 @@ export default function App() {
       if (user.status === 'blocked') {
         showMsg('Your account is blocked!', 'error');
         return false;
+      }
+
+      // Ensure Firebase Auth session for Storage/Firestore rules
+      try {
+        if (!auth.currentUser) {
+          await signInAnonymously(auth);
+        }
+      } catch (authErr) {
+        console.warn("Auth error during user login:", authErr);
       }
 
       setAuthenticatedUser(user);
@@ -1424,12 +3026,12 @@ export default function App() {
            createdAt: serverTimestamp()
          });
        }
-       
-       await batch.commit();
-       showMsg(`${pendingUser.fullName} approved!`);
-     } catch (err) {
-       handleFirestoreError(err, OperationType.WRITE, 'userApproval', showMsg);
-     }
+
+        await batch.commit();
+        showMsg(`${pendingUser.fullName} approved!`);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, 'userApproval', showMsg);
+      }
   };
 
   const rejectUser = async (id: string) => {
@@ -1455,18 +3057,10 @@ export default function App() {
   const changeUserPassword = async (whatsapp: string, newPass: string) => {
       try {
         const userRef = doc(db, 'registeredUsers', whatsapp);
-        const userSnap = await getDoc(userRef);
-        if (userSnap.exists()) {
-            const userData = userSnap.data();
-            await updateDoc(userRef, {
-                ...userData,
-                password: newPass
-            });
-            showMsg('Password updated successfully');
-            window.location.reload(); 
-        } else {
-            showMsg('User not found!', 'error');
-        }
+        await updateDoc(userRef, {
+            password: newPass
+        });
+        showMsg('Password updated successfully');
       } catch (err) {
          handleFirestoreError(err, OperationType.UPDATE, `registeredUsers/${whatsapp}`, showMsg);
       }
@@ -1476,54 +3070,99 @@ export default function App() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (!file.type.startsWith('image/')) {
+      showMsg('অনুগ্রহ করে একটি ছবি নির্বাচন করুন!', 'error');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) { 
+      showMsg('ছবির সাইজ ৫ মেগাবাইটের বেশি হওয়া যাবে না!', 'error');
+      return;
+    }
+
     setSavingPic(true);
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const img = new Image();
-      img.onload = async () => {
-        try {
-          const canvas = document.createElement('canvas');
-          const MAX_SIZE = 150;
-          let width = img.width;
-          let height = img.height;
-
-          if (width > height) {
-            if (width > MAX_SIZE) {
-              height *= MAX_SIZE / width;
-              width = MAX_SIZE;
-            }
-          } else {
-            if (height > MAX_SIZE) {
-              width *= MAX_SIZE / height;
-              height = MAX_SIZE;
-            }
-          }
-
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx?.drawImage(img, 0, 0, width, height);
-
-          const base64Str = canvas.toDataURL('image/jpeg', 0.7);
-          
-          if (currentAuthUser && currentAuthUser.whatsapp) {
-            const userRef = doc(db, 'registeredUsers', currentAuthUser.whatsapp);
-            await updateDoc(userRef, {
-              profilePic: base64Str
-            });
-            showMsg('প্রোফাইল পিকচার সফলভাবে আপডেট করা হয়েছে!');
-          } else {
-            showMsg('Error updating profile picture. Try again!', 'error');
-          }
-        } catch (error) {
-          showMsg('Error processing image', 'error');
-        } finally {
-          setSavingPic(false);
-        }
-      };
-      img.src = event.target?.result as string;
+    
+    const cleanup = () => {
+      setSavingPic(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     };
-    reader.readAsDataURL(file);
+
+    try {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = async () => {
+          try {
+            const canvas = document.createElement('canvas');
+            const MAX_SIZE = 400; 
+            let width = img.width;
+            let height = img.height;
+
+            if (width > height) {
+              if (width > MAX_SIZE) {
+                height *= MAX_SIZE / width;
+                width = MAX_SIZE;
+              }
+            } else {
+              if (height > MAX_SIZE) {
+                width *= MAX_SIZE / height;
+                height = MAX_SIZE;
+              }
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+               cleanup();
+               return;
+            }
+            ctx.drawImage(img, 0, 0, width, height);
+
+            const base64 = canvas.toDataURL('image/jpeg', 0.7);
+
+            if (currentAuthUser && currentAuthUser.whatsapp) {
+                // Update registeredUsers
+                const userRef = doc(db, 'registeredUsers', currentAuthUser.whatsapp);
+                await updateDoc(userRef, { profilePic: base64 });
+
+                // Also update members collection if they exist there
+                const matchedMember = members.find(m => 
+                  (m.whatsapp && m.whatsapp.replace(/\s+/g, '') === currentAuthUser.whatsapp.replace(/\s+/g, '')) || 
+                  (m.name && m.name.trim().toLowerCase() === currentAuthUser.fullName.trim().toLowerCase())
+                );
+                
+                if (matchedMember && matchedMember.id) {
+                  try {
+                    const memberRef = doc(db, 'members', matchedMember.id);
+                    await updateDoc(memberRef, { profilePic: base64 });
+                  } catch (mErr) {
+                    console.warn("Could not update member record:", mErr);
+                  }
+                }
+
+                const updatedUser = { ...currentAuthUser, profilePic: base64 };
+                setAuthenticatedUser(updatedUser);
+                localStorage.setItem('unity_user', JSON.stringify(updatedUser));
+                
+                showMsg('প্রোফাইল পিকচার সফলভাবে আপডেট করা হয়েছে!', 'success');
+                cleanup();
+            } else {
+                showMsg('ব্যবহারকারী লগইন করা নেই!', 'error');
+                cleanup();
+            }
+          } catch (error) {
+            console.error("Processing error:", error);
+            showMsg('ছবি প্রসেস করতে সমস্যা হয়েছে', 'error');
+            cleanup();
+          }
+        };
+        img.src = event.target?.result as string;
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      showMsg('কিছু একটা ভুল হয়েছে!', 'error');
+      cleanup();
+    }
   };
 
   const handleSavePasswordFromProfile = async () => {
@@ -1783,6 +3422,20 @@ export default function App() {
         noticeText: text
       });
       showMsg('Notice updated successfully', 'success');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'config/global', showMsg);
+    }
+  };
+
+  const updateGiftBox = async (active: boolean, title: string, content: string) => {
+    try {
+      await setDoc(doc(db, 'config', 'global'), {
+        ...config,
+        giftBoxActive: active,
+        giftBoxTitle: title,
+        giftBoxContent: content
+      });
+      showMsg('Gift Box updated successfully', 'success');
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'config/global', showMsg);
     }
@@ -2071,6 +3724,20 @@ export default function App() {
       
       await setDoc(resultRef, data);
 
+      // Save in submissionLogs for permanent historical daily logging
+      const todayStr = new Date().toISOString().split('T')[0];
+      const logRef = doc(db, 'submissionLogs', `${memberId}_${todayStr}`);
+      await setDoc(logRef, {
+        whatsapp: currentAuthUser?.whatsapp || '',
+        memberId,
+        memberName: member?.name || '',
+        date: todayStr,
+        lead,
+        convert,
+        personalLead,
+        submittedAt: serverTimestamp()
+      }, { merge: true });
+
       // Update global total and individual ranking score
       if (diffScore !== 0 || diffLeads !== 0) {
         // Update global total (Only for Leaders)
@@ -2112,6 +3779,451 @@ export default function App() {
     }
   };
 
+  const writeAuditLog = async (whatsapp: string, userName: string, action: string, amount?: number, reason?: string, date?: string) => {
+    try {
+      await addDoc(collection(db, 'auditLogs'), {
+        whatsapp,
+        userName,
+        action,
+        amount: amount || 0,
+        reason: reason || '',
+        date: date || '',
+        performedBy: 'Admin',
+        createdAt: serverTimestamp()
+      });
+    } catch (err) {
+      console.warn("Failed to write audit log:", err);
+    }
+  };
+
+  const updateFineRate = async (amount: number) => {
+    try {
+      await setDoc(doc(db, 'config', 'global'), {
+        ...config,
+        fineAmount: amount
+      });
+      await writeAuditLog('SYSTEM', 'All Users', 'Update Fine Settings', amount, `Fine rate updated to ৳${amount}/day`);
+      showMsg(`Fine rate updated to ৳${amount}/day!`, 'success');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'config/global', showMsg);
+    }
+  };
+
+  const toggleFineSystem = async (active: boolean) => {
+    try {
+      await setDoc(doc(db, 'config', 'global'), {
+        ...config,
+        fineSystemActive: active
+      });
+      await writeAuditLog('SYSTEM', 'All Users', 'Toggle Fine System', 0, `Fine system ${active ? 'Enabled' : 'Disabled'}`);
+      showMsg(`জরিমানা সিস্টেম ${active ? 'চালু' : 'বন্ধ'} করা হয়েছে!`, 'success');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'config/global', showMsg);
+    }
+  };
+
+  const clearAllFineData = async () => {
+    try {
+      const now = new Date();
+      const todayStr = format(now, 'yyyy-MM-dd');
+      
+      await setDoc(doc(db, 'config', 'global'), {
+        ...config,
+        fineStartDate: todayStr,
+        finesResetAt: new Date().toISOString(),
+        totalConverts: 0
+      });
+
+      // 2. Reset userBalances for all members
+      const batch = writeBatch(db);
+      members.forEach(m => {
+        const uRef = doc(db, 'userBalances', m.id);
+        batch.set(uRef, {
+          whatsapp: m.whatsapp || '',
+          userName: m.name,
+          waivedFines: 0,
+          waivedDays: [],
+          manualAdjustments: 0,
+          balance: 0,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+
+        if (m.whatsapp) {
+          const uRefWa = doc(db, 'userBalances', m.whatsapp);
+          batch.set(uRefWa, {
+            whatsapp: m.whatsapp,
+            userName: m.name,
+            waivedFines: 0,
+            waivedDays: [],
+            manualAdjustments: 0,
+            balance: 0,
+            updatedAt: serverTimestamp()
+          }, { merge: true });
+        }
+      });
+
+      // 3. Clear today's results thoroughly
+      const resultsRef = collection(db, 'results');
+      const resultsSnapshot = await getDocs(resultsRef);
+      resultsSnapshot.forEach(d => batch.delete(d.ref));
+
+      // 4. Delete today's submission logs directly from Firestore for reliability
+      const logsRef = collection(db, 'submissionLogs');
+      const todayLogsSnapshot = await getDocs(query(logsRef, where('date', '==', todayStr)));
+      todayLogsSnapshot.forEach(d => batch.delete(d.ref));
+
+      await batch.commit();
+
+      await writeAuditLog('SYSTEM', 'All Users', 'Clear All Fine Data', 0, `Fine data cleared. System reset starting today (${todayStr}). Today's submissions and total converts reset.`);
+      showMsg('সকল জরিমানা ডাটা ক্লিয়ার করা হয়েছে! আজকের তারিখ থেকে নতুন করে হিসাব শুরু হলো।', 'success');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'config/global', showMsg);
+    }
+  };
+
+  const handleAllReset = async () => {
+    if (!isAdmin) return;
+    try {
+      const now = new Date();
+      const todayStr = format(now, 'yyyy-MM-dd');
+      
+      // 1. Reset Config
+      await setDoc(doc(db, 'config', 'global'), {
+        ...config,
+        fineStartDate: todayStr,
+        finesResetAt: new Date().toISOString(),
+        totalConverts: 0
+      });
+
+      const batch = writeBatch(db);
+
+      // 2. Reset userBalances for all members
+      members.forEach(m => {
+        const uRef = doc(db, 'userBalances', m.id);
+        batch.set(uRef, {
+          whatsapp: m.whatsapp || '',
+          userName: m.name,
+          waivedFines: 0,
+          waivedDays: [],
+          manualAdjustments: 0,
+          balance: 0,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+
+        if (m.whatsapp) {
+          const uRefWa = doc(db, 'userBalances', m.whatsapp);
+          batch.set(uRefWa, {
+            whatsapp: m.whatsapp,
+            userName: m.name,
+            waivedFines: 0,
+            waivedDays: [],
+            manualAdjustments: 0,
+            balance: 0,
+            updatedAt: serverTimestamp()
+          }, { merge: true });
+        }
+      });
+
+      // 3. Clear results collection thoroughly
+      const resultsRef = collection(db, 'results');
+      const resultsSnapshot = await getDocs(resultsRef);
+      resultsSnapshot.forEach(d => batch.delete(d.ref));
+
+      // 4. Reset Rankings
+      leaderRanking.forEach(r => {
+        batch.update(doc(db, 'leaderRanking', r.id), { score: 0, leads: 0 });
+      });
+      trainerRanking.forEach(r => {
+        batch.update(doc(db, 'trainerRanking', r.id), { score: 0, leads: 0 });
+      });
+
+      await batch.commit();
+
+      // 5. Delete all submission logs in chunks of 500
+      let lastDoc = null;
+      let hasMore = true;
+      while (hasMore) {
+        const q = lastDoc 
+          ? query(collection(db, 'submissionLogs'), limit(500), startAfter(lastDoc))
+          : query(collection(db, 'submissionLogs'), limit(500));
+        
+        const snapshot = await getDocs(q);
+        if (snapshot.empty) {
+          hasMore = false;
+          break;
+        }
+        
+        const logBatch = writeBatch(db);
+        snapshot.forEach(d => logBatch.delete(d.ref));
+        await logBatch.commit();
+        lastDoc = snapshot.docs[snapshot.docs.length - 1];
+      }
+
+      await writeAuditLog('SYSTEM', 'All Users', 'ALL SYSTEM RESET', 0, `Complete system reset performed by Admin. All history, fines, and rankings cleared.`);
+      showMsg('সিস্টেমের সকল ডাটা সফলভাবে রিসেট করা হয়েছে!', 'success');
+    } catch (err) {
+      console.error('All Reset Error:', err);
+      handleFirestoreError(err, OperationType.WRITE, 'global_reset', showMsg);
+    }
+  };
+
+  const adminUpdateBalance = async (userKey: string, userName: string, amount: number, isDeduct: boolean, reason: string) => {
+    try {
+      const cleanName = userName.trim().toLowerCase();
+      const matchedUser = approvedUsers.find(u => u.fullName.trim().toLowerCase() === cleanName) ||
+                          members.find(m => m.name.trim().toLowerCase() === cleanName);
+      
+      const primaryKey = (matchedUser && 'whatsapp' in matchedUser && matchedUser.whatsapp) ? matchedUser.whatsapp : userKey;
+      const userBalRef = doc(db, 'userBalances', primaryKey);
+      
+      const existing = userBalances[primaryKey] || 
+                       userBalances[userKey] || 
+                       Object.values(userBalances).find(b => (b as UserBalance).userName?.trim().toLowerCase() === cleanName) || 
+                       { whatsapp: primaryKey, userName, balance: 1500, waivedFines: 0, manualAdjustments: 0 };
+      
+      const currentManual = existing.manualAdjustments || 0;
+      const diff = isDeduct ? -amount : amount;
+      const newManual = currentManual + diff;
+
+      await setDoc(userBalRef, {
+        ...existing,
+        whatsapp: primaryKey,
+        userName,
+        manualAdjustments: newManual,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+
+      const actionName = isDeduct ? 'Deduct Fine' : 'Add Fine';
+      await writeAuditLog(primaryKey, userName, actionName, amount, reason);
+      showMsg(`ফাইন ${isDeduct ? 'কমানো' : 'বাড়ানো'} হয়েছে!`, 'success');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `userBalances/${userKey}`, showMsg);
+    }
+  };
+
+  const adminWaiveFine = async (userKey: string, userName: string, amount: number, reason: string) => {
+    try {
+      const cleanName = userName.trim().toLowerCase();
+      const matchedUser = approvedUsers.find(u => u.fullName.trim().toLowerCase() === cleanName) ||
+                          members.find(m => m.name.trim().toLowerCase() === cleanName);
+      
+      const primaryKey = (matchedUser && 'whatsapp' in matchedUser && matchedUser.whatsapp) ? matchedUser.whatsapp : userKey;
+      const userBalRef = doc(db, 'userBalances', primaryKey);
+      
+      const existing = userBalances[primaryKey] || 
+                       userBalances[userKey] || 
+                       Object.values(userBalances).find(b => (b as UserBalance).userName?.trim().toLowerCase() === cleanName) || 
+                       { whatsapp: primaryKey, userName, balance: 1500, waivedFines: 0, manualAdjustments: 0 };
+      
+      const currentWaived = existing.waivedFines || 0;
+      const newWaived = currentWaived + amount;
+
+      await setDoc(userBalRef, {
+        ...existing,
+        whatsapp: primaryKey,
+        userName,
+        waivedFines: newWaived,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+
+      await writeAuditLog(primaryKey, userName, 'Waive Fine', amount, reason);
+      showMsg(`৳${amount} জরিমানা মওকুফ করা হয়েছে (${userName})!`, 'success');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `userBalances/${userKey}`, showMsg);
+    }
+  };
+
+  const adminRemoveDayFine = async (userKey: string, userName: string, dateStr: string, reason: string) => {
+    try {
+      const cleanName = userName.trim().toLowerCase();
+      const matchedUser = approvedUsers.find(u => u.fullName.trim().toLowerCase() === cleanName) ||
+                          members.find(m => m.name.trim().toLowerCase() === cleanName);
+      
+      const primaryKey = (matchedUser && 'whatsapp' in matchedUser && matchedUser.whatsapp) ? matchedUser.whatsapp : userKey;
+      const userBalRef = doc(db, 'userBalances', primaryKey);
+      
+      const existing = userBalances[primaryKey] || 
+                       userBalances[userKey] || 
+                       Object.values(userBalances).find(b => (b as UserBalance).userName?.trim().toLowerCase() === cleanName) || 
+                       { whatsapp: primaryKey, userName, balance: 1500, waivedFines: 0, manualAdjustments: 0, waivedDays: [] };
+      
+      const currentWaivedDays = [...(existing.waivedDays || [])];
+
+      if (!currentWaivedDays.includes(dateStr)) {
+        currentWaivedDays.push(dateStr);
+      }
+
+      const fineRate = config.fineAmount !== undefined ? config.fineAmount : 10;
+
+      await setDoc(userBalRef, {
+        ...existing,
+        whatsapp: primaryKey,
+        userName,
+        waivedDays: currentWaivedDays,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+
+      await writeAuditLog(primaryKey, userName, 'Remove Day Fine', fineRate, reason, dateStr);
+      showMsg(`${dateStr} তারিখের মিসড দিন বাদ দেওয়া হয়েছে!`, 'success');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `userBalances/${userKey}`, showMsg);
+    }
+  };
+
+  const computeUserSubmissionStats = useCallback((userWhatsapp: string, memberId?: string) => {
+    const now = new Date();
+    const todayStr = format(now, 'yyyy-MM-dd');
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+    const totalDaysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+    const dayOfMonth = now.getDate();
+
+    const isFineSystemActive = config.fineSystemActive !== false;
+    const fineStartDateStr = config.fineStartDate || todayStr;
+    const fineStartDayDate = parseISO(fineStartDateStr);
+
+    const activeFineDaysRange = Math.max(0, differenceInCalendarDays(now, fineStartDayDate) + 1);
+
+    let userName = '';
+    if (userWhatsapp) {
+      const u = approvedUsers.find(x => x.whatsapp === userWhatsapp);
+      if (u) userName = u.fullName;
+    }
+    if (!userName && memberId) {
+      const m = members.find(x => x.id === memberId);
+      if (m) userName = m.name;
+    }
+
+    const cleanUserName = userName.trim().toLowerCase();
+
+    const userLogs = submissionLogs.filter(log => {
+      if (userWhatsapp && log.whatsapp === userWhatsapp) return true;
+      if (memberId && log.memberId === memberId) return true;
+      if (cleanUserName && log.memberName && log.memberName.trim().toLowerCase() === cleanUserName) return true;
+      return false;
+    });
+
+    const monthLogs = userLogs.filter(log => {
+      if (!log.date) return false;
+      const [y, m] = log.date.split('-').map(Number);
+      return y === currentYear && m === (currentMonth + 1);
+    });
+
+    const submittedDaysSet = new Set(monthLogs.map(l => l.date));
+    if (memberId && results[memberId]?.submitted) {
+      submittedDaysSet.add(todayStr);
+    }
+    const submittedDaysCount = submittedDaysSet.size;
+
+    const isTodaySubmitted = submittedDaysSet.has(todayStr);
+
+    const totalWorkingDays = config.workingDaysInMonth || totalDaysInMonth;
+    const elapsedDaysSoFar = dayOfMonth;
+
+    const submittedDaysInPeriod = (Array.from(submittedDaysSet) as string[]).filter(dateStr => {
+      if (!dateStr || typeof dateStr !== 'string') return false;
+      return dateStr >= fineStartDateStr;
+    }).length;
+
+    let missedDaysCount = Math.max(0, activeFineDaysRange - submittedDaysInPeriod);
+    // If today is not submitted, don't count it as missed yet because deadline is midnight
+    if (!isTodaySubmitted && activeFineDaysRange > 0) {
+      missedDaysCount = Math.max(0, missedDaysCount - 1);
+    }
+
+    const remainingDays = Math.max(0, totalDaysInMonth - dayOfMonth);
+
+    const submissionPercentage = activeFineDaysRange > 0 
+      ? Math.min(100, Math.round((submittedDaysInPeriod / activeFineDaysRange) * 100))
+      : 0;
+
+    const attendancePercentage = totalWorkingDays > 0 
+      ? Math.min(100, Math.round((submittedDaysInPeriod / totalWorkingDays) * 100))
+      : 0;
+
+    const currentFineRate = config.fineAmount !== undefined ? config.fineAmount : 10;
+    
+    const userBalObj = (userWhatsapp && userBalances[userWhatsapp]) ||
+      (memberId && userBalances[memberId]) ||
+      Object.values(userBalances).find(b => {
+        const bal = b as UserBalance;
+        return (userWhatsapp && bal.whatsapp && bal.whatsapp.replace(/\s+/g, '') === userWhatsapp.replace(/\s+/g, '')) ||
+        (memberId && bal.id === memberId) ||
+        (cleanUserName && bal.userName && bal.userName.trim().toLowerCase() === cleanUserName);
+      });
+
+    const waivedDaysCount = userBalObj?.waivedDays?.filter(d => {
+      if (!d) return false;
+      return d >= fineStartDateStr;
+    }).length || 0;
+
+    const effectiveMissedDays = Math.max(0, missedDaysCount - waivedDaysCount);
+
+    const rawFine = isFineSystemActive ? (effectiveMissedDays * currentFineRate) : 0;
+    const waivedAmount = userBalObj?.waivedFines || 0;
+    const manualAdj = userBalObj?.manualAdjustments || 0;
+    const totalFine = Math.max(0, rawFine + manualAdj - waivedAmount);
+
+    let lastSubmissionDate = "কোনো রেকর্ড নেই";
+    if (monthLogs.length > 0) {
+      const sortedLogs = [...monthLogs].sort((a, b) => b.date.localeCompare(a.date));
+      const lastDate = sortedLogs[0].date;
+      const [y, m, d] = lastDate.split('-');
+      const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      lastSubmissionDate = `${parseInt(d)} ${monthNames[parseInt(m) - 1]}, ${y}`;
+    } else if (isTodaySubmitted) {
+      const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      lastSubmissionDate = `${dayOfMonth} ${monthNames[currentMonth]}, ${currentYear}`;
+    }
+
+    let submissionStatus: 'Submitted' | 'Pending' | 'Missed' = 'Pending';
+    if (isTodaySubmitted) {
+      submissionStatus = 'Submitted';
+    } else if (!config.timerActive && dayOfMonth > 0) {
+      submissionStatus = 'Missed';
+    } else {
+      submissionStatus = 'Pending';
+    }
+
+    return {
+      totalWorkingDays,
+      submittedDays: submittedDaysInPeriod,
+      missedDays: effectiveMissedDays,
+      rawMissedDays: missedDaysCount,
+      waivedDaysCount,
+      remainingDays,
+      submissionPercentage,
+      attendancePercentage,
+      totalFine,
+      isFineSystemActive,
+      fineStartDate: fineStartDateStr,
+      lastSubmissionDate,
+      submissionStatus,
+      currentFineRate
+    };
+  }, [submissionLogs, results, config, userBalances, approvedUsers, members]);
+
+  const adminRecalculateFine = async (whatsapp: string, userName: string) => {
+    try {
+      const stats = computeUserSubmissionStats(whatsapp, undefined);
+      const userBalRef = doc(db, 'userBalances', whatsapp);
+      const existing = userBalances[whatsapp] || { whatsapp, userName, balance: 1500, waivedFines: 0, manualAdjustments: 0 };
+
+      await setDoc(userBalRef, {
+        ...existing,
+        whatsapp,
+        userName,
+        balance: stats.currentBalance,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+
+      await writeAuditLog(whatsapp, userName, 'Recalculate Fine', stats.totalFine, `Fine recalculated: ৳${stats.totalFine}, Balance: ৳${stats.currentBalance}`);
+      showMsg(`Fine & Balance recalculated for ${userName}!`, 'success');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `userBalances/${whatsapp}`, showMsg);
+    }
+  };
+
   const addQuickLink = async (name: string, url: string) => {
     try {
       await addDoc(collection(db, 'quickLinks'), {
@@ -2135,22 +4247,15 @@ export default function App() {
   };
 
   // Stats & Ranking
-  const { stats, topLeader, topTrainer, sortedLeaders, sortedTrainers, sortedLeaderRanking, sortedTrainerRanking, sortedLeadersByRanking, sortedTrainersByRanking } = useMemo(() => {
+  const { stats, topLeader, topTrainer, topOverall, sortedLeaders, sortedTrainers, sortedLeaderRanking, sortedTrainerRanking, sortedLeadersByRanking, sortedTrainersByRanking } = useMemo(() => {
     let totalLeads = 0;
     let todayConverts = 0;
     let totalSubmittedConverts = 0;
     let todayLeads = 0;
     
-    const sortByRanking = (a: any, b: any) => {
-      if ((b.score || 0) !== (a.score || 0)) return (b.score || 0) - (a.score || 0);
-      return (b.leads || 0) - (a.leads || 0);
-    };
-
-    const sortedLR = [...leaderRanking].sort(sortByRanking);
-    const sortedTR = [...trainerRanking].sort(sortByRanking);
-
+    // 1. Create base lists with all necessary data merged
     const allLeaders = members.filter(m => m.type === 'leader').map((m) => {
-      const rankingEntry = sortedLR.find(r => 
+      const rankingEntry = leaderRanking.find(r => 
         r.name.trim().toLowerCase() === m.name.trim().toLowerCase()
       );
       return {
@@ -2162,7 +4267,7 @@ export default function App() {
     });
 
     const allTrainers = members.filter(m => m.type === 'trainer').map((m) => {
-      const rankingEntry = sortedTR.find(r => 
+      const rankingEntry = trainerRanking.find(r => 
         r.name.trim().toLowerCase() === m.name.trim().toLowerCase()
       );
       return {
@@ -2173,7 +4278,33 @@ export default function App() {
       };
     });
 
-    // Only sum results from Leaders for the total stats
+    // 2. Define universal performance sorting (Real-time priority)
+    const sortByPerformance = (a: any, b: any) => {
+      // Primary sort: Today's Convert count (descending)
+      const convA = a.result?.convert || 0;
+      const convB = b.result?.convert || 0;
+      if (convB !== convA) return convB - convA;
+      
+      // Tie-breaker for same convert: Earlier submission wins
+      if (convA > 0 && convB > 0) {
+        const timeA = a.result?.updatedAt?.toMillis?.() || a.result?.updatedAt?.seconds * 1000 || Date.now();
+        const timeB = b.result?.updatedAt?.toMillis?.() || b.result?.updatedAt?.seconds * 1000 || Date.now();
+        if (timeA !== timeB) {
+          return timeA - timeB; // Lower time (earlier) comes first
+        }
+      }
+
+      // Secondary sort: Today's Personal Lead count (descending)
+      const pLeadA = a.result?.personalLead || 0;
+      const pLeadB = b.result?.personalLead || 0;
+      if (pLeadB !== pLeadA) return pLeadB - pLeadA;
+
+      // Tertiary sort: Lifetime Score (score)
+      if ((b.score || 0) !== (a.score || 0)) return (b.score || 0) - (a.score || 0);
+      return (b.leads || 0) - (a.leads || 0);
+    };
+
+    // 3. Calculate Global Stats
     allLeaders.forEach(m => {
       if (m.result.submitted) {
         totalLeads += m.result.lead;
@@ -2183,24 +4314,14 @@ export default function App() {
       }
     });
 
-    const sortByPerformance = (a: any, b: any) => {
-      // Primary sort: Today's Convert count (descending)
-      if ((b.result.convert || 0) !== (a.result.convert || 0)) {
-        return (b.result.convert || 0) - (a.result.convert || 0);
-      }
-      // Secondary sort: Today's Personal Lead count (descending)
-      if ((b.result.personalLead || 0) !== (a.result.personalLead || 0)) {
-        return (b.result.personalLead || 0) - (a.result.personalLead || 0);
-      }
-      // Tertiary sort: Lifetime Score (score)
-      return (b.score || 0) - (a.score || 0);
-    };
-
+    // 4. Generate sorted lists
     const sortedL = [...allLeaders].sort(sortByPerformance);
     const sortedT = [...allTrainers].sort(sortByPerformance);
+    const allSorted = [...allLeaders, ...allTrainers].sort(sortByPerformance);
 
-    const sortedLeadersByR = [...allLeaders].sort(sortByRanking);
-    const sortedTrainersByR = [...allTrainers].sort(sortByRanking);
+    // sortedLR and sortedTR are for the "Ranking" section, which the user also wants real-time
+    const sortedLR = [...allLeaders].sort(sortByPerformance);
+    const sortedTR = [...allTrainers].sort(sortByPerformance);
 
     return {
       stats: {
@@ -2211,14 +4332,15 @@ export default function App() {
         todayConverts: todayConverts,
         todayLeads: todayLeads
       },
-      topLeader: sortedL[0]?.result?.submitted ? sortedL[0] : null,
-      topTrainer: sortedT[0]?.result?.submitted ? sortedT[0] : null,
+      topLeader: sortedL[0]?.result?.submitted && sortedL[0]?.result?.convert > 0 ? sortedL[0] : null,
+      topTrainer: sortedT[0]?.result?.submitted && sortedT[0]?.result?.convert > 0 ? sortedT[0] : null,
+      topOverall: allSorted[0]?.result?.submitted && allSorted[0]?.result?.convert > 0 ? allSorted[0] : null,
       sortedLeaders: sortedL,
       sortedTrainers: sortedT,
       sortedLeaderRanking: sortedLR,
       sortedTrainerRanking: sortedTR,
-      sortedLeadersByRanking: sortedLeadersByR,
-      sortedTrainersByRanking: sortedTrainersByR
+      sortedLeadersByRanking: sortedLR,
+      sortedTrainersByRanking: sortedTR
     };
   }, [members, results, leaderRanking, trainerRanking]);
 
@@ -2231,33 +4353,47 @@ export default function App() {
     return members.find(m => m.name.trim().toLowerCase() === currentAuthUser.fullName.trim().toLowerCase());
   }, [members, currentAuthUser]);
 
+  const myUserStats = useMemo(() => {
+    return computeUserSubmissionStats(
+      currentAuthUser?.whatsapp || '',
+      myMember?.id
+    );
+  }, [computeUserSubmissionStats, currentAuthUser, myMember]);
+
   if (!isAuthReady || !isConfigReady) {
     return (
-      <div className="min-h-screen bg-[#0A0A0F] flex flex-col items-center justify-center p-6">
-        <motion.div 
-          initial={{ scale: 0.8, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="relative"
-        >
-          <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-gold to-gold2 flex items-center justify-center font-serif font-black text-bg text-4xl shadow-[0_0_50px_rgba(245,200,66,0.3)] animate-pulse">
-            U
-          </div>
-          <div className="absolute inset-x-0 -bottom-12 flex flex-col items-center gap-2">
-            <div className="text-white font-serif font-bold tracking-widest text-lg animate-pulse">
-              UNITY <span className="text-gold">EARNING</span>
+      <div className="min-h-screen bg-[#051126] text-white flex flex-col items-center justify-center p-6 relative overflow-hidden font-sans">
+        {/* Background ambient glow */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-[#F5C542]/10 rounded-full blur-[100px] pointer-events-none" />
+
+        <div className="relative flex flex-col items-center">
+          {/* Round spinning container with 'U' inside */}
+          <div className="relative w-28 h-28 flex items-center justify-center mb-6">
+            {/* Spinning Outer Ring */}
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ repeat: Infinity, duration: 1.8, ease: "linear" }}
+              className="absolute inset-0 rounded-full border-[3.5px] border-transparent border-t-[#F5C542] border-r-[#F5C542]/50 shadow-[0_0_20px_rgba(245,197,66,0.35)]"
+            />
+            {/* Secondary subtle glowing ring */}
+            <div className="absolute inset-1 rounded-full border border-[#F5C542]/20" />
+            
+            {/* Inner Circle with 'U' */}
+            <div className="w-20 h-20 rounded-full bg-gradient-to-b from-[#0A2046] to-[#040D1F] border-2 border-[#F5C542] flex items-center justify-center shadow-[0_0_25px_rgba(245,197,66,0.4)]">
+              <span className="font-extrabold text-3xl text-[#F5C542] tracking-wider drop-shadow-[0_2px_10px_rgba(245,197,66,0.7)]">
+                U
+              </span>
             </div>
-            <div className="flex gap-1.5">
-              {[0, 1, 2].map((i) => (
-                <motion.div
-                  key={i}
-                  animate={{ scale: [1, 1.5, 1], opacity: [0.3, 1, 0.3] }}
-                  transition={{ repeat: Infinity, duration: 1, delay: i * 0.2 }}
-                  className="w-1.5 h-1.5 rounded-full bg-gold"
-                />
-              ))}
-            </div>
           </div>
-        </motion.div>
+
+          {/* Brand Titles */}
+          <h2 className="text-xl font-extrabold text-white tracking-wide flex items-center gap-1.5">
+            Unity <span className="text-[#F5C542]">Earning</span>
+          </h2>
+          <p className="text-[10px] font-bold tracking-[3.5px] uppercase text-[#F5C542]/80 mt-1">
+            E-Learning Platform
+          </p>
+        </div>
       </div>
     );
   }
@@ -2335,17 +4471,14 @@ export default function App() {
       {/* Header */}
       <header className="sticky top-0 z-[200] bg-bg border-b border-border/20 px-4 sm:px-6 h-16 sm:h-20 flex items-center justify-between shadow-lg transition-all">
         <div className="flex items-center gap-2 sm:gap-3">
-          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-gold to-gold2 flex items-center justify-center font-serif font-black text-bg text-base sm:text-lg shadow-[0_0_18px_rgba(245,200,66,0.25)]">
+          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-gold to-gold2 flex items-center justify-center font-serif font-black text-bg text-base sm:text-lg shadow-[0_0_18px_rgba(245,200,66,0.25)] flex-shrink-0">
             U
           </div>
-          <div className="flex-col hidden sm:flex">
-            <div className="font-serif font-bold text-base leading-tight">
+          <div className="flex flex-col">
+            <div className="font-serif font-bold text-xs sm:text-base leading-tight text-white">
               <span className="text-gold">Unity</span> Earning
             </div>
-            <div className="text-[10px] text-muted-main tracking-[2.5px] uppercase">E-Learning Platform</div>
-          </div>
-          <div className="sm:hidden">
-            <div className="font-serif font-bold text-[12px] leading-tight text-white">Unity <span className="text-gold">Earning</span></div>
+            <div className="text-[8px] sm:text-[10px] text-muted-main tracking-[1.5px] sm:tracking-[2.5px] uppercase font-medium">E-Learning Platform</div>
           </div>
         </div>
 
@@ -2652,12 +4785,7 @@ export default function App() {
       {/* Main Content */}
       <main className="max-w-4xl mx-auto px-4 sm:px-6 pt-8 sm:pt-12 pb-36">
         {userTab === 'home' && (
-          <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            className="space-y-10"
-          >
+          <div className="space-y-10">
             <div className="text-center mb-8 sm:mb-10 animate-fade-in">
               <div className="inline-flex items-center gap-2 bg-gold/5 border border-gold/20 text-gold px-3 py-1 rounded-full text-[9px] sm:text-[10px] tracking-[2px] uppercase mb-4">
                 <span className="animate-bounce">📊</span> Live Result Board
@@ -2727,8 +4855,8 @@ export default function App() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between mb-0.5">
                             <div className="text-[8px] sm:text-[10px] text-gold font-bold uppercase tracking-widest truncate mr-2">Best Leader</div>
-                            <span className="text-[7px] sm:text-[9px] px-1.5 py-0.5 rounded-full bg-gold/10 text-gold border border-gold/20 font-black uppercase whitespace-nowrap">
-                              Elite
+                            <span className={`text-[7px] sm:text-[9px] px-1.5 py-0.5 rounded-full font-black uppercase whitespace-nowrap ${topOverall?.id === topLeader.id ? 'bg-gold text-bg' : 'bg-gold/10 text-gold border border-gold/20'}`}>
+                              {topOverall?.id === topLeader.id ? 'Overall Best' : 'Elite'}
                             </span>
                           </div>
                           <div className="font-serif text-lg sm:text-xl font-bold text-white truncate">{topLeader.name}</div>
@@ -2778,8 +4906,8 @@ export default function App() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between mb-0.5">
                             <div className="text-[8px] sm:text-[10px] text-blue-accent font-bold uppercase tracking-widest truncate mr-2">Best Trainer</div>
-                            <span className="text-[7px] sm:text-[9px] px-1.5 py-0.5 rounded-full bg-blue-accent/10 text-blue-accent border border-blue-accent/20 font-black uppercase whitespace-nowrap">
-                              Elite
+                            <span className={`text-[7px] sm:text-[9px] px-1.5 py-0.5 rounded-full font-black uppercase whitespace-nowrap ${topOverall?.id === topTrainer.id ? 'bg-blue-accent text-bg' : 'bg-blue-accent/10 text-blue-accent border border-blue-accent/20'}`}>
+                              {topOverall?.id === topTrainer.id ? 'Overall Best' : 'Elite'}
                             </span>
                           </div>
                           <div className="font-serif text-lg sm:text-xl font-bold text-white truncate">{topTrainer.name}</div>
@@ -2949,16 +5077,11 @@ export default function App() {
                 </div>
               </div>
             </div>
-          </motion.div>
+          </div>
         )}
 
         {userTab === 'submit' && (
-          <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            className="space-y-8"
-          >
+          <div className="space-y-8">
             <div className="text-center mb-8">
               <div className="inline-flex items-center gap-2 bg-green-accent/5 border border-green-accent/20 text-green-accent px-3 py-1 rounded-full text-[9px] sm:text-[10px] tracking-[2px] uppercase mb-4">
                 <CheckSquare size={12} /> রেজাল্ট সাবমিশন
@@ -2973,73 +5096,83 @@ export default function App() {
 
             {/* Quick Submit Form for Logged-In User */}
             {myMember ? (
-              <div className="bg-gradient-to-br from-gold/10 via-surface to-surface border-2 border-gold/25 rounded-[28px] p-6 sm:p-8 mb-8 relative overflow-hidden shadow-2xl">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-gold/5 blur-3xl rounded-full" />
-                <div className="flex items-center gap-3.5 mb-6">
-                  <div className="p-2.5 bg-gold/15 rounded-xl text-gold border border-gold/25 shadow-md">
-                    <Send size={20} />
+              !results[myMember.id]?.submitted ? (
+                <div className="bg-gradient-to-br from-gold/10 via-surface to-surface border-2 border-gold/25 rounded-[28px] p-6 sm:p-8 mb-8 relative overflow-hidden shadow-2xl">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-gold/5 blur-3xl rounded-full" />
+                  <div className="flex items-center gap-3.5 mb-6">
+                    <div className="p-2.5 bg-gold/15 rounded-xl text-gold border border-gold/25 shadow-md">
+                      <Send size={20} />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-white">আমার আজকের রিপোর্ট ({currentAuthUser?.fullName})</h3>
+                      <p className="text-[9px] text-gold/80 font-mono tracking-wider uppercase">Quick Submit for Your Account</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-lg font-bold text-white">আমার আজকের রিপোর্ট ({currentAuthUser?.fullName})</h3>
-                    <p className="text-[9px] text-gold/80 font-mono tracking-wider uppercase">Quick Submit for Your Account</p>
-                  </div>
-                </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[9px] text-muted-main uppercase font-black tracking-widest ml-1 flex items-center gap-1">
-                      <Send size={10} className="text-blue-accent" /> Total Lead
-                    </label>
-                    <input 
-                      type="number" 
-                      defaultValue={results[myMember.id]?.lead || ''}
-                      id="my-lead-input"
-                      placeholder="0"
-                      disabled={!isTimerActive}
-                      className="w-full bg-bg/50 border-2 border-border2 focus:border-gold rounded-xl px-3 py-3 text-sm font-black text-center outline-none disabled:opacity-40 transition-all text-white"
-                    />
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[9px] text-muted-main uppercase font-black tracking-widest ml-1 flex items-center gap-1">
+                        <Send size={10} className="text-blue-accent" /> Total Lead
+                      </label>
+                      <input 
+                        type="number" 
+                        defaultValue={results[myMember.id]?.lead || ''}
+                        id="my-lead-input"
+                        placeholder="0"
+                        disabled={!isTimerActive}
+                        className="w-full bg-bg/50 border-2 border-border2 focus:border-gold rounded-xl px-3 py-3 text-sm font-black text-center outline-none disabled:opacity-40 transition-all text-white"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[9px] text-muted-main uppercase font-black tracking-widest ml-1 flex items-center gap-1">
+                        <CheckCircle2 size={10} className="text-green-accent" /> Total Convert
+                      </label>
+                      <input 
+                        type="number" 
+                        defaultValue={results[myMember.id]?.convert || ''}
+                        id="my-convert-input"
+                        placeholder="0"
+                        disabled={!isTimerActive}
+                        className="w-full bg-bg/50 border-2 border-border2 focus:border-gold rounded-xl px-3 py-3 text-sm font-black text-center outline-none disabled:opacity-40 transition-all text-white"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[9px] text-muted-main uppercase font-black tracking-widest ml-1 flex items-center gap-1">
+                        <User size={10} className="text-purple-400" /> Personal Lead
+                      </label>
+                      <input 
+                        type="number" 
+                        defaultValue={results[myMember.id]?.personalLead || ''}
+                        id="my-personal-input"
+                        placeholder="0"
+                        disabled={!isTimerActive}
+                        className="w-full bg-bg/50 border-2 border-border2 focus:border-gold rounded-xl px-3 py-3 text-sm font-black text-center outline-none disabled:opacity-40 transition-all text-white"
+                      />
+                    </div>
                   </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[9px] text-muted-main uppercase font-black tracking-widest ml-1 flex items-center gap-1">
-                      <CheckCircle2 size={10} className="text-green-accent" /> Total Convert
-                    </label>
-                    <input 
-                      type="number" 
-                      defaultValue={results[myMember.id]?.convert || ''}
-                      id="my-convert-input"
-                      placeholder="0"
-                      disabled={!isTimerActive}
-                      className="w-full bg-bg/50 border-2 border-border2 focus:border-gold rounded-xl px-3 py-3 text-sm font-black text-center outline-none disabled:opacity-40 transition-all text-white"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[9px] text-muted-main uppercase font-black tracking-widest ml-1 flex items-center gap-1">
-                      <User size={10} className="text-purple-400" /> Personal Lead
-                    </label>
-                    <input 
-                      type="number" 
-                      defaultValue={results[myMember.id]?.personalLead || ''}
-                      id="my-personal-input"
-                      placeholder="0"
-                      disabled={!isTimerActive}
-                      className="w-full bg-bg/50 border-2 border-border2 focus:border-gold rounded-xl px-3 py-3 text-sm font-black text-center outline-none disabled:opacity-40 transition-all text-white"
-                    />
-                  </div>
-                </div>
 
-                <button
-                  onClick={() => {
-                    const l = parseInt((document.getElementById('my-lead-input') as HTMLInputElement)?.value) || 0;
-                    const c = parseInt((document.getElementById('my-convert-input') as HTMLInputElement)?.value) || 0;
-                    const p = parseInt((document.getElementById('my-personal-input') as HTMLInputElement)?.value) || 0;
-                    submitResult(myMember.id, l, c, p);
-                  }}
-                  disabled={!isTimerActive}
-                  className="w-full py-3 rounded-2xl bg-gradient-to-r from-gold via-gold2 to-gold font-black text-bg uppercase tracking-widest hover:opacity-95 disabled:opacity-30 active:scale-[0.98] transition-all shadow-xl text-xs"
-                >
-                  {!isTimerActive ? 'SUBMISSION CLOSED' : 'UPDATE MY REPORT'}
-                </button>
-              </div>
+                  <button
+                    onClick={() => {
+                      const l = parseInt((document.getElementById('my-lead-input') as HTMLInputElement)?.value) || 0;
+                      const c = parseInt((document.getElementById('my-convert-input') as HTMLInputElement)?.value) || 0;
+                      const p = parseInt((document.getElementById('my-personal-input') as HTMLInputElement)?.value) || 0;
+                      submitResult(myMember.id, l, c, p);
+                    }}
+                    disabled={!isTimerActive}
+                    className="w-full py-3 rounded-2xl bg-gradient-to-r from-gold via-gold2 to-gold font-black text-bg uppercase tracking-widest hover:opacity-95 disabled:opacity-30 active:scale-[0.98] transition-all shadow-xl text-xs"
+                  >
+                    {!isTimerActive ? 'SUBMISSION CLOSED' : 'UPDATE MY REPORT'}
+                  </button>
+                </div>
+              ) : (
+                <div className="bg-gradient-to-br from-green-accent/10 via-surface to-surface border border-green-accent/20 rounded-[28px] p-6 mb-8 text-center shadow-lg">
+                  <div className="w-12 h-12 bg-green-accent/20 text-green-accent rounded-full flex items-center justify-center mx-auto mb-4 border border-green-accent/30">
+                    <CheckSquare size={24} />
+                  </div>
+                  <h3 className="text-lg font-bold text-white mb-1">রিপোর্ট জমা দেওয়া হয়েছে!</h3>
+                  <p className="text-xs text-muted-main">আপনার আজকের রিপোর্ট সফলভাবে জমা হয়েছে। আপনি নিচে বোর্ড থেকে আপনার পজিশন দেখতে পারেন।</p>
+                </div>
+              )
             ) : (
               <div className="bg-surface border border-border rounded-2xl p-6 mb-8 text-center text-xs text-muted-main2 italic">
                 আপনার নামটি এখনও মেম্বার তালিকায় যোগ করা হয়নি। দয়া করে এডমিনকে আপনার নামটি যোগ করতে বলুন।
@@ -3072,16 +5205,58 @@ export default function App() {
               isAdmin={isAdmin}
               currentMemberId={myMember?.id || null}
             />
-          </motion.div>
+          </div>
+        )}
+
+        {userTab === 'sheet' && (
+          <div className="space-y-6">
+            <div className="text-center mb-4">
+              <div className="inline-flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 text-amber-400 px-3 py-1 rounded-full text-[9px] sm:text-[10px] tracking-[2px] uppercase mb-2 font-bold">
+                <FileText size={12} /> রেজাল্ট ও জরিমানা হিসাব শিট
+              </div>
+              <h1 className="font-serif text-2xl sm:text-3xl font-black mb-1 bg-gradient-to-br from-white via-amber-200 to-amber-500 bg-clip-text text-transparent px-2">
+                মেম্বারদের সাবমিশন ও ফাইন সামারি
+              </h1>
+              <p className="text-muted-main text-[9px] sm:text-xs max-w-md mx-auto opacity-70">
+                আপনার এবং অন্যান্য মেম্বারদের রেজাল্ট সাবমিট রেকর্ড ও জরিমানা সামারি।
+              </p>
+            </div>
+
+            {/* Logged in User's Monthly Summary Card */}
+            {currentAuthUser && (
+              <MonthlySubmissionSummaryCard 
+                userStats={myUserStats} 
+                userName={currentAuthUser?.fullName} 
+                profilePic={currentAuthUser?.profilePic}
+                onOpenCalendar={() => setShowCalendarUser({ 
+                  whatsapp: currentAuthUser.whatsapp, 
+                  name: currentAuthUser.fullName,
+                  memberId: myMember?.id
+                })}
+              />
+            )}
+
+            {/* Member Search & All Members Sheet Section */}
+            <AllMembersSubmissionSheet 
+              approvedUsers={approvedUsers}
+              members={members}
+              userBalances={userBalances}
+              computeUserSubmissionStats={computeUserSubmissionStats}
+              currentAuthUser={currentAuthUser}
+              results={results}
+              isAdmin={isAdmin}
+              config={config}
+              onUpdateFine={updateFineRate}
+              onToggleFineSystem={toggleFineSystem}
+              onClearAllFines={clearAllFineData}
+              onAllReset={handleAllReset}
+              onShowCalendar={(whatsapp, name, memberId) => setShowCalendarUser({ whatsapp, name, memberId })}
+            />
+          </div>
         )}
 
         {userTab === 'links' && (
-          <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            className="space-y-8"
-          >
+          <div className="space-y-8">
             <div className="text-center mb-8">
               <div className="inline-flex items-center gap-2 bg-blue-accent/5 border border-blue-accent/20 text-blue-accent px-3 py-1 rounded-full text-[9px] sm:text-[10px] tracking-[2px] uppercase mb-4">
                 <Link size={12} /> প্রজেক্ট লিঙ্ক সমূহ
@@ -3100,19 +5275,16 @@ export default function App() {
                   No quick links available yet...
                 </div>
               ) : (
-                quickLinks.map((link, idx) => (
-                  <motion.a
+                quickLinks.map((link) => (
+                  <a
                     key={link.id}
                     href={link.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: idx * 0.05 }}
-                    className="group flex items-center justify-between p-4 rounded-2xl bg-surface border border-border hover:border-blue-accent/50 hover:bg-white/[0.04] transition-all"
+                    className="group flex items-center justify-between p-4 rounded-2xl bg-surface border border-border hover:border-blue-accent/50 hover:bg-white/[0.04] transition-colors"
                   >
                     <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-xl bg-blue-accent/10 flex items-center justify-center text-blue-accent group-hover:scale-105 transition-transform">
+                      <div className="w-12 h-12 rounded-xl bg-blue-accent/10 flex items-center justify-center text-blue-accent">
                         <Link size={20} />
                       </div>
                       <div>
@@ -3120,23 +5292,18 @@ export default function App() {
                         <p className="text-[10px] text-muted-main/60 font-mono mt-0.5 max-w-[240px] truncate">{link.url}</p>
                       </div>
                     </div>
-                    <div className="p-2.5 rounded-xl bg-white/5 text-muted-main group-hover:text-blue-accent group-hover:bg-blue-accent/10 transition-all">
+                    <div className="p-2.5 rounded-xl bg-white/5 text-muted-main group-hover:text-blue-accent group-hover:bg-blue-accent/10 transition-colors">
                       <ExternalLink size={18} />
                     </div>
-                  </motion.a>
+                  </a>
                 ))
               )}
             </div>
-          </motion.div>
+          </div>
         )}
 
         {userTab === 'profile' && (
-          <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            className="space-y-8"
-          >
+          <div className="space-y-8">
             <div className="text-center mb-8">
               <div className="inline-flex items-center gap-2 bg-purple-500/5 border border-purple-500/20 text-purple-400 px-3 py-1 rounded-full text-[9px] sm:text-[10px] tracking-[2px] uppercase mb-4">
                 <User size={12} /> প্রোফাইল সেটিংস
@@ -3190,6 +5357,15 @@ export default function App() {
                 <div className="px-3 py-1 rounded-full bg-purple-500/10 text-purple-400 border border-purple-500/20 text-[10px] font-black uppercase tracking-widest mt-2">
                   {currentAuthUser?.position}
                 </div>
+
+                <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={savingPic}
+                  className="mt-6 w-full max-w-[240px] bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-bg font-black py-4 px-6 rounded-2xl flex items-center justify-center gap-3 transition-all active:scale-95 shadow-lg shadow-purple-500/20 text-xs uppercase tracking-wider"
+                >
+                  <Upload size={18} />
+                  {savingPic ? 'আপলোড হচ্ছে...' : 'প্রোফাইল পিকচার আপলোড'}
+                </button>
               </div>
 
               {/* Information Rows */}
@@ -3264,15 +5440,16 @@ export default function App() {
                 </div>
               </div>
             </div>
-          </motion.div>
+          </div>
         )}
       </main>
 
       {/* Floating Bottom Navigation Bar */}
-      <div className="fixed bottom-0 inset-x-0 bg-surface/90 backdrop-blur-xl border-t border-white/5 px-4 py-3.5 z-[300] flex justify-around items-center shadow-[0_-15px_30px_rgba(0,0,0,0.6)]">
+      <div className="fixed bottom-0 sm:bottom-4 inset-x-0 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 sm:w-[450px] bg-surface/95 backdrop-blur-2xl border-t sm:border border-white/10 sm:rounded-3xl px-2 py-1 z-[300] flex justify-around items-center shadow-[0_-15px_30px_rgba(0,0,0,0.8)]">
         {[
           { id: 'home', label: 'হোম', icon: <Home size={20} />, activeColor: 'text-gold' },
           { id: 'submit', label: 'রেজাল্ট', icon: <CheckSquare size={20} />, activeColor: 'text-green-accent' },
+          { id: 'sheet', label: 'শিট / হিসাব', icon: <FileText size={20} />, activeColor: 'text-amber-400' },
           { id: 'links', label: 'লিংক সমূহ', icon: <Link size={20} />, activeColor: 'text-blue-accent' },
           { id: 'profile', label: 'প্রোফাইল', icon: <User size={20} />, activeColor: 'text-purple-400' }
         ].map((tab) => {
@@ -3281,12 +5458,12 @@ export default function App() {
             <button
               key={tab.id}
               onClick={() => setUserTab(tab.id as any)}
-              className={`flex flex-col items-center gap-1 transition-all ${isActive ? tab.activeColor : 'text-muted-main hover:text-white'}`}
+              className={`flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-2xl transition-all duration-300 ${isActive ? 'bg-white/5 translate-y-[-2px]' : 'hover:bg-white/5 hover:translate-y-[-1px]'}`}
             >
-              <div className={`p-1.5 rounded-xl transition-all ${isActive ? 'bg-white/5 scale-110 shadow-lg' : 'hover:scale-105'}`}>
+              <div className={`transition-colors duration-300 ${isActive ? tab.activeColor : 'text-muted-main'}`}>
                 {tab.icon}
               </div>
-              <span className="text-[10px] font-black tracking-tight">{tab.label}</span>
+              <span className={`text-[9px] font-black tracking-tight transition-colors duration-300 ${isActive ? tab.activeColor : 'text-muted-main'}`}>{tab.label}</span>
             </button>
           );
         })}
@@ -3342,14 +5519,10 @@ export default function App() {
               </div>
 
               {/* Admin Navigation "Slots" (Three-line style alternative) */}
-              <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 custom-scrollbar space-y-10 sm:space-y-12">
+              <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 custom-scrollbar space-y-4">
                 
                 {/* 2. Operations Slot (Timer & Results) */}
-                <section>
-                   <div className="flex items-center gap-3 mb-4 opacity-50 px-2 text-blue-accent">
-                     <Clock size={12} className="sm:w-3.5 sm:h-3.5" />
-                     <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-[2px]">Operations & Boards</span>
-                   </div>
+                <AdminAccordion title="Operations & Boards" icon={<Clock size={16} />} colorClass="text-blue-accent" defaultOpen={true}>
                    <div className="grid grid-cols-1 gap-3 sm:gap-4">
                       <div className="bg-surface/40 border border-white/5 p-4 sm:p-6 rounded-2xl sm:rounded-3xl relative overflow-hidden group">
                          <div className="absolute top-0 right-0 w-32 h-32 bg-blue-accent/5 blur-3xl rounded-full" />
@@ -3390,14 +5563,10 @@ export default function App() {
                          </div>
                       </div>
                    </div>
-                </section>
+                </AdminAccordion>
 
                 {/* 3. Global Stats Slot */}
-                <section>
-                   <div className="flex items-center gap-3 mb-4 opacity-50 px-2 text-gold2">
-                     <Trophy size={12} className="sm:w-3.5 sm:h-3.5" />
-                     <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-[2px]">Conversion Intelligence</span>
-                   </div>
+                <AdminAccordion title="Conversion Intelligence" icon={<Trophy size={16} />} colorClass="text-gold2">
                    <div className="bg-surface/40 border border-white/5 p-4 sm:p-6 rounded-2xl sm:rounded-3xl">
                       <label className="text-[9px] sm:text-[10px] text-muted-main uppercase font-black tracking-widest block mb-4">Lifetime Total Convert</label>
                       <div className="flex gap-3 sm:gap-4 items-center mb-4 sm:mb-6">
@@ -3453,41 +5622,30 @@ export default function App() {
                         </button>
                       </div>
                    </div>
-                </section>
+                </AdminAccordion>
 
                 {/* 4. Communication Slot */}
-                <section>
-                   <div className="flex items-center gap-3 mb-4 opacity-50 px-2 text-purple-400">
-                     <Megaphone size={14} />
-                     <span className="text-[10px] font-black uppercase tracking-[2px]">Communication & Hub</span>
-                   </div>
+                <AdminAccordion title="Communication & Hub" icon={<Megaphone size={16} />} colorClass="text-purple-400">
                    <div className="space-y-6">
                       <AnnouncementManager config={config} onUpdate={updateAnnouncement} />
                       <QuickLinksManagementSection links={quickLinks} onAdd={addQuickLink} onDelete={deleteQuickLink} />
                       <SocialLinksManager config={config} onUpdate={(links) => setDoc(doc(db, 'config', 'global'), { ...config, socialLinks: links })} />
                       <NoticeManager config={config} onUpdate={updateNoticeText} />
+                      <GiftBoxManager config={config} onUpdate={updateGiftBox} />
                    </div>
-                </section>
+                </AdminAccordion>
 
                 {/* 5. Team & Roster Slot */}
-                <section>
-                   <div className="flex items-center gap-3 mb-4 opacity-50 px-2 text-indigo-400">
-                     <Users size={14} />
-                     <span className="text-[10px] font-black uppercase tracking-[2px]">Team Roster Management</span>
-                   </div>
+                <AdminAccordion title="Team Roster Management" icon={<Users size={16} />} colorClass="text-indigo-400">
                    <div className="space-y-4">
                       <AdminSection title="Team Leaders" onAdd={(name) => addMember(name, 'leader')} members={members.filter(m => m.type === 'leader')} onDelete={deleteMember} />
                       <AdminSection title="Team Trainers" onAdd={(name) => addMember(name, 'trainer')} members={members.filter(m => m.type === 'trainer')} onDelete={deleteMember} />
                       <TeacherManagementSection teachers={teachers} attendanceRecords={attendanceRecords} onAdd={addTeacher} onDelete={deleteTeacher} onViewHistory={(teacher) => setShowTeacherHistory(teacher)} />
                    </div>
-                </section>
+                </AdminAccordion>
 
                 {/* 6. External Systems Slot */}
-                <section>
-                   <div className="flex items-center gap-3 mb-4 opacity-50 px-2 text-green-accent">
-                     <Calendar size={14} />
-                     <span className="text-[10px] font-black uppercase tracking-[2px]">Schedules & Logs</span>
-                   </div>
+                <AdminAccordion title="Schedules & Logs" icon={<Calendar size={16} />} colorClass="text-green-accent">
                    <div className="space-y-4">
                       <div className="mb-4 p-5 bg-bg border border-border rounded-2xl">
                         <div className="flex items-center gap-2 mb-4 border-b border-border pb-3">
@@ -3510,28 +5668,20 @@ export default function App() {
                       <SimpleManagementSection title="STL Meeting Members" icon={Users} colorClass="text-blue-accent" members={stlMembers} onAdd={addSTLMember} onDelete={deleteSTLMember} isActive={config.stlActive || false} onToggleActive={(val) => updateAttendanceConfig(val, undefined)} attendanceRecords={stlAttendance} />
                       <SimpleManagementSection title="Demo Members" icon={Presentation} colorClass="text-green-500" members={demoMembers} onAdd={addDemoMember} onDelete={deleteDemoMember} isActive={config.demoActive || false} onToggleActive={(val) => updateAttendanceConfig(undefined, val)} attendanceRecords={demoAttendance} />
                    </div>
-                </section>
+                </AdminAccordion>
 
                 {/* 7. Security & Setup Slot */}
-                <section>
-                   <div className="flex items-center gap-3 mb-4 opacity-50 px-2 text-red-400">
-                     <Shield size={14} />
-                     <span className="text-[10px] font-black uppercase tracking-[2px]">Security & Environment</span>
-                   </div>
+                <AdminAccordion title="Security & Environment" icon={<Shield size={16} />} colorClass="text-red-400">
                    <div className="space-y-4">
                       <AdminPasswordManager onUpdate={updateAdminPassword} />
                       <SecurityManager config={config} onUpdate={updateSecurity} />
                       <StlManager config={config} onUpdate={updateStlSettings} />
                       <CounsellingManager config={config} onUpdate={updateCounsellingSettings} />
                    </div>
-                </section>
+                </AdminAccordion>
 
                 {/* 8. Leaderboard & Achievement Slot */}
-                <section>
-                   <div className="flex items-center gap-3 mb-4 opacity-50 px-2 text-gold">
-                     <Crown size={14} />
-                     <span className="text-[10px] font-black uppercase tracking-[2px]">Leaderboard & Ranking Management</span>
-                   </div>
+                <AdminAccordion title="Leaderboard & Ranking Management" icon={<Crown size={16} />} colorClass="text-gold">
                    <div className="space-y-6">
                       <RankingSection 
                         title="Leader Ranking Management" 
@@ -3556,14 +5706,10 @@ export default function App() {
                         onToggleActive={(val) => updateAttendanceConfig(undefined, undefined, undefined, val)}
                       />
                    </div>
-                </section>
+                </AdminAccordion>
 
                 {/* 9. Core Identity & Access Control */}
-                <section>
-                   <div className="flex items-center gap-3 mb-4 opacity-50 px-2 text-gold">
-                     <Users size={14} />
-                     <span className="text-[10px] font-black uppercase tracking-[2px]">Member Approvals & Permissions</span>
-                   </div>
+                <AdminAccordion title="Member Approvals & Permissions" icon={<Users size={16} />} colorClass="text-gold">
                    <UserManagementSection 
                       pending={pendingUsers}
                       approved={approvedUsers}
@@ -3573,7 +5719,30 @@ export default function App() {
                       onDelete={deleteUser}
                       onUpdatePass={changeUserPassword}
                     />
-                </section>
+                </AdminAccordion>
+
+                {/* 10. Financial & Fine Management */}
+                <AdminAccordion title="Fine Settings & Balance Management" icon={<Coins size={16} />} colorClass="text-green-400">
+                   <div className="space-y-6">
+                     <FineSettingsManager 
+                       config={config} 
+                       onUpdateFine={updateFineRate} 
+                       onToggleFineSystem={toggleFineSystem}
+                       onClearAllFines={clearAllFineData}
+                     />
+                     <BalanceManagementSection 
+                       approvedUsers={approvedUsers}
+                       members={members}
+                       userBalances={userBalances}
+                       auditLogs={auditLogs}
+                       onUpdateBalance={adminUpdateBalance}
+                       onWaiveFine={adminWaiveFine}
+                       onRemoveDayFine={adminRemoveDayFine}
+                       onRecalculateFine={adminRecalculateFine}
+                       computeUserSubmissionStats={computeUserSubmissionStats}
+                     />
+                   </div>
+                </AdminAccordion>
 
               </div>
               
@@ -3585,6 +5754,8 @@ export default function App() {
       <AnimatePresence>
         {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
       </AnimatePresence>
+
+      <GiftBoxOverlay config={config} />
 
       <AnimatePresence>
         {showPickingModal && (
@@ -3919,6 +6090,14 @@ export default function App() {
             </motion.div>
           </div>
         )}
+
+        {showCalendarUser && (
+          <UserCalendarModal 
+            user={showCalendarUser}
+            submissionLogs={submissionLogs}
+            onClose={() => setShowCalendarUser(null)}
+          />
+        )}
       </AnimatePresence>
     </div>
   );
@@ -3935,9 +6114,10 @@ interface BoardProps {
   approvedUsers?: UserRegistration[];
   isAdmin: boolean;
   currentMemberId: string | null;
+  computeUserSubmissionStats?: (userWhatsapp: string, memberId?: string) => any;
 }
 
-const Board: React.FC<BoardProps> = ({ title, icon, members, results, timerActive, onSubmit, accentColor, approvedUsers, isAdmin, currentMemberId }) => {
+const Board: React.FC<BoardProps> = ({ title, icon, members, results, timerActive, onSubmit, accentColor, approvedUsers, isAdmin, currentMemberId, computeUserSubmissionStats }) => {
   return (
     <div className="mb-12">
       <div className="flex items-center gap-4 mb-6">
@@ -3968,6 +6148,7 @@ const Board: React.FC<BoardProps> = ({ title, icon, members, results, timerActiv
               approvedUsers={approvedUsers}
               isAdmin={isAdmin}
               isMe={m.id === currentMemberId}
+              computeUserSubmissionStats={computeUserSubmissionStats}
             />
           ))
         )}
@@ -3986,9 +6167,10 @@ interface MemberCardProps {
   approvedUsers?: UserRegistration[];
   isAdmin: boolean;
   isMe: boolean;
+  computeUserSubmissionStats?: (userWhatsapp: string, memberId?: string) => any;
 }
 
-const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, onSubmit, accentColor, rank, approvedUsers, isAdmin, isMe }) => {
+const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, onSubmit, accentColor, rank, approvedUsers, isAdmin, isMe, computeUserSubmissionStats }) => {
   const [lead, setLead] = useState<string>('');
   const [convert, setConvert] = useState<string>('');
   const [personalLead, setPersonalLead] = useState<string>('');
@@ -4018,6 +6200,8 @@ const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, on
   const matchedUser = approvedUsers?.find(
     u => u.fullName.trim().toLowerCase() === member.name.trim().toLowerCase()
   );
+
+  const subStats = computeUserSubmissionStats ? computeUserSubmissionStats(matchedUser?.whatsapp || '', member.id) : null;
 
   return (
     <motion.div 
@@ -4071,6 +6255,18 @@ const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, on
               {result?.submitted && <span className="w-1 h-1 rounded-full bg-green-accent" />}
               {result?.submitted && <span className="text-green-accent font-bold">Verified</span>}
             </div>
+
+            {/* User Submission & Fine Badges */}
+            {subStats && (
+              <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                <span className="inline-flex items-center gap-1 text-[10px] font-black bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded-md">
+                  <AlertTriangle size={10} /> রেজাল্ট মিসড/বাতিল: {subStats.missedDays} দিন
+                </span>
+                <span className="inline-flex items-center gap-1 text-[10px] font-black bg-gold/10 text-gold border border-gold/20 px-2 py-0.5 rounded-md">
+                  <Wallet size={10} /> চার্জ/জরিমানা: ৳{subStats.totalFine}
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -5026,6 +7222,41 @@ function CounsellingManager({ config, onUpdate }: { config: Config, onUpdate: (s
   );
 }
 
+function AdminAccordion({ title, icon, colorClass, defaultOpen = false, children }: { title: string, icon: React.ReactNode, colorClass: string, defaultOpen?: boolean, children: React.ReactNode }) {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+  
+  return (
+    <div className="bg-bg/40 border border-white/5 rounded-2xl overflow-hidden mb-4 transition-all">
+      <button 
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full p-4 flex items-center justify-between hover:bg-surface/50 transition-colors"
+      >
+        <div className={`flex items-center gap-3 ${colorClass}`}>
+          {icon}
+          <span className="text-[12px] font-black uppercase tracking-[2px]">{title}</span>
+        </div>
+        <ChevronRight size={16} className={`text-muted-main transition-transform ${isOpen ? 'rotate-90 text-white' : ''}`} />
+      </button>
+      
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div 
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="border-t border-white/5 bg-surface/20 overflow-hidden"
+          >
+            <div className="p-4 sm:p-6 space-y-6">
+              {children}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 function NoticeManager({ config, onUpdate }: { config: Config, onUpdate: (text: string) => void }) {
   const [text, setText] = useState(config.noticeText || '');
 
@@ -5055,6 +7286,69 @@ function NoticeManager({ config, onUpdate }: { config: Config, onUpdate: (text: 
         >
           <Megaphone size={12} />
           Publish Notice
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function GiftBoxManager({ config, onUpdate }: { config: Config, onUpdate: (active: boolean, title: string, content: string) => void }) {
+  const [active, setActive] = useState(!!config.giftBoxActive);
+  const [title, setTitle] = useState(config.giftBoxTitle || '');
+  const [content, setContent] = useState(config.giftBoxContent || '');
+
+  useEffect(() => {
+    setActive(!!config.giftBoxActive);
+    setTitle(config.giftBoxTitle || '');
+    setContent(config.giftBoxContent || '');
+  }, [config.giftBoxActive, config.giftBoxTitle, config.giftBoxContent]);
+
+  return (
+    <div className="bg-bg border border-border rounded-xl p-4 mb-8">
+      <div className="flex items-center gap-2 mb-4">
+        <Gift size={14} className="text-pink-500" />
+        <h4 className="text-[10px] text-muted-main tracking-[2px] uppercase">Gift Box Control</h4>
+      </div>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between bg-surface p-3 rounded-lg border border-border2">
+          <div>
+            <div className="text-xs font-bold text-white">Gift Box Status</div>
+            <div className="text-[10px] text-muted-main">Enable or disable the gift box for all users</div>
+          </div>
+          <div 
+            onClick={() => setActive(!active)}
+            className={`w-10 h-5 sm:w-12 sm:h-6 rounded-full relative cursor-pointer transition-all ${active ? 'bg-pink-500' : 'bg-muted-main2'}`}
+          >
+            <div className={`absolute top-0.5 sm:top-1 w-4 h-4 rounded-full bg-bg transition-all ${active ? 'left-5.5 sm:left-7' : 'left-0.5 sm:left-1'}`} />
+          </div>
+        </div>
+        
+        <div>
+          <label className="text-[8px] text-muted-main uppercase font-black tracking-widest block mb-1.5 px-1">Popup Title</label>
+          <input 
+            className="w-full bg-surface border border-border2 rounded-lg p-3 text-sm outline-none focus:border-pink-500 text-white transition-all"
+            placeholder="Gift Box Title..."
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+        </div>
+
+        <div>
+          <label className="text-[8px] text-muted-main uppercase font-black tracking-widest block mb-1.5 px-1">Offer / Notice Content</label>
+          <textarea 
+            className="w-full bg-surface border border-border2 rounded-lg p-3 text-sm outline-none focus:border-pink-500 text-white transition-all min-h-[100px] resize-none"
+            placeholder="Write your offer or notice here..."
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+          />
+        </div>
+
+        <button 
+          onClick={() => onUpdate(active, title, content)}
+          className="w-full bg-pink-500 text-bg font-black py-2.5 rounded-lg text-[10px] uppercase tracking-widest hover:opacity-90 transition-all flex items-center justify-center gap-2"
+        >
+          <Gift size={12} />
+          Save Gift Box Settings
         </button>
       </div>
     </div>
@@ -5732,41 +8026,55 @@ function AdminLoginModal({ onClose, onSuccess, initialAdminPass }: { onClose: ()
   };
 
   return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 sm:p-10">
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} onClick={onClose} className="absolute inset-0 bg-black/80 backdrop-blur-md" />
-      <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="relative bg-surface border border-border2 p-6 sm:p-8 rounded-[40px] max-w-[400px] w-full overflow-hidden shadow-[0_30px_100px_rgba(0,0,0,0.8)]">
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h3 className="text-2xl font-serif font-black text-white">Admin Access</h3>
-            <p className="text-xs text-muted-main uppercase tracking-widest mt-1">Admin Identity Required</p>
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 sm:p-6">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} onClick={onClose} className="absolute inset-0 bg-black/85 backdrop-blur-xl" />
+      <motion.div initial={{ scale: 0.95, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} className="relative bg-[#12121A]/95 border border-[#F5C842]/30 p-6 sm:p-8 rounded-[32px] max-w-[400px] w-full overflow-hidden shadow-[0_25px_80px_rgba(0,0,0,0.9)]">
+        {/* Top Metallic Highlight */}
+        <div className="absolute top-0 left-10 right-10 h-[2px] bg-gradient-to-r from-transparent via-[#F5C842]/60 to-transparent shadow-[0_0_12px_#F5C842]" />
+
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-[#F5C842]/10 border border-[#F5C842]/30 flex items-center justify-center text-[#F5C842]">
+              <Shield size={20} />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-white tracking-tight">Admin Portal</h3>
+              <p className="text-[10px] text-[#F0EAD6]/50 uppercase tracking-widest font-mono">Restricted Authorization</p>
+            </div>
           </div>
-          <button onClick={onClose} className="p-2 bg-white/5 rounded-full hover:bg-white/10 transition-all text-muted-main hover:text-white">
-            <X size={20} />
+          <button onClick={onClose} className="w-9 h-9 bg-white/5 border border-white/10 rounded-full flex items-center justify-center hover:bg-white/10 transition-all text-[#F0EAD6]/60 hover:text-white">
+            <X size={18} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label className="block text-[10px] font-black uppercase tracking-[2px] text-muted-main mb-2 pl-2">Admin Password</label>
-            <input 
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className={`w-full bg-bg border ${error ? 'border-red-500' : 'border-border2'} rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-gold/50 transition-colors shadow-inner font-mono`}
-              placeholder="••••••••"
-              autoFocus
-              required
-              disabled={loading}
-            />
-            {error && <div className="text-xs text-red-500 mt-2 pl-2">Invalid password</div>}
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div className="space-y-2">
+            <label className="block text-[10px] font-bold uppercase tracking-[2px] text-[#F0EAD6]/60 pl-1">Admin Password</label>
+            <div className="relative">
+              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-[#F0EAD6]/40" size={17} />
+              <input 
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className={`w-full bg-[#0A0A0F]/80 border ${error ? 'border-red-500 ring-2 ring-red-500/20' : 'border-white/10 focus:border-[#F5C842]/60 focus:ring-2 focus:ring-[#F5C842]/10'} rounded-2xl pl-11 pr-4 py-3.5 text-white outline-none transition-all font-mono text-sm`}
+                placeholder="••••••••"
+                autoFocus
+                required
+                disabled={loading}
+              />
+            </div>
+            {error && <p className="text-xs text-red-400 font-medium pl-1 flex items-center gap-1"><X size={12} /> Invalid admin credentials</p>}
           </div>
           
           <button 
             type="submit"
             disabled={loading}
-            className="w-full bg-gradient-to-r from-gold to-gold2 hover:opacity-95 text-bg py-4 rounded-2xl font-bold transition-all shadow-[0_0_20px_rgba(245,200,66,0.3)] hover:shadow-[0_0_30px_rgba(245,200,66,0.5)] active:scale-[0.98] disabled:opacity-50"
+            className="w-full relative py-4 bg-gradient-to-r from-[#F5C842] via-[#E8B800] to-[#F5C842] rounded-2xl text-[#0A0A0F] font-bold text-sm tracking-wide shadow-[0_8px_30px_rgba(245,200,66,0.25)] hover:shadow-[0_12px_36px_rgba(245,200,66,0.4)] active:scale-[0.98] transition-all disabled:opacity-50 overflow-hidden group"
           >
-            {loading ? 'Verifying...' : 'Access System'}
+            <span className="relative z-10 flex items-center justify-center gap-2">
+              {loading ? 'Verifying...' : 'Access System'}
+              {!loading && <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />}
+            </span>
           </button>
         </form>
       </motion.div>
@@ -5789,38 +8097,52 @@ function StlLoginModal({ onClose, onSuccess, config }: { onClose: () => void, on
   };
 
   return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 sm:p-10">
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} onClick={onClose} className="absolute inset-0 bg-black/80 backdrop-blur-md" />
-      <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="relative bg-surface border border-border2 p-6 sm:p-8 rounded-[40px] max-w-[400px] w-full overflow-hidden shadow-[0_30px_100px_rgba(0,0,0,0.8)]">
-        <div className="flex justify-between items-center mb-8">
-          <div>
-            <h3 className="text-2xl font-serif font-black text-white">STL Access</h3>
-            <p className="text-xs text-muted-main uppercase tracking-widest mt-1">STL Identity Required</p>
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 sm:p-6">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} onClick={onClose} className="absolute inset-0 bg-black/85 backdrop-blur-xl" />
+      <motion.div initial={{ scale: 0.95, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} className="relative bg-[#12121A]/95 border border-blue-500/30 p-6 sm:p-8 rounded-[32px] max-w-[400px] w-full overflow-hidden shadow-[0_25px_80px_rgba(0,0,0,0.9)]">
+        {/* Top Metallic Highlight */}
+        <div className="absolute top-0 left-10 right-10 h-[2px] bg-gradient-to-r from-transparent via-blue-500/60 to-transparent shadow-[0_0_12px_#3B82F6]" />
+
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400">
+              <Shield size={20} />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-white tracking-tight">STL Portal</h3>
+              <p className="text-[10px] text-[#F0EAD6]/50 uppercase tracking-widest font-mono">STL Verification Required</p>
+            </div>
           </div>
-          <button onClick={onClose} className="p-2 bg-white/5 rounded-full hover:bg-white/10 transition-all text-muted-main hover:text-white">
-            <X size={20} />
+          <button onClick={onClose} className="w-9 h-9 bg-white/5 border border-white/10 rounded-full flex items-center justify-center hover:bg-white/10 transition-all text-[#F0EAD6]/60 hover:text-white">
+            <X size={18} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label className="block text-[10px] font-black uppercase tracking-[2px] text-muted-main mb-2 pl-2">STL Password</label>
-            <input 
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className={`w-full bg-bg border ${error ? 'border-red-500' : 'border-border2'} rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-blue-accent/50 transition-colors shadow-inner font-mono`}
-              placeholder="••••••••"
-              autoFocus
-            />
-            {error && <div className="text-xs text-red-500 mt-2 pl-2">Invalid code</div>}
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div className="space-y-2">
+            <label className="block text-[10px] font-bold uppercase tracking-[2px] text-[#F0EAD6]/60 pl-1">STL Access Key</label>
+            <div className="relative">
+              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-[#F0EAD6]/40" size={17} />
+              <input 
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className={`w-full bg-[#0A0A0F]/80 border ${error ? 'border-red-500 ring-2 ring-red-500/20' : 'border-white/10 focus:border-blue-500/60 focus:ring-2 focus:ring-blue-500/10'} rounded-2xl pl-11 pr-4 py-3.5 text-white outline-none transition-all font-mono text-sm`}
+                placeholder="••••••••"
+                autoFocus
+              />
+            </div>
+            {error && <p className="text-xs text-red-400 font-medium pl-1 flex items-center gap-1"><X size={12} /> Invalid access key</p>}
           </div>
           
           <button 
             type="submit"
-            className="w-full bg-blue-accent hover:bg-blue-accent/90 text-bg py-4 rounded-2xl font-bold transition-all shadow-[0_0_20px_rgba(59,130,246,0.3)] hover:shadow-[0_0_30px_rgba(59,130,246,0.5)] active:scale-[0.98]"
+            className="w-full relative py-4 bg-gradient-to-r from-blue-600 via-blue-500 to-blue-600 rounded-2xl text-white font-bold text-sm tracking-wide shadow-[0_8px_30px_rgba(59,130,246,0.3)] hover:shadow-[0_12px_36px_rgba(59,130,246,0.4)] active:scale-[0.98] transition-all overflow-hidden group"
           >
-            Access System
+            <span className="relative z-10 flex items-center justify-center gap-2">
+              Access System
+              <ChevronRight size={16} className="group-hover:translate-x-1 transition-transform" />
+            </span>
           </button>
         </form>
       </motion.div>

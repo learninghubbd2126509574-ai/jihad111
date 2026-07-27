@@ -1,5 +1,6 @@
 {
   "name": "Unity Earning Dashboard",
   "description": "A real-time performance dashboard for Unity Earning E-Learning Platform with admin controls and live result tracking.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
