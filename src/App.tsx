@@ -5318,18 +5318,18 @@ export default function App() {
                     href={link.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="group flex items-center justify-between p-4 rounded-2xl bg-surface border border-border hover:border-blue-accent/50 hover:bg-white/[0.04] transition-colors"
+                    className="group flex items-center justify-between gap-3 p-4 rounded-2xl bg-surface border border-border hover:border-blue-accent/50 hover:bg-white/[0.04] transition-colors overflow-hidden"
                   >
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-xl bg-blue-accent/10 flex items-center justify-center text-blue-accent">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <div className="w-12 h-12 shrink-0 rounded-xl bg-blue-accent/10 flex items-center justify-center text-blue-accent">
                         <Link size={20} />
                       </div>
-                      <div>
-                        <h4 className="font-bold text-white text-base group-hover:text-blue-accent transition-colors">{link.name}</h4>
-                        <p className="text-[10px] text-muted-main/60 font-mono mt-0.5 max-w-[240px] truncate">{link.url}</p>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="font-bold text-white text-sm sm:text-base group-hover:text-blue-accent transition-colors truncate">{link.name}</h4>
+                        <p className="text-[10px] text-muted-main/60 font-mono mt-0.5 truncate w-full">{link.url}</p>
                       </div>
                     </div>
-                    <div className="p-2.5 rounded-xl bg-white/5 text-muted-main group-hover:text-blue-accent group-hover:bg-blue-accent/10 transition-colors">
+                    <div className="p-2.5 shrink-0 rounded-xl bg-white/5 text-muted-main group-hover:text-blue-accent group-hover:bg-blue-accent/10 transition-colors">
                       <ExternalLink size={18} />
                     </div>
                   </a>
