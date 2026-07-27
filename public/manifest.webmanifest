@@ -1,0 +1,18 @@
+{
+  "name": "Unity Earning Dashboard",
+  "short_name": "Unity Earning",
+  "description": "A real-time performance dashboard for Unity Earning E-Learning Platform.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0B0F1A",
+  "theme_color": "#F5C542",
+  "icons": [
+    {
+      "src": "/icon.jpg",
+      "sizes": "1024x1024",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ],
+  "orientation": "portrait"
+}

@@ -66,6 +66,7 @@ import {
   MapPin,
   Lock,
   Smartphone,
+  Download,
   Heart,
   Baby,
   Flag,
@@ -4752,6 +4753,26 @@ export default function App() {
                       <ChevronRight size={16} className="text-muted-main/50" />
                     </button>
                   )}
+
+                  <button 
+                    onClick={() => { 
+                      setShowMenu(false); 
+                      // Trigger download of the APK (placeholder or user-supplied)
+                      const link = document.createElement('a');
+                      link.href = '/app-release.apk';
+                      link.download = 'UnityEarning.apk';
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                    }}
+                    className="w-full flex items-center justify-between p-4 rounded-xl bg-green-accent/10 border border-green-accent/30 hover:bg-green-accent/20 transition-all mb-3 group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Smartphone className="text-green-accent" size={18} />
+                      <span className="text-sm font-bold text-white">Download App</span>
+                    </div>
+                    <Download size={16} className="text-green-accent" />
+                  </button>
 
                   <button 
                     onClick={() => { 

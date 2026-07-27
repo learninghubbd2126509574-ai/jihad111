@@ -1,0 +1,2 @@
+rootProject.name = "UnityEarning"
+include ':app'
