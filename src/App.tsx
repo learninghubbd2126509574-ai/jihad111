@@ -2780,9 +2780,8 @@ export default function App() {
   };
 
   const showMsg = (message: string, type: 'success' | 'error' = 'success') => {
-    if (type === 'error') {
-      setToast({ message, type });
-    }
+    // Notifications disabled by user request
+    console.log(`[Notification Silenced] ${type}: ${message}`);
   };
 
   // Actions
@@ -5751,9 +5750,7 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      <AnimatePresence>
-        {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
-      </AnimatePresence>
+      {/* Notifications disabled by user request */}
 
       <GiftBoxOverlay config={config} />
 
