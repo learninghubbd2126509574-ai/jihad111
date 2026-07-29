@@ -4327,6 +4327,27 @@ export default function App() {
       return (b.leads || 0) - (a.leads || 0);
     };
 
+    // Ranking sort function: strictly by Total Converts (score)
+    const sortByTotalRanking = (a: any, b: any) => {
+      // Primary sort: Total Converts / Lifetime score (descending)
+      const scoreA = a.score || 0;
+      const scoreB = b.score || 0;
+      if (scoreB !== scoreA) return scoreB - scoreA;
+
+      // Secondary sort: Total Leads (descending)
+      const leadsA = a.leads || 0;
+      const leadsB = b.leads || 0;
+      if (leadsB !== leadsA) return leadsB - leadsA;
+
+      // Tertiary sort: Today's Convert count (descending)
+      const convA = a.result?.convert || 0;
+      const convB = b.result?.convert || 0;
+      if (convB !== convA) return convB - convA;
+
+      // Alphabetical tie-breaker
+      return a.name.localeCompare(b.name);
+    };
+
     // 3. Calculate Global Stats
     allLeaders.forEach(m => {
       if (m.result.submitted) {
@@ -4342,9 +4363,9 @@ export default function App() {
     const sortedT = [...allTrainers].sort(sortByPerformance);
     const allSorted = [...allLeaders, ...allTrainers].sort(sortByPerformance);
 
-    // sortedLR and sortedTR are for the "Ranking" section, which the user also wants real-time
-    const sortedLR = [...allLeaders].sort(sortByPerformance);
-    const sortedTR = [...allTrainers].sort(sortByPerformance);
+    // sortedLR and sortedTR are for the "Ranking" sections (Top 3 Leaders, Top 3 Trainers & Ranking Modals)
+    const sortedLR = [...allLeaders].sort(sortByTotalRanking);
+    const sortedTR = [...allTrainers].sort(sortByTotalRanking);
 
     return {
       stats: {
