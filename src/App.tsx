@@ -3271,24 +3271,57 @@ export default function App() {
   const addMember = async (name: string, type: 'leader' | 'trainer') => {
     if (!name.trim()) return;
     try {
-      await addDoc(collection(db, 'members'), {
+      const batch = writeBatch(db);
+      
+      // 1. Add to members list
+      const memberRef = doc(collection(db, 'members'));
+      batch.set(memberRef, {
         name,
         type,
         createdAt: serverTimestamp()
       });
-      showMsg(`${name} added!`);
+
+      // 2. Add to ranking lists
+      const coll = type === 'leader' ? 'leaderRanking' : 'trainerRanking';
+      const rankingRef = doc(collection(db, coll));
+      batch.set(rankingRef, {
+        name,
+        score: 0,
+        leads: 0,
+        createdAt: serverTimestamp()
+      });
+
+      await batch.commit();
+      showMsg(`${name} added to ${type} and ranking!`);
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'members', showMsg);
     }
   };
 
   const deleteMember = async (id: string) => {
+    const member = members.find(m => m.id === id);
     setShowConfirm({
-      title: 'Are you sure you want to remove this member?',
+      title: `Are you sure you want to remove ${member?.name || 'this member'}? Their ranking entry will also be removed.`,
       onConfirm: async () => {
         try {
-          await deleteDoc(doc(db, 'members', id));
-          showMsg('Member removed');
+          const batch = writeBatch(db);
+          
+          // 1. Delete from members
+          batch.delete(doc(db, 'members', id));
+
+          // 2. Delete from ranking
+          if (member) {
+            const coll = member.type === 'leader' ? 'leaderRanking' : 'trainerRanking';
+            const rankingEntry = (member.type === 'leader' ? leaderRanking : trainerRanking).find(
+              r => r.name.trim().toLowerCase() === member.name.trim().toLowerCase()
+            );
+            if (rankingEntry) {
+              batch.delete(doc(db, coll, rankingEntry.id));
+            }
+          }
+
+          await batch.commit();
+          showMsg('Member removed from roster and ranking');
           setShowConfirm(null);
         } catch (err) {
           handleFirestoreError(err, OperationType.DELETE, `members/${id}`, showMsg);
@@ -3594,10 +3627,23 @@ export default function App() {
   const updateRankingScore = async (type: 'leader' | 'trainer', id: string, diffScore: number, diffLeads: number) => {
     const coll = type === 'leader' ? 'leaderRanking' : 'trainerRanking';
     try {
-      await updateDoc(doc(db, coll, id), { 
+      const batch = writeBatch(db);
+      
+      // Update individual ranking
+      batch.update(doc(db, coll, id), { 
         score: increment(diffScore),
         leads: increment(diffLeads)
       });
+
+      // Update global total if it's a leader and score changed
+      if (type === 'leader' && diffScore !== 0) {
+        batch.update(doc(db, 'config', 'global'), {
+          totalConverts: increment(diffScore)
+        });
+      }
+
+      await batch.commit();
+      showMsg('Score updated and synced!');
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `${coll}/${id}`, showMsg);
     }
@@ -3998,6 +4044,39 @@ export default function App() {
       showMsg(`ফাইন ${isDeduct ? 'কমানো' : 'বাড়ানো'} হয়েছে!`, 'success');
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `userBalances/${userKey}`, showMsg);
+    }
+  };
+
+  const syncMembersToRankings = async () => {
+    try {
+      const batch = writeBatch(db);
+      let count = 0;
+      
+      members.forEach(member => {
+        const rankingList = member.type === 'leader' ? leaderRanking : trainerRanking;
+        const exists = rankingList.some(r => r.name.trim().toLowerCase() === member.name.trim().toLowerCase());
+        
+        if (!exists) {
+          const coll = member.type === 'leader' ? 'leaderRanking' : 'trainerRanking';
+          const rankingRef = doc(collection(db, coll));
+          batch.set(rankingRef, {
+            name: member.name,
+            score: 0,
+            leads: 0,
+            createdAt: serverTimestamp()
+          });
+          count++;
+        }
+      });
+      
+      if (count > 0) {
+        await batch.commit();
+        showMsg(`${count} missing members synced to rankings!`);
+      } else {
+        showMsg('All members are already in rankings.');
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'sync_rankings', showMsg);
     }
   };
 
@@ -5643,6 +5722,13 @@ export default function App() {
                         </div>
                       </div>
                       <div className="grid grid-cols-1 gap-2 sm:gap-3">
+                        <button 
+                          onClick={syncMembersToRankings}
+                          className="w-full py-3 sm:py-4 rounded-xl sm:rounded-2xl bg-white/5 text-blue-accent text-[9px] sm:text-[10px] uppercase font-black hover:bg-blue-accent hover:text-bg transition-all flex items-center justify-center gap-2 border border-blue-accent/20"
+                        >
+                          <Users size={12} className="sm:w-3.5 sm:h-3.5" />
+                          Sync All Members to Ranking
+                        </button>
                         <button 
                           onClick={async () => {
                             const total = leaderRanking.reduce((sum, r) => sum + (r.score || 0), 0);
