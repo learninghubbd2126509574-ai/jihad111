@@ -2990,6 +2990,7 @@ export default function App() {
            name: pendingUser.fullName,
            score: 0,
            leads: 0,
+           whatsapp: pendingUser.whatsapp,
            createdAt: serverTimestamp()
          });
        } else if (pendingUser.position === 'Team Trainer') {
@@ -3004,6 +3005,7 @@ export default function App() {
            name: pendingUser.fullName,
            score: 0,
            leads: 0,
+           whatsapp: pendingUser.whatsapp,
            createdAt: serverTimestamp()
          });
        } else if (pendingUser.position === 'STL') {
@@ -4047,17 +4049,106 @@ export default function App() {
     }
   };
 
+  const resetAndSyncRankings = async () => {
+    setShowConfirm({
+      title: 'Clear and Re-sync All Rankings?',
+      message: 'This will DELETE all current ranking data and re-create entries from registered users and roster members with 0 scores.',
+      onConfirm: async () => {
+        try {
+          const batch = writeBatch(db);
+          
+          // 1. Delete all current rankings
+          leaderRanking.forEach(r => batch.delete(doc(db, 'leaderRanking', r.id)));
+          trainerRanking.forEach(r => batch.delete(doc(db, 'trainerRanking', r.id)));
+
+          // 2. Re-populate from registeredUsers
+          approvedUsers.forEach(user => {
+            const isLeader = user.position === 'Team Leader' || user.position === 'STL';
+            const isTrainer = user.position === 'Team Trainer';
+            
+            if (isLeader || isTrainer) {
+              const coll = isLeader ? 'leaderRanking' : 'trainerRanking';
+              const rankingRef = doc(collection(db, coll));
+              batch.set(rankingRef, {
+                name: user.fullName,
+                score: user.score || 0, // Preserve score if available
+                leads: user.leads || 0,
+                whatsapp: user.whatsapp,
+                createdAt: serverTimestamp()
+              });
+            }
+          });
+
+          // 3. Re-populate from manual roster (members) if not already synced
+          members.forEach(member => {
+            const isLeader = member.type === 'leader' || member.type === 'trainer';
+            const coll = member.type === 'leader' ? 'leaderRanking' : 'trainerRanking';
+            
+            // Check if already added via registeredUsers
+            const exists = approvedUsers.some(u => u.fullName.trim().toLowerCase() === member.name.trim().toLowerCase());
+            
+            if (!exists && (member.type === 'leader' || member.type === 'trainer')) {
+              const rankingRef = doc(collection(db, coll));
+              batch.set(rankingRef, {
+                name: member.name,
+                score: 0,
+                leads: 0,
+                createdAt: serverTimestamp()
+              });
+            }
+          });
+
+          await batch.commit();
+          showMsg('Rankings cleared and re-synced successfully!', 'success');
+          setShowConfirm(null);
+        } catch (err) {
+          handleFirestoreError(err, OperationType.WRITE, 'reset_sync_rankings', showMsg);
+        }
+      }
+    });
+  };
+
   const syncMembersToRankings = async () => {
     try {
       const batch = writeBatch(db);
       let count = 0;
       
+      // Sync from Approved Users (Real accounts)
+      approvedUsers.forEach(user => {
+        const isLeader = user.position === 'Team Leader' || user.position === 'STL';
+        const isTrainer = user.position === 'Team Trainer';
+        if (!isLeader && !isTrainer) return;
+
+        const rankingList = isLeader ? leaderRanking : trainerRanking;
+        
+        // Check if user already exists in ranking by name or whatsapp
+        const exists = rankingList.some(r => 
+          r.name.trim().toLowerCase() === user.fullName.trim().toLowerCase() ||
+          r.whatsapp === user.whatsapp
+        );
+        
+        if (!exists) {
+          const coll = isLeader ? 'leaderRanking' : 'trainerRanking';
+          const rankingRef = doc(collection(db, coll));
+          batch.set(rankingRef, {
+            name: user.fullName,
+            score: 0,
+            leads: 0,
+            whatsapp: user.whatsapp,
+            createdAt: serverTimestamp()
+          });
+          count++;
+        }
+      });
+
+      // Also sync from Manual Members list if they aren't registered yet
       members.forEach(member => {
-        const rankingList = member.type === 'leader' ? leaderRanking : trainerRanking;
+        const isLeader = member.type === 'leader';
+        const rankingList = isLeader ? leaderRanking : trainerRanking;
         const exists = rankingList.some(r => r.name.trim().toLowerCase() === member.name.trim().toLowerCase());
         
         if (!exists) {
-          const coll = member.type === 'leader' ? 'leaderRanking' : 'trainerRanking';
+          const coll = isLeader ? 'leaderRanking' : 'trainerRanking';
           const rankingRef = doc(collection(db, coll));
           batch.set(rankingRef, {
             name: member.name,
@@ -4071,9 +4162,9 @@ export default function App() {
       
       if (count > 0) {
         await batch.commit();
-        showMsg(`${count} missing members synced to rankings!`);
+        showMsg(`${count} users synced to rankings!`, 'success');
       } else {
-        showMsg('All members are already in rankings.');
+        showMsg('All users are already in rankings.');
       }
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'sync_rankings', showMsg);
@@ -4991,12 +5082,12 @@ export default function App() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between mb-0.5">
-                            <div className="text-[8px] sm:text-[10px] text-gold font-bold uppercase tracking-widest truncate mr-2">Best Leader</div>
+                            <div className="text-[8px] sm:text-[10px] text-gold font-bold uppercase tracking-widest mr-2">Best Leader</div>
                             <span className={`text-[7px] sm:text-[9px] px-1.5 py-0.5 rounded-full font-black uppercase whitespace-nowrap ${topOverall?.id === topLeader.id ? 'bg-gold text-bg' : 'bg-gold/10 text-gold border border-gold/20'}`}>
                               {topOverall?.id === topLeader.id ? 'Overall Best' : 'Elite'}
                             </span>
                           </div>
-                          <div className="font-serif text-lg sm:text-xl font-bold text-white truncate">{topLeader.name}</div>
+                          <div className="font-serif text-lg sm:text-xl font-bold text-white">{topLeader.name}</div>
                           <div className="flex items-center gap-3 sm:gap-4 mt-2">
                             <div className="flex flex-col">
                               <span className="text-[7px] sm:text-[9px] text-muted-main uppercase font-bold">Conv</span>
@@ -5042,12 +5133,12 @@ export default function App() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between mb-0.5">
-                            <div className="text-[8px] sm:text-[10px] text-blue-accent font-bold uppercase tracking-widest truncate mr-2">Best Trainer</div>
+                            <div className="text-[8px] sm:text-[10px] text-blue-accent font-bold uppercase tracking-widest mr-2">Best Trainer</div>
                             <span className={`text-[7px] sm:text-[9px] px-1.5 py-0.5 rounded-full font-black uppercase whitespace-nowrap ${topOverall?.id === topTrainer.id ? 'bg-blue-accent text-bg' : 'bg-blue-accent/10 text-blue-accent border border-blue-accent/20'}`}>
                               {topOverall?.id === topTrainer.id ? 'Overall Best' : 'Elite'}
                             </span>
                           </div>
-                          <div className="font-serif text-lg sm:text-xl font-bold text-white truncate">{topTrainer.name}</div>
+                          <div className="font-serif text-lg sm:text-xl font-bold text-white">{topTrainer.name}</div>
                           <div className="flex items-center gap-3 sm:gap-4 mt-2">
                             <div className="flex flex-col">
                               <span className="text-[7px] sm:text-[9px] text-muted-main uppercase font-bold">Conv</span>
@@ -5107,7 +5198,7 @@ export default function App() {
                               {matchedUser?.profilePic ? (
                                 <img src={matchedUser.profilePic} alt={member.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                               ) : (
-                                member.name[0].toUpperCase()
+                                <span className="text-[10px]">{member.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}</span>
                               )}
                             </div>
                             <div className="absolute -top-1.5 -right-1.5 bg-surface border border-border/40 rounded-full w-5 h-5 flex items-center justify-center text-[10px] shadow-md font-bold">
@@ -5170,13 +5261,13 @@ export default function App() {
                     const rankIcon = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`;
                     return (
                       <div key={member.id} className="p-3 bg-bg/40 border border-white/5 rounded-2xl flex items-center justify-between gap-3 group hover:border-blue-accent/25 transition-all">
-                        <div className="flex items-center gap-3 min-w-0">
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
                           <div className="relative flex-shrink-0">
                             <div className={`w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center font-black ${matchedUser?.profilePic ? '' : 'bg-white/5 text-blue-accent'}`}>
                               {matchedUser?.profilePic ? (
                                 <img src={matchedUser.profilePic} alt={member.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                               ) : (
-                                member.name[0].toUpperCase()
+                                <span className="text-[10px]">{member.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}</span>
                               )}
                             </div>
                             <div className="absolute -top-1.5 -right-1.5 bg-surface border border-border/40 rounded-full w-5 h-5 flex items-center justify-center text-[10px] shadow-md font-bold">
@@ -5722,6 +5813,13 @@ export default function App() {
                         </div>
                       </div>
                       <div className="grid grid-cols-1 gap-2 sm:gap-3">
+                        <button 
+                          onClick={resetAndSyncRankings}
+                          className="w-full py-3 sm:py-4 rounded-xl sm:rounded-2xl bg-red-accent/10 text-red-accent text-[9px] sm:text-[10px] uppercase font-black hover:bg-red-accent hover:text-white transition-all flex items-center justify-center gap-2 border border-red-accent/20"
+                        >
+                          <RefreshCw size={12} className="sm:w-3.5 sm:h-3.5" />
+                          Reset & Re-sync All Rankings
+                        </button>
                         <button 
                           onClick={syncMembersToRankings}
                           className="w-full py-3 sm:py-4 rounded-xl sm:rounded-2xl bg-white/5 text-blue-accent text-[9px] sm:text-[10px] uppercase font-black hover:bg-blue-accent hover:text-bg transition-all flex items-center justify-center gap-2 border border-blue-accent/20"
@@ -7704,9 +7802,9 @@ function RankingSection({
               key={m.id} 
               className="flex items-center justify-between bg-surface/50 border border-border rounded-xl p-3 px-4 text-xs group hover:border-gold/30 transition-all"
             >
-              <div className="flex items-center gap-3 flex-1 overflow-hidden">
+              <div className="flex items-center gap-3 flex-1">
                 <span className={`text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-lg ${idx === 0 ? 'bg-gold text-bg' : 'bg-white/10 text-white/40 font-mono'}`}>{idx + 1}</span>
-                <span className="text-white font-bold truncate">{m.name}</span>
+                <span className="text-white font-bold">{m.name}</span>
               </div>
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2">
@@ -8062,7 +8160,7 @@ function RankingBoardModal({
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-8 py-6 custom-scrollbar space-y-4">
+        <div className="flex-1 overflow-y-auto px-6 sm:px-8 py-6 custom-scrollbar space-y-4">
            {members.length === 0 ? (
              <div className="text-center py-20 text-muted-main2 italic font-serif opacity-30">The podium is empty...</div>
            ) : (
@@ -8077,14 +8175,14 @@ function RankingBoardModal({
                    initial={{ x: -20, opacity: 0 }}
                    animate={{ x: 0, opacity: 1 }}
                    transition={{ delay: idx * 0.05 }}
-                   className={`relative flex items-center justify-between p-5 rounded-[30px] border transition-all duration-500 overflow-hidden group ${
+                   className={`relative flex items-center justify-between p-5 rounded-[30px] border transition-all duration-500 group ${
                      isTop1 ? 'bg-gradient-to-br from-gold/30 via-gold/5 to-transparent border-gold/50 shadow-[0_15px_40px_rgba(255,215,0,0.2)] scale-x-[1.03] my-3' : 
                      isTop2 ? 'bg-blue-accent/10 border-blue-accent/30' :
                      isTop3 ? 'bg-white/5 border-orange-400/30' :
                      'bg-white/[0.02] border-white/5'
                    }`}
                  >
-                   <div className="flex items-center gap-5 relative">
+                   <div className="flex items-center gap-5 relative flex-1 min-w-0">
                      <div className={`w-12 h-12 rounded-[20px] flex items-center justify-center font-serif text-xl font-black shadow-xl shrink-0 ${
                        isTop1 ? 'bg-gold text-bg' :
                        isTop2 ? 'bg-blue-accent text-bg shadow-blue-accent/20' :
@@ -8096,13 +8194,13 @@ function RankingBoardModal({
                         isTop3 ? <Award size={24} /> : 
                         idx + 1}
                      </div>
-                     <div>
-                       <div className={`font-serif text-lg font-black tracking-tight ${isTop1 ? 'text-gold' : 'text-white'}`}>
+                     <div className="min-w-0 flex-1">
+                       <div className={`font-serif text-lg font-black tracking-tight leading-tight ${isTop1 ? 'text-gold' : 'text-white'}`}>
                          {m.name}
                        </div>
                        <div className="flex items-center gap-2 opacity-50 mt-1">
                          <div className={`w-1.5 h-1.5 rounded-full ${isTop1 ? 'bg-gold animate-pulse' : 'bg-muted-main'}`} />
-                         <span className="text-[10px] uppercase font-black tracking-[2px]">{idx + 1}{idx === 0 ? 'st' : idx === 1 ? 'nd' : idx === 2 ? 'rd' : 'th'} Elite</span>
+                         <span className="text-[10px] uppercase font-black tracking-[2px] whitespace-nowrap">{idx + 1}{idx === 0 ? 'st' : idx === 1 ? 'nd' : idx === 2 ? 'rd' : 'th'} Elite</span>
                        </div>
                      </div>
                    </div>

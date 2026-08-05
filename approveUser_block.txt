@@ -1,0 +1,69 @@
+  const approveUser = async (pendingUser: UserRegistration) => {
+     try {
+       const batch = writeBatch(db);
+       // Add to registeredUsers
+       const userRef = doc(db, 'registeredUsers', pendingUser.whatsapp);
+       batch.set(userRef, {
+         ...pendingUser,
+         status: 'active',
+         id: pendingUser.whatsapp // Use whatsapp as ID for easier lookup
+       });
+       // Delete from pending
+       batch.delete(doc(db, 'pendingRegistrations', pendingUser.id!));
+
+       // Add automatically to designation section and ranking lists
+       if (pendingUser.position === 'Team Leader') {
+         const memberRef = doc(collection(db, 'members'));
+         batch.set(memberRef, {
+           name: pendingUser.fullName,
+           type: 'leader',
+           createdAt: serverTimestamp()
+         });
+         const rankingRef = doc(collection(db, 'leaderRanking'));
+         batch.set(rankingRef, {
+           name: pendingUser.fullName,
+           score: 0,
+           leads: 0,
+           createdAt: serverTimestamp()
+         });
+       } else if (pendingUser.position === 'Team Trainer') {
+         const memberRef = doc(collection(db, 'members'));
+         batch.set(memberRef, {
+           name: pendingUser.fullName,
+           type: 'trainer',
+           createdAt: serverTimestamp()
+         });
+         const rankingRef = doc(collection(db, 'trainerRanking'));
+         batch.set(rankingRef, {
+           name: pendingUser.fullName,
+           score: 0,
+           leads: 0,
+           createdAt: serverTimestamp()
+         });
+       } else if (pendingUser.position === 'STL') {
+         const stlRef = doc(collection(db, 'stlMembers'));
+         batch.set(stlRef, {
+           name: pendingUser.fullName,
+           createdAt: serverTimestamp()
+         });
+       } else if (pendingUser.position === 'Teacher') {
+         const teacherRef = doc(collection(db, 'teachers'));
+         batch.set(teacherRef, {
+           name: pendingUser.fullName,
+           createdAt: serverTimestamp()
+         });
+       } else if (pendingUser.position === 'Counsellor') {
+         const memberRef = doc(collection(db, 'members'));
+         batch.set(memberRef, {
+           name: pendingUser.fullName,
+           type: 'counsellor',
+           createdAt: serverTimestamp()
+         });
+       }
+
+        await batch.commit();
+        showMsg(`${pendingUser.fullName} approved!`);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, 'userApproval', showMsg);
+      }
+  };
