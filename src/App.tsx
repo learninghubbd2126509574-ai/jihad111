@@ -100,7 +100,9 @@ import {
   Camera,
   Upload,
   CheckSquare,
-  RotateCcw, Gift
+  RotateCcw, Gift,
+  Ticket,
+  CreditCard
 } from 'lucide-react';
 
 import { 
@@ -5673,29 +5675,137 @@ export default function App() {
       </main>
 
       {/* Floating Bottom Navigation Bar */}
-      <div className="fixed bottom-0 sm:bottom-4 inset-x-0 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 sm:w-[450px] bg-surface/95 backdrop-blur-2xl border-t sm:border border-white/10 sm:rounded-3xl px-2 py-1 z-[300] flex justify-around items-center shadow-[0_-15px_30px_rgba(0,0,0,0.8)]">
-        {[
-          { id: 'home', label: 'হোম', icon: <Home size={20} />, activeColor: 'text-gold' },
-          { id: 'submit', label: 'রেজাল্ট', icon: <CheckSquare size={20} />, activeColor: 'text-green-accent' },
-          { id: 'sheet', label: 'শিট / হিসাব', icon: <FileText size={20} />, activeColor: 'text-amber-400' },
-          { id: 'links', label: 'লিংক সমূহ', icon: <Link size={20} />, activeColor: 'text-blue-accent' },
-          { id: 'profile', label: 'প্রোফাইল', icon: <User size={20} />, activeColor: 'text-purple-400' }
-        ].map((tab) => {
-          const isActive = userTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setUserTab(tab.id as any)}
-              className={`flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-2xl transition-all duration-300 ${isActive ? 'bg-white/5 translate-y-[-2px]' : 'hover:bg-white/5 hover:translate-y-[-1px]'}`}
-            >
-              <div className={`transition-colors duration-300 ${isActive ? tab.activeColor : 'text-muted-main'}`}>
-                {tab.icon}
-              </div>
-              <span className={`text-[9px] font-black tracking-tight transition-colors duration-300 ${isActive ? tab.activeColor : 'text-muted-main'}`}>{tab.label}</span>
-            </button>
-          );
-        })}
-      </div>
+      <nav 
+        id="bottom-navigation-bar"
+        aria-label="Bottom Navigation"
+        className="fixed bottom-0 sm:bottom-3 inset-x-0 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 w-full sm:w-[96%] sm:max-w-[640px] bg-[#070b16]/95 sm:bg-[#0c1224]/92 backdrop-blur-2xl border-t sm:border border-white/15 sm:rounded-3xl px-1 sm:px-2.5 py-1.5 sm:py-2 z-[300] shadow-[0_-12px_40px_rgba(0,0,0,0.9),0_0_25px_rgba(223,179,61,0.1)]"
+      >
+        {/* Top ambient rainbow glow divider */}
+        <div className="absolute top-0 inset-x-0 h-[2px] bg-gradient-to-r from-amber-400 via-emerald-400 via-cyan-400 via-rose-400 via-orange-400 via-blue-400 to-purple-400 opacity-75 sm:rounded-t-3xl pointer-events-none" />
+
+        <div className="flex items-center justify-between sm:justify-around w-full gap-0.5 sm:gap-1">
+          {[
+            { 
+              id: 'home', 
+              label: 'হোম', 
+              icon: <Home size={18} className="sm:w-5 sm:h-5" />, 
+              isExternal: false,
+              labelColor: 'text-amber-300',
+              activeLabelColor: 'text-amber-200 font-black',
+              boxDefault: 'bg-amber-500/15 border-amber-400/40 text-amber-300 shadow-[0_0_10px_rgba(245,158,11,0.25)] hover:bg-amber-500/25',
+              boxActive: 'bg-gradient-to-br from-amber-400 to-yellow-500 text-gray-950 border-amber-200 ring-2 ring-amber-400/60 shadow-[0_0_18px_rgba(245,158,11,0.7)] scale-105 font-bold',
+              indicatorColor: 'bg-amber-400'
+            },
+            { 
+              id: 'submit', 
+              label: 'রেজাল্ট', 
+              icon: <CheckSquare size={18} className="sm:w-5 sm:h-5" />, 
+              isExternal: false,
+              labelColor: 'text-emerald-300',
+              activeLabelColor: 'text-emerald-200 font-black',
+              boxDefault: 'bg-emerald-500/15 border-emerald-400/40 text-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.25)] hover:bg-emerald-500/25',
+              boxActive: 'bg-gradient-to-br from-emerald-400 to-teal-500 text-gray-950 border-emerald-200 ring-2 ring-emerald-400/60 shadow-[0_0_18px_rgba(16,185,129,0.7)] scale-105 font-bold',
+              indicatorColor: 'bg-emerald-400'
+            },
+            { 
+              id: 'seat_booking', 
+              label: 'সিট বুকিং', 
+              icon: <Ticket size={18} className="sm:w-5 sm:h-5" />, 
+              isExternal: true,
+              url: 'https://seat-booking-unity.vercel.app/',
+              labelColor: 'text-cyan-300 font-black',
+              boxDefault: 'bg-cyan-500/20 border-cyan-400/50 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.35)] hover:bg-gradient-to-br hover:from-cyan-400 hover:to-blue-500 hover:text-gray-950 hover:scale-105',
+              beaconColor: 'bg-cyan-400'
+            },
+            { 
+              id: 'withdraw_request', 
+              label: 'উইথড্র রিকুয়েষ্ট', 
+              icon: <Wallet size={18} className="sm:w-5 sm:h-5" />, 
+              isExternal: true,
+              url: 'https://withdraw-request.vercel.app/',
+              labelColor: 'text-rose-300 font-black',
+              boxDefault: 'bg-rose-500/20 border-rose-400/50 text-rose-300 shadow-[0_0_12px_rgba(244,63,94,0.35)] hover:bg-gradient-to-br hover:from-rose-400 hover:to-pink-500 hover:text-gray-950 hover:scale-105',
+              beaconColor: 'bg-rose-400'
+            },
+            { 
+              id: 'sheet', 
+              label: 'শিট / হিসাব', 
+              icon: <FileText size={18} className="sm:w-5 sm:h-5" />, 
+              isExternal: false,
+              labelColor: 'text-orange-300',
+              activeLabelColor: 'text-orange-200 font-black',
+              boxDefault: 'bg-orange-500/15 border-orange-400/40 text-orange-300 shadow-[0_0_10px_rgba(249,115,22,0.25)] hover:bg-orange-500/25',
+              boxActive: 'bg-gradient-to-br from-orange-400 to-amber-500 text-gray-950 border-orange-200 ring-2 ring-orange-400/60 shadow-[0_0_18px_rgba(249,115,22,0.7)] scale-105 font-bold',
+              indicatorColor: 'bg-orange-400'
+            },
+            { 
+              id: 'links', 
+              label: 'লিংক সমূহ', 
+              icon: <Link size={18} className="sm:w-5 sm:h-5" />, 
+              isExternal: false,
+              labelColor: 'text-blue-300',
+              activeLabelColor: 'text-blue-200 font-black',
+              boxDefault: 'bg-blue-500/15 border-blue-400/40 text-blue-300 shadow-[0_0_10px_rgba(59,130,246,0.25)] hover:bg-blue-500/25',
+              boxActive: 'bg-gradient-to-br from-blue-400 to-indigo-500 text-gray-950 border-blue-200 ring-2 ring-blue-400/60 shadow-[0_0_18px_rgba(59,130,246,0.7)] scale-105 font-bold',
+              indicatorColor: 'bg-blue-400'
+            },
+            { 
+              id: 'profile', 
+              label: 'প্রোফাইল', 
+              icon: <User size={18} className="sm:w-5 sm:h-5" />, 
+              isExternal: false,
+              labelColor: 'text-purple-300',
+              activeLabelColor: 'text-purple-200 font-black',
+              boxDefault: 'bg-purple-500/15 border-purple-400/40 text-purple-300 shadow-[0_0_10px_rgba(168,85,247,0.25)] hover:bg-purple-500/25',
+              boxActive: 'bg-gradient-to-br from-purple-400 to-fuchsia-500 text-gray-950 border-purple-200 ring-2 ring-purple-400/60 shadow-[0_0_18px_rgba(168,85,247,0.7)] scale-105 font-bold',
+              indicatorColor: 'bg-purple-400'
+            }
+          ].map((tab) => {
+            const isActive = !tab.isExternal && userTab === tab.id;
+
+            if (tab.isExternal) {
+              return (
+                <a
+                  key={tab.id}
+                  id={`bottom-nav-${tab.id}`}
+                  href={tab.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group relative flex flex-col items-center justify-center flex-1 py-1 px-0.5 rounded-2xl transition-all duration-300 active:scale-90"
+                >
+                  <div className={`relative w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center border transition-all duration-300 ${tab.boxDefault}`}>
+                    {tab.icon}
+                    {/* Micro External Spark Indicator */}
+                    <span className={`absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full ${tab.beaconColor} shadow-[0_0_8px_currentColor] animate-pulse`} />
+                  </div>
+                  <span className={`text-[8px] sm:text-[9.5px] tracking-tight mt-1 text-center whitespace-nowrap leading-none transition-colors duration-300 ${tab.labelColor}`}>
+                    {tab.label}
+                  </span>
+                </a>
+              );
+            }
+
+            return (
+              <button
+                key={tab.id}
+                id={`bottom-nav-${tab.id}`}
+                onClick={() => setUserTab(tab.id as any)}
+                className={`group relative flex flex-col items-center justify-center flex-1 py-1 px-0.5 rounded-2xl transition-all duration-300 active:scale-90 ${isActive ? 'translate-y-[-2px]' : ''}`}
+              >
+                <div className={`relative w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center border transition-all duration-300 ${isActive ? tab.boxActive : tab.boxDefault}`}>
+                  {tab.icon}
+                  {isActive && (
+                    <span className={`absolute -bottom-1 inset-x-2 h-[2.5px] rounded-full ${tab.indicatorColor} shadow-[0_0_8px_currentColor]`} />
+                  )}
+                </div>
+                <span className={`text-[8px] sm:text-[9.5px] tracking-tight mt-1 text-center whitespace-nowrap leading-none transition-colors duration-300 ${isActive ? tab.activeLabelColor : tab.labelColor}`}>
+                  {tab.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
 
       {/* Admin Side Panel */}
       <AnimatePresence>
