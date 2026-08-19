@@ -48,6 +48,8 @@ import {
   Trash2, 
   Send, 
   CheckCircle2,
+  CheckCircle,
+  Sparkles,
   AlertCircle,
   Star,
   UserCircle,
@@ -381,8 +383,15 @@ interface FirestoreErrorInfo {
 // --- Error Handler ---
 function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null, showMsg?: (m: string, t: 'success' | 'error') => void) {
   const err = error as any;
-  const message = err.message || String(error);
+  const message = err?.message || String(error);
+  const code = err?.code || '';
   
+  // If code is 'unavailable' or connection retry, log warning rather than treating as fatal error
+  if (code === 'unavailable' || message.includes('unavailable') || message.includes('offline') || message.includes('Could not reach Cloud Firestore')) {
+    console.warn('Firestore is reconnecting or operating in offline cache mode:', message);
+    return;
+  }
+
   const errInfo: FirestoreErrorInfo = {
     error: message,
     authInfo: {
@@ -391,7 +400,7 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
       emailVerified: auth.currentUser?.emailVerified,
       isAnonymous: auth.currentUser?.isAnonymous,
       tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData.map(provider => ({
+      providerInfo: auth.currentUser?.providerData?.map(provider => ({
         providerId: provider.providerId,
         displayName: provider.displayName,
         email: provider.email,
@@ -400,7 +409,7 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
     },
     operationType,
     path
-  }
+  };
   console.error('Firestore Error: ', JSON.stringify(errInfo));
   if (showMsg) {
     if (message.includes('permission-denied') || message.includes('Missing or insufficient permissions')) {
@@ -1309,17 +1318,20 @@ const FineSettingsManager = ({
   onUpdateFine,
   onToggleFineSystem,
   onClearAllFines,
-  onAllReset
+  onAllReset,
+  onFixDay1Fine
 }: {
   config: Config;
   onUpdateFine: (amount: number) => Promise<void>;
   onToggleFineSystem?: (active: boolean) => Promise<void>;
   onClearAllFines?: () => Promise<void>;
   onAllReset?: () => Promise<void>;
+  onFixDay1Fine?: () => Promise<void>;
 }) => {
   const [fineInput, setFineInput] = useState<string>(config.fineAmount?.toString() || '10');
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [fixingDay1, setFixingDay1] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showAllResetConfirm, setShowAllResetConfirm] = useState(false);
 
@@ -1447,6 +1459,38 @@ const FineSettingsManager = ({
           </button>
         </div>
       </div>
+
+      {/* Day 1 Fine Fix Tool for All Members */}
+      {onFixDay1Fine && (
+        <div className="p-4 rounded-2xl bg-blue-500/10 border border-blue-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <h4 className="text-xs font-bold text-blue-300 flex items-center gap-2">
+              <Sparkles size={16} className="text-blue-400" /> ১ তারিখের ফাইন সবার জন্য ফিক্স / মওকুফ
+            </h4>
+            <p className="text-[10px] text-muted-main leading-relaxed">
+              যাদের ১ তারিখে রেজাল্ট সাবমিট করা সত্ত্বেও সিস্টেমে ১ দিনের অতিরিক্ত ফাইন যোগ হয়ে গেছে, তাদের সকলের জন্য ১ তারিখের ফাইন অটো-মওকুফ করতে এখানে ক্লিক করুন।
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={fixingDay1}
+            onClick={async () => {
+              setFixingDay1(true);
+              try {
+                await onFixDay1Fine();
+              } finally {
+                setFixingDay1(false);
+              }
+            }}
+            className={`px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black uppercase tracking-wider shadow-lg flex items-center gap-2 whitespace-nowrap transition-all ${
+              fixingDay1 ? 'opacity-50 cursor-not-allowed' : ''
+            }`}
+          >
+            {fixingDay1 ? <RotateCcw size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+            ১ তারিখের ফাইন ফিক্স করুন
+          </button>
+        </div>
+      )}
 
       {/* Clear Data Section */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2218,18 +2262,43 @@ const UserCalendarModal = ({
   });
 
   const userLogs = useMemo(() => {
+    const cleanName = user.name ? user.name.trim().toLowerCase() : '';
+    const cleanWa = user.whatsapp ? user.whatsapp.replace(/\s+/g, '') : '';
     return submissionLogs.filter(log => {
       if (user.memberId && log.memberId === user.memberId) return true;
-      if (user.whatsapp && log.whatsapp === user.whatsapp) return true;
+      if (cleanWa && log.whatsapp && log.whatsapp.replace(/\s+/g, '') === cleanWa) return true;
+      if (cleanName && log.memberName && log.memberName.trim().toLowerCase() === cleanName) return true;
       return false;
     });
   }, [submissionLogs, user]);
 
+  const submittedDatesSet = useMemo(() => {
+    const set = new Set<string>();
+    userLogs.forEach(l => {
+      if (l.date) set.add(l.date);
+      if (l.submittedAt) {
+        try {
+          const subDate = typeof l.submittedAt.toDate === 'function' 
+            ? l.submittedAt.toDate() 
+            : new Date(l.submittedAt.seconds ? l.submittedAt.seconds * 1000 : l.submittedAt);
+          set.add(format(subDate, 'yyyy-MM-dd'));
+        } catch (_) {}
+      }
+    });
+    return set;
+  }, [userLogs]);
+
   const getDayStatus = (day: Date) => {
     const dateStr = format(day, 'yyyy-MM-dd');
-    const log = userLogs.find(l => l.date === dateStr);
-    if (!log) return 'none';
-    return log.convert > 0 || log.lead > 0 ? 'submitted' : 'missed';
+    if (submittedDatesSet.has(dateStr)) return 'submitted';
+    
+    // Check if the day is in the past for current month
+    const today = new Date();
+    const todayStr = format(today, 'yyyy-MM-dd');
+    if (dateStr < todayStr && isSameMonth(day, currentMonth)) {
+      return 'missed';
+    }
+    return 'none';
   };
 
   const nextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
@@ -2345,13 +2414,13 @@ const UserCalendarModal = ({
               <div>
                 <p className="text-[9px] text-muted-main uppercase font-bold">মোট জমা</p>
                 <p className="text-lg font-black text-green-400 font-serif">
-                  {userLogs.filter(l => l.convert > 0 || l.lead > 0).length} দিন
+                  {submittedDatesSet.size} দিন
                 </p>
               </div>
               <div>
-                <p className="text-[9px] text-muted-main uppercase font-bold">মোট মিসড</p>
+                <p className="text-[9px] text-muted-main uppercase font-bold">চলতি মাসে মিসড</p>
                 <p className="text-lg font-black text-red-400 font-serif">
-                  {userLogs.filter(l => l.convert === 0 && l.lead === 0).length} দিন
+                  {Math.max(0, new Date().getDate() - submittedDatesSet.size - 1)} দিন
                 </p>
               </div>
             </div>
@@ -2626,7 +2695,7 @@ export default function App() {
         setUserBalances(bMap);
       }, (err) => handleFirestoreError(err, OperationType.GET, 'userBalances', showMsg));
 
-      unsubSubmissionLogs = onSnapshot(query(collection(db, 'submissionLogs'), orderBy('submittedAt', 'desc'), limit(500)), (snapshot) => {
+      unsubSubmissionLogs = onSnapshot(collection(db, 'submissionLogs'), (snapshot) => {
         const logs: SubmissionLog[] = [];
         snapshot.forEach(d => {
           logs.push({ id: d.id, ...d.data() } as SubmissionLog);
@@ -3775,7 +3844,7 @@ export default function App() {
       await setDoc(resultRef, data);
 
       // Save in submissionLogs for permanent historical daily logging
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = format(new Date(), 'yyyy-MM-dd');
       const logRef = doc(db, 'submissionLogs', `${memberId}_${todayStr}`);
       await setDoc(logRef, {
         whatsapp: currentAuthUser?.whatsapp || '',
@@ -4242,6 +4311,75 @@ export default function App() {
     }
   };
 
+  const adminWaiveDay1ForAll = async () => {
+    try {
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth();
+      const day1Str = format(new Date(currentYear, currentMonth, 1), 'yyyy-MM-dd');
+      
+      const batch = writeBatch(db);
+      const keysProcessed = new Set<string>();
+
+      approvedUsers.forEach(u => {
+        if (u.whatsapp && !keysProcessed.has(u.whatsapp)) {
+          keysProcessed.add(u.whatsapp);
+          const existing = userBalances[u.whatsapp] || {
+            whatsapp: u.whatsapp,
+            userName: u.fullName,
+            balance: 0,
+            waivedFines: 0,
+            manualAdjustments: 0,
+            waivedDays: []
+          };
+          const currentWaivedDays = [...(existing.waivedDays || [])];
+          if (!currentWaivedDays.includes(day1Str)) {
+            currentWaivedDays.push(day1Str);
+          }
+          batch.set(doc(db, 'userBalances', u.whatsapp), {
+            ...existing,
+            whatsapp: u.whatsapp,
+            userName: u.fullName,
+            waivedDays: currentWaivedDays,
+            updatedAt: serverTimestamp()
+          }, { merge: true });
+        }
+      });
+
+      members.forEach(m => {
+        const key = m.whatsapp || m.id;
+        if (key && !keysProcessed.has(key)) {
+          keysProcessed.add(key);
+          const existing = userBalances[key] || {
+            whatsapp: m.whatsapp || '',
+            userName: m.name,
+            balance: 0,
+            waivedFines: 0,
+            manualAdjustments: 0,
+            waivedDays: []
+          };
+          const currentWaivedDays = [...(existing.waivedDays || [])];
+          if (!currentWaivedDays.includes(day1Str)) {
+            currentWaivedDays.push(day1Str);
+          }
+          batch.set(doc(db, 'userBalances', key), {
+            ...existing,
+            whatsapp: m.whatsapp || '',
+            userName: m.name,
+            waivedDays: currentWaivedDays,
+            updatedAt: serverTimestamp()
+          }, { merge: true });
+        }
+      });
+
+      await batch.commit();
+      await writeAuditLog('SYSTEM', 'All Users', 'Waive Day 1 Fine For All', 0, `${day1Str} তারিখের ১ দিনের ফাইন সকল মেম্বারের জন্য মওকুফ/ফিক্স করা হয়েছে।`);
+      showMsg(`${day1Str} তারিখের ১ দিনের ফাইন সফলভাবে সকল মেম্বারের জন্য ফিক্স/মওকুফ করা হয়েছে!`, 'success');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'userBalances', showMsg);
+    }
+  };
+
   const computeUserSubmissionStats = useCallback((userWhatsapp: string, memberId?: string) => {
     const now = new Date();
     const todayStr = format(now, 'yyyy-MM-dd');
@@ -4251,10 +4389,14 @@ export default function App() {
     const dayOfMonth = now.getDate();
 
     const isFineSystemActive = config.fineSystemActive !== false;
-    const fineStartDateStr = config.fineStartDate || todayStr;
-    const fineStartDayDate = parseISO(fineStartDateStr);
-
-    const activeFineDaysRange = Math.max(0, differenceInCalendarDays(now, fineStartDayDate) + 1);
+    const defaultStartOfMonth = format(new Date(currentYear, currentMonth, 1), 'yyyy-MM-dd');
+    const fineStartDateStr = config.fineStartDate || defaultStartOfMonth;
+    
+    // Safely calculate active fine days range without timezone drift
+    const [fy, fm, fd] = fineStartDateStr.split('-').map(Number);
+    const startDayObj = new Date(fy, fm - 1, fd);
+    const nowDayObj = new Date(currentYear, currentMonth, dayOfMonth);
+    const activeFineDaysRange = Math.max(0, Math.round((nowDayObj.getTime() - startDayObj.getTime()) / (1000 * 60 * 60 * 24)) + 1);
 
     let userName = '';
     if (userWhatsapp) {
@@ -4267,27 +4409,42 @@ export default function App() {
     }
 
     const cleanUserName = userName.trim().toLowerCase();
+    const cleanWa = userWhatsapp ? userWhatsapp.replace(/\s+/g, '') : '';
 
     const userLogs = submissionLogs.filter(log => {
-      if (userWhatsapp && log.whatsapp === userWhatsapp) return true;
+      if (cleanWa && log.whatsapp && log.whatsapp.replace(/\s+/g, '') === cleanWa) return true;
       if (memberId && log.memberId === memberId) return true;
       if (cleanUserName && log.memberName && log.memberName.trim().toLowerCase() === cleanUserName) return true;
       return false;
     });
 
-    const monthLogs = userLogs.filter(log => {
-      if (!log.date) return false;
-      const [y, m] = log.date.split('-').map(Number);
-      return y === currentYear && m === (currentMonth + 1);
+    const submittedDaysSet = new Set<string>();
+    userLogs.forEach(log => {
+      if (log.date) {
+        const [y, m] = log.date.split('-').map(Number);
+        if (y === currentYear && m === (currentMonth + 1)) {
+          submittedDaysSet.add(log.date);
+        }
+      }
+      // Also map submittedAt timestamp in case log.date was stored in UTC
+      if (log.submittedAt) {
+        try {
+          const subDate = typeof log.submittedAt.toDate === 'function' 
+            ? log.submittedAt.toDate() 
+            : new Date(log.submittedAt.seconds ? log.submittedAt.seconds * 1000 : log.submittedAt);
+          if (subDate.getFullYear() === currentYear && subDate.getMonth() === currentMonth) {
+            submittedDaysSet.add(format(subDate, 'yyyy-MM-dd'));
+          }
+        } catch (_) {}
+      }
     });
 
-    const submittedDaysSet = new Set(monthLogs.map(l => l.date));
     if (memberId && results[memberId]?.submitted) {
       submittedDaysSet.add(todayStr);
     }
     const submittedDaysCount = submittedDaysSet.size;
 
-    const isTodaySubmitted = submittedDaysSet.has(todayStr);
+    const isTodaySubmitted = submittedDaysSet.has(todayStr) || Boolean(memberId && results[memberId]?.submitted);
 
     const totalWorkingDays = config.workingDaysInMonth || totalDaysInMonth;
     const elapsedDaysSoFar = dayOfMonth;
@@ -4316,10 +4473,11 @@ export default function App() {
     const currentFineRate = config.fineAmount !== undefined ? config.fineAmount : 10;
     
     const userBalObj = (userWhatsapp && userBalances[userWhatsapp]) ||
+      (cleanWa && userBalances[cleanWa]) ||
       (memberId && userBalances[memberId]) ||
       Object.values(userBalances).find(b => {
         const bal = b as UserBalance;
-        return (userWhatsapp && bal.whatsapp && bal.whatsapp.replace(/\s+/g, '') === userWhatsapp.replace(/\s+/g, '')) ||
+        return (cleanWa && bal.whatsapp && bal.whatsapp.replace(/\s+/g, '') === cleanWa) ||
         (memberId && bal.id === memberId) ||
         (cleanUserName && bal.userName && bal.userName.trim().toLowerCase() === cleanUserName);
       });
@@ -4337,9 +4495,9 @@ export default function App() {
     const totalFine = Math.max(0, rawFine + manualAdj - waivedAmount);
 
     let lastSubmissionDate = "কোনো রেকর্ড নেই";
-    if (monthLogs.length > 0) {
-      const sortedLogs = [...monthLogs].sort((a, b) => b.date.localeCompare(a.date));
-      const lastDate = sortedLogs[0].date;
+    if (submittedDaysSet.size > 0) {
+      const sortedDates = Array.from(submittedDaysSet).sort().reverse();
+      const lastDate = sortedDates[0];
       const [y, m, d] = lastDate.split('-');
       const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
       lastSubmissionDate = `${parseInt(d)} ${monthNames[parseInt(m) - 1]}, ${y}`;
@@ -6081,6 +6239,7 @@ export default function App() {
                        onUpdateFine={updateFineRate} 
                        onToggleFineSystem={toggleFineSystem}
                        onClearAllFines={clearAllFineData}
+                       onFixDay1Fine={adminWaiveDay1ForAll}
                      />
                      <BalanceManagementSection 
                        approvedUsers={approvedUsers}
