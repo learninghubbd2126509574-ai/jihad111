@@ -2450,6 +2450,7 @@ export default function App() {
     securityPassword: 'unity2024'
   });
   const [timeLeft, setTimeLeft] = useState(0);
+  const [timerDurationSelect, setTimerDurationSelect] = useState<number>(1800); // 30 minutes default
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [isConfigReady, setIsConfigReady] = useState(false);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
@@ -2782,30 +2783,32 @@ export default function App() {
   useEffect(() => {
     let interval: NodeJS.Timeout;
 
-    if (config.timerActive) {
-      if (config.timerEndTime <= Date.now()) {
-        updateDoc(doc(db, 'config', 'global'), { timerActive: false }).catch(console.error);
-        setTimeLeft(0);
-      } else {
-        interval = setInterval(async () => {
-          const remaining = Math.max(0, Math.floor((config.timerEndTime - Date.now()) / 1000));
-          setTimeLeft(remaining);
-          if (remaining === 0) {
-            try {
-              await updateDoc(doc(db, 'config', 'global'), {
-                timerActive: false
-              });
-            } catch (err) {
-              console.error('Failed to auto-deactivate timer:', err);
-            }
+    if (config.timerActive && config.timerEndTime) {
+      const updateRemaining = () => {
+        const now = Date.now();
+        const remaining = Math.max(0, Math.floor((config.timerEndTime - now) / 1000));
+        setTimeLeft(remaining);
+
+        if (remaining === 0) {
+          // Only Admin updates Firestore when the timer expires naturally
+          if (isAdmin) {
+            updateDoc(doc(db, 'config', 'global'), {
+              timerActive: false
+            }).catch((err) => console.warn('Failed to deactivate expired timer:', err));
           }
-        }, 1000);
-      }
+        }
+      };
+
+      updateRemaining();
+      interval = setInterval(updateRemaining, 1000);
     } else {
       setTimeLeft(0);
     }
-    return () => clearInterval(interval);
-  }, [config.timerActive, config.timerEndTime]);
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [config.timerActive, config.timerEndTime, isAdmin]);
 
   // Auto-timer Logic
   const configRef = useRef(config);
@@ -2814,7 +2817,7 @@ export default function App() {
   }, [config]);
 
   useEffect(() => {
-    // Removed isAdmin restriction so any client can trigger it if enabled
+    // Only admin or single authority trigger auto-timer
     const interval = setInterval(async () => {
       const currentConfig = configRef.current;
       if (!currentConfig || !currentConfig.autoTimerEnabled || !currentConfig.autoTimerTime) return;
@@ -2823,10 +2826,10 @@ export default function App() {
       const HH = String(now.getHours()).padStart(2, '0');
       const mm = String(now.getMinutes()).padStart(2, '0');
       const currentTime = `${HH}:${mm}`;
-      const today = now.toISOString().split('T')[0];
-      const duration = 1800; // 30 mins
+      const today = format(now, 'yyyy-MM-dd');
+      const duration = currentConfig.timerDuration || 1800; // 30 mins
       
-      if (currentTime === currentConfig.autoTimerTime && currentConfig.lastAutoStartTime !== today) {
+      if (currentTime === currentConfig.autoTimerTime && currentConfig.lastAutoStartTime !== today && !currentConfig.timerActive) {
         console.log('Auto-timer triggered for time:', currentTime);
         try {
           await updateDoc(doc(db, 'config', 'global'), {
@@ -2835,15 +2838,15 @@ export default function App() {
             timerDuration: duration,
             lastAutoStartTime: today
           });
-          console.log('Auto-timer successfully set timerActive to true');
+          console.log('Auto-timer successfully set timerActive to true for 30 minutes');
         } catch (err) {
           console.error('Auto-timer trigger fail:', err);
         }
       }
-    }, 30000);
+    }, 15000);
 
     return () => clearInterval(interval);
-  }, [isAdmin]);
+  }, []);
 
   const formatTime = (s: number) => {
     const mins = Math.floor(s / 60).toString().padStart(2, '0');
@@ -3403,15 +3406,16 @@ export default function App() {
     });
   };
 
-  const startTimer = async () => {
+  const startTimer = async (overrideDuration?: number) => {
     try {
-      const duration = 1800; // 30 mins
+      const duration = overrideDuration || timerDurationSelect || config.timerDuration || 1800; // 30 mins default
+      const endTime = Date.now() + duration * 1000;
       await updateDoc(doc(db, 'config', 'global'), {
         timerActive: true,
-        timerEndTime: Date.now() + duration * 1000,
+        timerEndTime: endTime,
         timerDuration: duration
       });
-      showMsg('Timer started!');
+      showMsg(`Timer started for ${Math.round(duration / 60)} minutes!`, 'success');
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'config/global', showMsg);
     }
@@ -3820,7 +3824,8 @@ export default function App() {
   };
 
   const submitResult = async (memberId: string, lead: number, convert: number, personalLead: number) => {
-    if (!config.timerActive || (config.timerEndTime > 0 && Date.now() >= config.timerEndTime)) {
+    const isWindowOpen = config.timerActive && (config.timerEndTime ? (Date.now() <= config.timerEndTime + 10000) : true);
+    if (!isWindowOpen) {
       showMsg('Submission window is closed!', 'error');
       return;
     }
@@ -6022,14 +6027,47 @@ export default function App() {
                    <div className="grid grid-cols-1 gap-3 sm:gap-4">
                       <div className="bg-surface/40 border border-white/5 p-4 sm:p-6 rounded-2xl sm:rounded-3xl relative overflow-hidden group">
                          <div className="absolute top-0 right-0 w-32 h-32 bg-blue-accent/5 blur-3xl rounded-full" />
-                         <h4 className="text-[9px] sm:text-xs font-black text-white uppercase tracking-widest mb-4">Production Timer</h4>
+                         <div className="flex items-center justify-between mb-4">
+                           <h4 className="text-[9px] sm:text-xs font-black text-white uppercase tracking-widest">Production Timer</h4>
+                           <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-blue-accent/10 text-blue-accent border border-blue-accent/20">
+                             {config.timerActive ? 'Active' : 'Idle'}
+                           </span>
+                         </div>
+                         
+                         {/* Duration Selector */}
+                         <div className="mb-4">
+                           <label className="text-[8px] sm:text-[9px] text-muted-main uppercase font-black tracking-widest block mb-2">Select Duration</label>
+                           <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
+                             {[
+                               { label: '15 Min', val: 900 },
+                               { label: '30 Min', val: 1800 },
+                               { label: '45 Min', val: 2700 },
+                               { label: '60 Min', val: 3600 }
+                             ].map(d => (
+                               <button
+                                 key={d.val}
+                                 type="button"
+                                 disabled={config.timerActive}
+                                 onClick={() => setTimerDurationSelect(d.val)}
+                                 className={`py-2 px-1 rounded-xl text-[9px] sm:text-[10px] font-black uppercase tracking-wider transition-all border ${
+                                   timerDurationSelect === d.val
+                                     ? 'bg-gold/20 text-gold border-gold/50 shadow-sm'
+                                     : 'bg-bg/60 text-muted-main border-white/5 hover:border-white/20'
+                                 } disabled:opacity-40`}
+                               >
+                                 {d.label}
+                               </button>
+                             ))}
+                           </div>
+                         </div>
+
                          {config.timerActive && (
-                            <div className="text-4xl sm:text-5xl font-mono font-black text-green-accent mb-4 sm:mb-6 tracking-tighter text-center">
+                            <div className="text-4xl sm:text-5xl font-mono font-black text-green-accent mb-4 sm:mb-6 tracking-tighter text-center bg-bg/40 py-3 rounded-2xl border border-green-accent/20">
                                {formatTime(timeLeft)}
                             </div>
                          )}
                          <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                           <button onClick={startTimer} disabled={config.timerActive} className="py-3 sm:py-4 bg-green-accent/10 text-green-accent font-black rounded-xl sm:rounded-2xl uppercase text-[9px] sm:text-[10px] tracking-widest border border-green-accent/20 disabled:opacity-30 hover:bg-green-accent hover:text-bg transition-all">Start</button>
+                           <button onClick={() => startTimer(timerDurationSelect)} disabled={config.timerActive} className="py-3 sm:py-4 bg-green-accent/10 text-green-accent font-black rounded-xl sm:rounded-2xl uppercase text-[9px] sm:text-[10px] tracking-widest border border-green-accent/20 disabled:opacity-30 hover:bg-green-accent hover:text-bg transition-all">Start ({Math.round(timerDurationSelect / 60)}m)</button>
                            <button onClick={stopTimer} disabled={!config.timerActive} className="py-3 sm:py-4 bg-red-accent/10 text-red-accent font-black rounded-xl sm:rounded-2xl uppercase text-[9px] sm:text-[10px] tracking-widest border border-red-accent/20 disabled:opacity-30 hover:bg-red-accent hover:text-white transition-all">Stop</button>
                          </div>
                          <button onClick={clearResults} className="w-full mt-3 py-2 sm:py-3 text-[9px] sm:text-[10px] font-bold text-muted-main uppercase tracking-widest hover:text-red-accent transition-colors">Clear Sub-Admin Data</button>
