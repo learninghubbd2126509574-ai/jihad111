@@ -2788,15 +2788,6 @@ export default function App() {
         const now = Date.now();
         const remaining = Math.max(0, Math.floor((config.timerEndTime - now) / 1000));
         setTimeLeft(remaining);
-
-        if (remaining === 0) {
-          // Only Admin updates Firestore when the timer expires naturally
-          if (isAdmin) {
-            updateDoc(doc(db, 'config', 'global'), {
-              timerActive: false
-            }).catch((err) => console.warn('Failed to deactivate expired timer:', err));
-          }
-        }
       };
 
       updateRemaining();
@@ -2808,7 +2799,7 @@ export default function App() {
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [config.timerActive, config.timerEndTime, isAdmin]);
+  }, [config.timerActive, config.timerEndTime]);
 
   // Auto-timer Logic
   const configRef = useRef(config);
@@ -2817,7 +2808,7 @@ export default function App() {
   }, [config]);
 
   useEffect(() => {
-    // Only admin or single authority trigger auto-timer
+    // Check auto-timer on admin client
     const interval = setInterval(async () => {
       const currentConfig = configRef.current;
       if (!currentConfig || !currentConfig.autoTimerEnabled || !currentConfig.autoTimerTime) return;
@@ -2834,11 +2825,12 @@ export default function App() {
         try {
           await updateDoc(doc(db, 'config', 'global'), {
             timerActive: true,
+            timerStartedAt: Date.now(),
             timerEndTime: Date.now() + duration * 1000,
             timerDuration: duration,
             lastAutoStartTime: today
           });
-          console.log('Auto-timer successfully set timerActive to true for 30 minutes');
+          console.log('Auto-timer successfully activated for duration:', duration);
         } catch (err) {
           console.error('Auto-timer trigger fail:', err);
         }
@@ -3434,8 +3426,7 @@ export default function App() {
 
   const updateAnnouncement = async (text: string, active: boolean) => {
     try {
-      await setDoc(doc(db, 'config', 'global'), {
-        ...config,
+      await updateDoc(doc(db, 'config', 'global'), {
         announcement: text,
         announcementActive: active
       });
@@ -3476,8 +3467,7 @@ export default function App() {
 
   const updateSecurity = async (password: string, locked: boolean) => {
     try {
-      await setDoc(doc(db, 'config', 'global'), {
-        ...config,
+      await updateDoc(doc(db, 'config', 'global'), {
         securityPassword: password,
         isLocked: locked
       });
@@ -3489,8 +3479,7 @@ export default function App() {
 
   const updateStlSettings = async (password: string, active: boolean) => {
     try {
-      await setDoc(doc(db, 'config', 'global'), {
-        ...config,
+      await updateDoc(doc(db, 'config', 'global'), {
         stlPassword: password,
         stlLoginActive: active
       });
@@ -3502,8 +3491,7 @@ export default function App() {
 
   const updateCounsellingSettings = async (schedules: CounsellingSchedule[], methods: PaymentMethods) => {
     try {
-      await setDoc(doc(db, 'config', 'global'), {
-        ...config,
+      await updateDoc(doc(db, 'config', 'global'), {
         counsellingSchedules: schedules,
         paymentMethods: methods
       });
@@ -3515,8 +3503,7 @@ export default function App() {
 
   const updateSocialLinks = async (links: SocialLinks) => {
     try {
-      await setDoc(doc(db, 'config', 'global'), {
-        ...config,
+      await updateDoc(doc(db, 'config', 'global'), {
         socialLinks: links
       });
       showMsg('Social links updated successfully', 'success');
@@ -3527,8 +3514,7 @@ export default function App() {
 
   const updateNoticeText = async (text: string) => {
     try {
-      await setDoc(doc(db, 'config', 'global'), {
-        ...config,
+      await updateDoc(doc(db, 'config', 'global'), {
         noticeText: text
       });
       showMsg('Notice updated successfully', 'success');
@@ -3539,8 +3525,7 @@ export default function App() {
 
   const updateGiftBox = async (active: boolean, title: string, content: string) => {
     try {
-      await setDoc(doc(db, 'config', 'global'), {
-        ...config,
+      await updateDoc(doc(db, 'config', 'global'), {
         giftBoxActive: active,
         giftBoxTitle: title,
         giftBoxContent: content
@@ -3585,13 +3570,12 @@ export default function App() {
 
   const updateAttendanceConfig = async (stl?: boolean, demo?: boolean, leaderR?: boolean, trainerR?: boolean) => {
     try {
-      await setDoc(doc(db, 'config', 'global'), {
-        ...config,
-        ...(stl !== undefined && { stlActive: stl }),
-        ...(demo !== undefined && { demoActive: demo }),
-        ...(leaderR !== undefined && { leaderRankingActive: leaderR }),
-        ...(trainerR !== undefined && { trainerRankingActive: trainerR })
-      });
+      const updates: Record<string, any> = {};
+      if (stl !== undefined) updates.stlActive = stl;
+      if (demo !== undefined) updates.demoActive = demo;
+      if (leaderR !== undefined) updates.leaderRankingActive = leaderR;
+      if (trainerR !== undefined) updates.trainerRankingActive = trainerR;
+      await updateDoc(doc(db, 'config', 'global'), updates);
       showMsg('Configuration updated');
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'config/global', showMsg);
@@ -3600,8 +3584,7 @@ export default function App() {
 
   const updateAutoTimer = async (enabled: boolean, time: string) => {
     try {
-      await setDoc(doc(db, 'config', 'global'), {
-        ...config,
+      await updateDoc(doc(db, 'config', 'global'), {
         autoTimerEnabled: enabled,
         autoTimerTime: time
       });
@@ -3922,8 +3905,7 @@ export default function App() {
 
   const updateFineRate = async (amount: number) => {
     try {
-      await setDoc(doc(db, 'config', 'global'), {
-        ...config,
+      await updateDoc(doc(db, 'config', 'global'), {
         fineAmount: amount
       });
       await writeAuditLog('SYSTEM', 'All Users', 'Update Fine Settings', amount, `Fine rate updated to ৳${amount}/day`);
@@ -3935,8 +3917,7 @@ export default function App() {
 
   const toggleFineSystem = async (active: boolean) => {
     try {
-      await setDoc(doc(db, 'config', 'global'), {
-        ...config,
+      await updateDoc(doc(db, 'config', 'global'), {
         fineSystemActive: active
       });
       await writeAuditLog('SYSTEM', 'All Users', 'Toggle Fine System', 0, `Fine system ${active ? 'Enabled' : 'Disabled'}`);
@@ -3951,8 +3932,7 @@ export default function App() {
       const now = new Date();
       const todayStr = format(now, 'yyyy-MM-dd');
       
-      await setDoc(doc(db, 'config', 'global'), {
-        ...config,
+      await updateDoc(doc(db, 'config', 'global'), {
         fineStartDate: todayStr,
         finesResetAt: new Date().toISOString(),
         totalConverts: 0
@@ -4012,11 +3992,12 @@ export default function App() {
       const todayStr = format(now, 'yyyy-MM-dd');
       
       // 1. Reset Config
-      await setDoc(doc(db, 'config', 'global'), {
-        ...config,
+      await updateDoc(doc(db, 'config', 'global'), {
         fineStartDate: todayStr,
         finesResetAt: new Date().toISOString(),
-        totalConverts: 0
+        totalConverts: 0,
+        timerActive: false,
+        timerEndTime: 0
       });
 
       const batch = writeBatch(db);
@@ -4787,7 +4768,7 @@ export default function App() {
     );
   }
 
-  const isTimerActive = config.timerActive && (config.timerEndTime > Date.now());
+  const isTimerActive = Boolean(config.timerActive && (config.timerEndTime ? (timeLeft > 0 || config.timerEndTime > Date.now()) : true));
 
   return (
     <div className="min-h-screen pb-20">
@@ -6109,7 +6090,7 @@ export default function App() {
                           value={config.totalConverts || 0}
                           onChange={(e) => {
                             const val = parseInt(e.target.value) || 0;
-                            setDoc(doc(db, 'config', 'global'), { ...config, totalConverts: val });
+                            updateDoc(doc(db, 'config', 'global'), { totalConverts: val });
                           }}
                           className="flex-1 bg-bg border border-white/10 rounded-xl sm:rounded-2xl px-4 sm:px-6 py-3 sm:py-4 text-xl sm:text-2xl text-gold font-serif font-black outline-none focus:border-gold"
                         />
@@ -6136,7 +6117,7 @@ export default function App() {
                         <button 
                           onClick={async () => {
                             const total = leaderRanking.reduce((sum, r) => sum + (r.score || 0), 0);
-                            await setDoc(doc(db, 'config', 'global'), { ...config, totalConverts: total });
+                            await updateDoc(doc(db, 'config', 'global'), { totalConverts: total });
                             showMsg(`Synced! Total Leader Convert: ${total}`);
                           }}
                           className="w-full py-3 sm:py-4 rounded-xl sm:rounded-2xl bg-white/5 text-gold text-[9px] sm:text-[10px] uppercase font-black hover:bg-gold hover:text-bg transition-all flex items-center justify-center gap-2 border border-gold/20"
@@ -6177,7 +6158,7 @@ export default function App() {
                    <div className="space-y-6">
                       <AnnouncementManager config={config} onUpdate={updateAnnouncement} />
                       <QuickLinksManagementSection links={quickLinks} onAdd={addQuickLink} onDelete={deleteQuickLink} />
-                      <SocialLinksManager config={config} onUpdate={(links) => setDoc(doc(db, 'config', 'global'), { ...config, socialLinks: links })} />
+                      <SocialLinksManager config={config} onUpdate={(links) => updateDoc(doc(db, 'config', 'global'), { socialLinks: links })} />
                       <NoticeManager config={config} onUpdate={updateNoticeText} />
                       <GiftBoxManager config={config} onUpdate={updateGiftBox} />
                    </div>
