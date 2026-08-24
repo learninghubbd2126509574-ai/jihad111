@@ -104,7 +104,10 @@ import {
   CheckSquare,
   RotateCcw, Gift,
   Ticket,
-  CreditCard
+  CreditCard,
+  Copy,
+  CheckCheck,
+  Share2
 } from 'lucide-react';
 
 import { 
@@ -5553,6 +5556,83 @@ export default function App() {
               </div>
             )}
 
+            {/* Admin Quick Result Copy Bar */}
+            {isAdmin && (
+              <div className="mb-8 p-4 sm:p-5 bg-gradient-to-r from-gold/10 via-surface to-surface border border-gold/30 rounded-2xl sm:rounded-3xl shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-gold/20 border border-gold/40 text-gold flex items-center justify-center shadow-inner flex-shrink-0">
+                    <Copy size={20} />
+                  </div>
+                  <div>
+                    <h3 className="font-serif font-black text-sm sm:text-base text-white">রেজাল্ট কপি অপশন (Admin Quick Copy)</h3>
+                    <p className="text-[9px] sm:text-[10px] text-muted-main">কনভার্ট ক্রম অনুযায়ী সাজানো সকল রেজাল্ট এক ক্লিকে কপি করুন</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const text = generateResultExportText(sortedLeaders, sortedTrainers, results, {
+                        scope: 'all',
+                        formatType: 'compact',
+                        onlySubmitted: true,
+                        includeHeader: true
+                      });
+                      const ok = await copyTextToClipboard(text);
+                      if (ok) showMsg('সকল রেজাল্ট সফলভাবে কপি হয়েছে!', 'success');
+                      else showMsg('কপি করতে সমস্যা হয়েছে', 'error');
+                    }}
+                    className="px-3.5 py-2.5 bg-gold text-bg font-black rounded-xl text-[10px] uppercase tracking-wider hover:opacity-90 transition-all flex items-center gap-1.5 shadow-md active:scale-95"
+                  >
+                    <Copy size={12} />
+                    📋 কপি অল রেজাল্ট
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const text = generateResultExportText(sortedLeaders, sortedTrainers, results, {
+                        scope: 'leaders',
+                        formatType: 'compact',
+                        onlySubmitted: true,
+                        includeHeader: true
+                      });
+                      const ok = await copyTextToClipboard(text);
+                      if (ok) showMsg('লিডারদের রেজাল্ট কপি হয়েছে!', 'success');
+                    }}
+                    className="px-3 py-2 bg-gold/10 text-gold hover:bg-gold/20 border border-gold/20 font-black rounded-xl text-[9px] sm:text-[10px] uppercase tracking-wider transition-all flex items-center gap-1 active:scale-95"
+                  >
+                    👑 লিডার কপি
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const text = generateResultExportText(sortedLeaders, sortedTrainers, results, {
+                        scope: 'trainers',
+                        formatType: 'compact',
+                        onlySubmitted: true,
+                        includeHeader: true
+                      });
+                      const ok = await copyTextToClipboard(text);
+                      if (ok) showMsg('ট্রেনারদের রেজাল্ট কপি হয়েছে!', 'success');
+                    }}
+                    className="px-3 py-2 bg-blue-accent/10 text-blue-accent hover:bg-blue-accent/20 border border-blue-accent/20 font-black rounded-xl text-[9px] sm:text-[10px] uppercase tracking-wider transition-all flex items-center gap-1 active:scale-95"
+                  >
+                    🎓 ট্রেনার কপি
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowAdminPanel(true)}
+                    className="px-3 py-2 bg-white/5 text-muted-main hover:text-white border border-white/10 font-bold rounded-xl text-[9px] sm:text-[10px] uppercase tracking-wider transition-all"
+                  >
+                    সেটিংস ও প্রিভিউ
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Main Leaderboards */}
             <Board 
               title="Team Leaders Board" 
@@ -6078,6 +6158,16 @@ export default function App() {
                          </div>
                       </div>
                    </div>
+                </AdminAccordion>
+
+                {/* 3. Result Copy & Export Hub Slot */}
+                <AdminAccordion title="Result Copy & Export Hub" icon={<Copy size={16} />} colorClass="text-gold" defaultOpen={true}>
+                   <ResultCopyManager 
+                     sortedLeaders={sortedLeaders} 
+                     sortedTrainers={sortedTrainers} 
+                     results={results} 
+                     showMsg={showMsg} 
+                   />
                 </AdminAccordion>
 
                 {/* 3. Global Stats Slot */}
@@ -6890,6 +6980,424 @@ const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, on
         </div>
       )}
     </motion.div>
+  );
+}
+
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // fallback
+  }
+  try {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-999999px';
+    textArea.style.top = '-999999px';
+    textArea.setAttribute('readonly', '');
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    const successful = document.execCommand('copy');
+    textArea.remove();
+    return successful;
+  } catch (err) {
+    console.error('Fallback copy failed:', err);
+    return false;
+  }
+}
+
+function generateResultExportText(
+  leaders: any[],
+  trainers: any[],
+  results: Record<string, Result>,
+  options: {
+    scope: 'all' | 'leaders' | 'trainers';
+    formatType: 'compact' | 'detailed' | 'bangla';
+    onlySubmitted: boolean;
+    includeHeader: boolean;
+  }
+): string {
+  const { scope, formatType, onlySubmitted, includeHeader } = options;
+
+  const filterList = (list: any[]) => {
+    if (!onlySubmitted) return list;
+    return list.filter(m => {
+      const res = results[m.id] || m.result;
+      return res?.submitted || (res?.convert > 0) || (res?.lead > 0) || (res?.personalLead > 0);
+    });
+  };
+
+  const formatLine = (m: any, index: number) => {
+    const res = results[m.id] || m.result || { convert: 0, lead: 0, personalLead: 0 };
+    const c = res.convert || 0;
+    const l = res.lead || 0;
+    const p = res.personalLead || 0;
+
+    if (formatType === 'compact') {
+      return `${index + 1}. ${m.name} - C: ${c}, L: ${l}, P: ${p}`;
+    }
+    if (formatType === 'detailed') {
+      return `${index + 1}. ${m.name} - Convert: ${c} | Lead: ${l} | Personal: ${p}`;
+    }
+    if (formatType === 'bangla') {
+      return `${index + 1}. ${m.name} - কনভার্ট: ${c} | লিড: ${l} | পার্সোনাল: ${p}`;
+    }
+    return `${index + 1}. ${m.name} - C: ${c}, L: ${l}, P: ${p}`;
+  };
+
+  const lines: string[] = [];
+
+  if (scope === 'all' || scope === 'leaders') {
+    const filteredLeaders = filterList(leaders);
+    if (includeHeader) {
+      lines.push('👑 TEAM LEADERS RESULT:');
+    }
+    if (filteredLeaders.length > 0) {
+      filteredLeaders.forEach((m, idx) => {
+        lines.push(formatLine(m, idx));
+      });
+    } else {
+      lines.push('কোনো লিডার রেজাল্ট জমা দেয়নি');
+    }
+  }
+
+  if (scope === 'all' || scope === 'trainers') {
+    const filteredTrainers = filterList(trainers);
+    if (includeHeader) {
+      lines.push('🎓 TEAM TRAINERS RESULT:');
+    }
+    if (filteredTrainers.length > 0) {
+      filteredTrainers.forEach((m, idx) => {
+        lines.push(formatLine(m, idx));
+      });
+    } else {
+      lines.push('কোনো ট্রেনার রেজাল্ট জমা দেয়নি');
+    }
+  }
+
+  return lines.join('\n');
+}
+
+function ResultCopyManager({
+  sortedLeaders,
+  sortedTrainers,
+  results,
+  showMsg
+}: {
+  sortedLeaders: any[];
+  sortedTrainers: any[];
+  results: Record<string, Result>;
+  showMsg: (msg: string, type?: 'success' | 'error' | 'info') => void;
+}) {
+  const [scope, setScope] = useState<'all' | 'leaders' | 'trainers'>('all');
+  const [formatType, setFormatType] = useState<'compact' | 'detailed' | 'bangla'>('compact');
+  const [onlySubmitted, setOnlySubmitted] = useState<boolean>(true);
+  const [includeHeader, setIncludeHeader] = useState<boolean>(true);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [customText, setCustomText] = useState<string>('');
+  const [isCustomEditing, setIsCustomEditing] = useState<boolean>(false);
+
+  // Compute live generated text whenever parameters change
+  const generatedText = useMemo(() => {
+    return generateResultExportText(sortedLeaders, sortedTrainers, results, {
+      scope,
+      formatType,
+      onlySubmitted,
+      includeHeader
+    });
+  }, [sortedLeaders, sortedTrainers, results, scope, formatType, onlySubmitted, includeHeader]);
+
+  // Keep custom text in sync unless user explicitly edits
+  useEffect(() => {
+    if (!isCustomEditing) {
+      setCustomText(generatedText);
+    }
+  }, [generatedText, isCustomEditing]);
+
+  const handleCopy = async (targetScope?: 'all' | 'leaders' | 'trainers', label = 'রেজাল্ট') => {
+    const textToCopy = targetScope
+      ? generateResultExportText(sortedLeaders, sortedTrainers, results, {
+          scope: targetScope,
+          formatType,
+          onlySubmitted,
+          includeHeader
+        })
+      : customText;
+
+    const ok = await copyTextToClipboard(textToCopy);
+    if (ok) {
+      setCopiedKey(targetScope || 'custom');
+      setTimeout(() => setCopiedKey(null), 2500);
+      showMsg(`${label} সফলভাবে কপি করা হয়েছে!`, 'success');
+    } else {
+      showMsg('কপি করতে সমস্যা হয়েছে!', 'error');
+    }
+  };
+
+  // Submission statistics
+  const submittedLeadersCount = sortedLeaders.filter(m => results[m.id]?.submitted || results[m.id]?.convert > 0).length;
+  const submittedTrainersCount = sortedTrainers.filter(m => results[m.id]?.submitted || results[m.id]?.convert > 0).length;
+  const totalConvertsCount = [...sortedLeaders, ...sortedTrainers].reduce((sum, m) => sum + (results[m.id]?.convert || 0), 0);
+
+  return (
+    <div className="bg-surface/40 border border-white/5 p-4 sm:p-6 rounded-2xl sm:rounded-3xl relative overflow-hidden space-y-5">
+      <div className="absolute top-0 right-0 w-40 h-40 bg-gold/5 blur-3xl rounded-full pointer-events-none" />
+
+      {/* Header & Stats */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/5 pb-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <Copy size={16} className="text-gold" />
+            <h4 className="text-xs sm:text-sm font-black text-white uppercase tracking-widest">
+              রেজাল্ট কপি হাব (Copy Results Text)
+            </h4>
+          </div>
+          <p className="text-[9px] sm:text-[10px] text-muted-main mt-0.5">
+            টিম লিডার ও ট্রেনারদের কনভার্ট ক্রম অনুযায়ী সাজানো রেজাল্ট এক ক্লিকে কপি করুন
+          </p>
+        </div>
+
+        {/* Quick stat badges */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="px-2.5 py-1 rounded-lg bg-gold/10 border border-gold/20 text-gold text-[9px] font-mono font-bold">
+            👑 লিডার সাবমিট: {submittedLeadersCount}/{sortedLeaders.length}
+          </span>
+          <span className="px-2.5 py-1 rounded-lg bg-blue-accent/10 border border-blue-accent/20 text-blue-accent text-[9px] font-mono font-bold">
+            🎓 ট্রেনার সাবমিট: {submittedTrainersCount}/{sortedTrainers.length}
+          </span>
+          <span className="px-2.5 py-1 rounded-lg bg-green-accent/10 border border-green-accent/20 text-green-accent text-[9px] font-mono font-bold">
+            ✨ মোট কনভার্ট: {totalConvertsCount}
+          </span>
+        </div>
+      </div>
+
+      {/* Primary 1-Click Action Buttons */}
+      <div>
+        <label className="text-[8px] sm:text-[9px] text-muted-main uppercase font-black tracking-widest block mb-2">
+          ১-ক্লিক দ্রুত কপি বাটনসমূহ (Quick Copy Actions)
+        </label>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          {/* Copy All */}
+          <button
+            type="button"
+            onClick={() => handleCopy('all', 'সকল মেম্বারের রেজাল্ট')}
+            className="py-3 px-3 rounded-xl bg-gold/20 hover:bg-gold text-gold hover:text-bg font-black uppercase text-[10px] sm:text-[11px] tracking-wider transition-all border border-gold/40 flex items-center justify-center gap-2 shadow-md active:scale-95 group"
+          >
+            {copiedKey === 'all' ? (
+              <>
+                <CheckCheck size={14} className="text-green-accent" />
+                <span>কপি হয়েছে!</span>
+              </>
+            ) : (
+              <>
+                <Copy size={14} />
+                <span>কপি অল রেজাল্ট (সব)</span>
+              </>
+            )}
+          </button>
+
+          {/* Copy Leaders */}
+          <button
+            type="button"
+            onClick={() => handleCopy('leaders', 'টিম লিডারদের রেজাল্ট')}
+            className="py-3 px-3 rounded-xl bg-gold/10 hover:bg-gold/25 text-gold font-black uppercase text-[10px] sm:text-[11px] tracking-wider transition-all border border-gold/20 flex items-center justify-center gap-2 shadow-sm active:scale-95"
+          >
+            {copiedKey === 'leaders' ? (
+              <>
+                <CheckCheck size={14} className="text-green-accent" />
+                <span>কপি হয়েছে!</span>
+              </>
+            ) : (
+              <>
+                <span>👑</span>
+                <span>কপি লিডার রেজাল্ট</span>
+              </>
+            )}
+          </button>
+
+          {/* Copy Trainers */}
+          <button
+            type="button"
+            onClick={() => handleCopy('trainers', 'টিম ট্রেনারদের রেজাল্ট')}
+            className="py-3 px-3 rounded-xl bg-blue-accent/10 hover:bg-blue-accent/25 text-blue-accent font-black uppercase text-[10px] sm:text-[11px] tracking-wider transition-all border border-blue-accent/20 flex items-center justify-center gap-2 shadow-sm active:scale-95"
+          >
+            {copiedKey === 'trainers' ? (
+              <>
+                <CheckCheck size={14} className="text-green-accent" />
+                <span>কপি হয়েছে!</span>
+              </>
+            ) : (
+              <>
+                <span>🎓</span>
+                <span>কপি ট্রেনার রেজাল্ট</span>
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Customizer Controls */}
+      <div className="bg-bg/60 border border-white/5 p-3.5 sm:p-4 rounded-xl sm:rounded-2xl space-y-3">
+        {/* Scope and Format selector */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {/* Scope Selector */}
+          <div>
+            <label className="text-[8px] text-muted-main uppercase font-black tracking-widest block mb-1.5">
+              ফিল্টার স্কোপ (Target Board)
+            </label>
+            <div className="grid grid-cols-3 gap-1 bg-surface p-1 rounded-xl border border-white/5">
+              {[
+                { key: 'all', label: 'উভয় (All)' },
+                { key: 'leaders', label: 'লিডার (Leaders)' },
+                { key: 'trainers', label: 'ট্রেনার (Trainers)' }
+              ].map(item => (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => {
+                    setScope(item.key as any);
+                    setIsCustomEditing(false);
+                  }}
+                  className={`py-1.5 px-2 rounded-lg text-[9px] sm:text-[10px] font-black uppercase transition-all ${
+                    scope === item.key
+                      ? 'bg-gold text-bg shadow-sm'
+                      : 'text-muted-main hover:text-white'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Format Selector */}
+          <div>
+            <label className="text-[8px] text-muted-main uppercase font-black tracking-widest block mb-1.5">
+              টেক্সট ফরম্যাট (Format Style)
+            </label>
+            <div className="grid grid-cols-3 gap-1 bg-surface p-1 rounded-xl border border-white/5">
+              {[
+                { key: 'compact', label: 'শর্টকাট (C/L/P)' },
+                { key: 'detailed', label: 'বিস্তারিত' },
+                { key: 'bangla', label: 'বাংলা' }
+              ].map(item => (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => {
+                    setFormatType(item.key as any);
+                    setIsCustomEditing(false);
+                  }}
+                  className={`py-1.5 px-2 rounded-lg text-[9px] sm:text-[10px] font-black uppercase transition-all ${
+                    formatType === item.key
+                      ? 'bg-gold text-bg shadow-sm'
+                      : 'text-muted-main hover:text-white'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Toggles */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-white/5">
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={onlySubmitted}
+              onChange={(e) => {
+                setOnlySubmitted(e.target.checked);
+                setIsCustomEditing(false);
+              }}
+              className="rounded accent-gold cursor-pointer"
+            />
+            <span className="text-[9px] sm:text-[10px] text-white font-bold">
+              শুধুমাত্র সাবমিট করা মেম্বার রাখুন (Only Submitted)
+            </span>
+          </label>
+
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={includeHeader}
+              onChange={(e) => {
+                setIncludeHeader(e.target.checked);
+                setIsCustomEditing(false);
+              }}
+              className="rounded accent-gold cursor-pointer"
+            />
+            <span className="text-[9px] sm:text-[10px] text-white font-bold">
+              হেডার শিরোনাম অন্তর্ভুক্ত করুন (Include Headers)
+            </span>
+          </label>
+        </div>
+      </div>
+
+      {/* Live Text Preview Box */}
+      <div>
+        <div className="flex items-center justify-between mb-1.5">
+          <label className="text-[8px] sm:text-[9px] text-muted-main uppercase font-black tracking-widest">
+            কপি প্রিভিউ টেক্সট (Live Text Preview)
+          </label>
+          <div className="flex items-center gap-2">
+            {isCustomEditing && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCustomEditing(false);
+                  setCustomText(generatedText);
+                }}
+                className="text-[9px] text-red-accent font-bold hover:underline"
+              >
+                Reset to Auto
+              </button>
+            )}
+            <span className="text-[8px] text-muted-main2 font-mono">
+              {customText.split('\n').filter(Boolean).length} lines
+            </span>
+          </div>
+        </div>
+
+        <div className="relative">
+          <textarea
+            value={customText}
+            onChange={(e) => {
+              setCustomText(e.target.value);
+              setIsCustomEditing(true);
+            }}
+            rows={7}
+            className="w-full bg-bg border border-white/10 focus:border-gold rounded-xl p-3 text-xs sm:text-sm font-mono text-white/90 outline-none leading-relaxed custom-scrollbar transition-all resize-y"
+            placeholder="ফলাফল এখানে দৃশ্যমান হবে..."
+          />
+        </div>
+
+        {/* Big Bottom Copy Preview Button */}
+        <button
+          type="button"
+          onClick={() => handleCopy(undefined, 'প্রিভিউ টেক্সট')}
+          className="w-full mt-2 py-3 px-4 rounded-xl bg-gold text-bg font-black uppercase text-xs tracking-widest hover:opacity-90 transition-all flex items-center justify-center gap-2 shadow-lg active:scale-98"
+        >
+          {copiedKey === 'custom' ? (
+            <>
+              <CheckCheck size={16} className="text-bg font-black" />
+              <span>টেক্সট সফলভাবে কপি হয়েছে!</span>
+            </>
+          ) : (
+            <>
+              <Copy size={16} />
+              <span>উপরের প্রিভিউ টেক্সট কপি করুন (Copy Preview)</span>
+            </>
+          )}
+        </button>
+      </div>
+    </div>
   );
 }
 
