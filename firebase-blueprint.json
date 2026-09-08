@@ -109,6 +109,11 @@
       "type": "object",
       "properties": {
         "name": { "type": "string" },
+        "assignedTLs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of assigned Team Leader member IDs"
+        },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["name"]

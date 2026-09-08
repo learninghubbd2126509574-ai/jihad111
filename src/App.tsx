@@ -41,6 +41,7 @@ import {
   User,
   Shield, 
   LogOut, 
+  LogIn,
   Trophy, 
   GraduationCap, 
   Clock, 
@@ -55,6 +56,7 @@ import {
   UserCircle,
   X,
   Pencil,
+  Play,
   Calendar,
   Check,
   Megaphone,
@@ -107,7 +109,8 @@ import {
   CreditCard,
   Copy,
   CheckCheck,
-  Share2
+  Share2,
+  Target
 } from 'lucide-react';
 
 import { 
@@ -125,12 +128,20 @@ import {
   parseISO
 } from 'date-fns';
 import { bn } from 'date-fns/locale';
+import CartoonAvatar, { CARTOON_AVATAR_LIST } from './components/CartoonAvatar';
+import StlWiseResultSection from './components/StlWiseResultSection';
+import StlAssignmentModal from './components/StlAssignmentModal';
+import StlAdminManager from './components/StlAdminManager';
+import UserQuickSubmitCard from './components/UserQuickSubmitCard';
+import { PhoneKeypad, PasswordKeyboard } from './components/VirtualAuthKeypad';
 
 // --- Types ---
 interface Member {
   id: string;
   name: string;
   type: 'leader' | 'trainer';
+  target?: number;
+  whatsapp?: string;
   createdAt: any;
 }
 
@@ -218,6 +229,10 @@ interface AttendanceRecord {
 interface STLMember {
   id: string;
   name: string;
+  assignedTLs?: string[];
+  whatsapp?: string;
+  profilePic?: string;
+  target?: number;
   createdAt: any;
 }
 
@@ -353,6 +368,7 @@ interface Config {
   giftBoxActive?: boolean;
   giftBoxTitle?: string;
   giftBoxContent?: string;
+  customLogo?: string;
 }
 
 enum OperationType {
@@ -528,6 +544,7 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: {
   const [position, setPosition] = useState<any>('Team Leader');
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [activeKeypad, setActiveKeypad] = useState<'phone' | 'password' | 'admin' | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -546,75 +563,65 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: {
   };
 
   return (
-    <div className="min-h-screen bg-[#051126] text-white flex flex-col items-center justify-center p-2.5 sm:p-6 relative overflow-hidden font-sans">
-      {/* Background Decorative Gradient Waves & Grid */}
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50/40 text-slate-900 flex flex-col items-center justify-center p-3 sm:p-6 relative overflow-hidden font-sans">
+      {/* Subtle Background Decorative Mesh */}
       <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
-        {/* Top Left Organic Glow Curve */}
-        <div className="absolute top-[-20%] left-[-20%] w-[80%] h-[50%] rounded-full bg-gradient-to-br from-[#F5C542]/15 via-[#072454]/40 to-transparent blur-[100px]" />
-        {/* Bottom Right Glow Curve */}
-        <div className="absolute bottom-[-20%] right-[-20%] w-[80%] h-[50%] rounded-full bg-gradient-to-tl from-[#F5C542]/10 via-[#0a295c]/40 to-transparent blur-[100px]" />
-        
-        {/* Dot Grid Pattern in Top Right */}
-        <div className="absolute top-6 right-6 w-48 h-48 bg-[radial-gradient(#F5C542_1.5px,transparent_1.5px)] [background-size:16px_16px] opacity-20" />
-        
-        {/* Bottom Abstract Gold Lines */}
-        <svg className="absolute bottom-0 left-0 right-0 w-full opacity-30 pointer-events-none" viewBox="0 0 1440 320" fill="none">
-          <path d="M0,192L60,202.7C120,213,240,235,360,224C480,213,600,171,720,165.3C840,160,960,192,1080,197.3C1200,203,1320,181,1380,170.7L1440,160" stroke="#F5C542" strokeWidth="1.5" />
-        </svg>
+        <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[40%] rounded-full bg-blue-400/10 blur-[90px]" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[40%] rounded-full bg-emerald-400/10 blur-[90px]" />
+        <div className="absolute top-8 right-8 w-40 h-40 bg-[radial-gradient(#2563eb_1.2px,transparent_1.2px)] [background-size:16px_16px] opacity-15" />
       </div>
 
-      {/* Main Container Card - Mobile App Frame */}
+      {/* Main Container Card */}
       <motion.div 
-        initial={{ opacity: 0, y: 25, scale: 0.97 }}
+        initial={{ opacity: 0, y: 20, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.45, ease: "easeOut" }}
-        className="relative z-10 w-full max-w-[420px] bg-[#071836]/90 backdrop-blur-3xl border border-[#F5C542]/30 rounded-[28px] sm:rounded-[32px] p-5 sm:p-7 shadow-[0_30px_90px_rgba(3,11,30,0.95)] overflow-hidden"
+        transition={{ duration: 0.4, ease: "easeOut" }}
+        className="relative z-10 w-full max-w-[430px] bg-white border border-slate-200/90 rounded-[28px] sm:rounded-[32px] p-5 sm:p-7 shadow-[0_20px_50px_rgba(15,23,42,0.08)] overflow-hidden"
       >
-        {/* Top Metallic Gold Glow */}
-        <div className="absolute top-0 left-8 right-8 h-[2px] bg-gradient-to-r from-transparent via-[#F5C542] to-transparent shadow-[0_0_15px_#F5C542]" />
+        {/* Top Brand Accent Line */}
+        <div className="absolute top-0 left-8 right-8 h-[3px] bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-500 rounded-b" />
 
         {/* Header - Brand Logo & Titles */}
-        <div className="flex flex-col items-center text-center mb-6">
-          {/* Circular Gold Emblem Logo */}
-          <div className="relative mb-3">
-            <div className="absolute -inset-2 rounded-full bg-[#F5C542]/20 blur-md animate-pulse" />
-            <div className="relative w-18 h-18 sm:w-20 sm:h-20 bg-gradient-to-b from-[#0A2046] to-[#040D1F] border-2 border-[#F5C542] rounded-full flex items-center justify-center shadow-[0_0_25px_rgba(245,197,66,0.3)]">
-              <svg viewBox="0 0 40 40" className="w-10 h-10 sm:w-11 sm:h-11">
-                <circle cx="20" cy="20" r="18" stroke="#F5C542" strokeWidth="1.5" opacity="0.4" fill="none" />
-                <path d="M13 11V22C13 25.866 16.134 29 20 29C23.866 29 27 25.866 27 22V11" stroke="#F5C542" strokeWidth="3.5" strokeLinecap="round" fill="none" />
-                <circle cx="20" cy="8" r="2.5" fill="#F5C542" />
+        <div className="flex flex-col items-center text-center mb-5 pt-1">
+          {/* Circular Blue Emblem Logo */}
+          <div className="relative mb-2.5">
+            <div className="w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/25">
+              <svg viewBox="0 0 40 40" className="w-8 h-8 sm:w-9 sm:h-9">
+                <circle cx="20" cy="20" r="18" stroke="rgba(255,255,255,0.4)" strokeWidth="1.5" fill="none" />
+                <path d="M13 11V22C13 25.866 16.134 29 20 29C23.866 29 27 25.866 27 22V11" stroke="#ffffff" strokeWidth="3.5" strokeLinecap="round" fill="none" />
+                <circle cx="20" cy="8" r="2.5" fill="#ffffff" />
               </svg>
             </div>
           </div>
           
-          <h1 className="text-2xl font-extrabold text-white tracking-tight flex items-center gap-1.5 justify-center">
-            Unity <span className="text-[#F5C542]">Earning</span>
+          <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight flex items-center gap-1.5 justify-center">
+            Unity <span className="text-blue-600">Earning</span>
           </h1>
-          <p className="text-[10px] font-bold tracking-[3.5px] uppercase text-[#F5C542]/90 mt-1">
+          <p className="text-[9px] sm:text-[10px] font-bold tracking-[2.5px] uppercase text-slate-500 mt-1">
             E-Learning Platform
           </p>
 
-          {/* Gold Divider Line with Centered Glowing Dot */}
-          <div className="relative w-full max-w-[200px] h-[1px] bg-gradient-to-r from-transparent via-[#F5C542]/40 to-transparent mt-3.5 mb-1 flex items-center justify-center">
-            <div className="w-1.5 h-1.5 rounded-full bg-[#F5C542] shadow-[0_0_8px_#F5C542]" />
-          </div>
+          <div className="relative w-full max-w-[160px] h-[1px] bg-gradient-to-r from-transparent via-slate-200 to-transparent mt-2.5 mb-1" />
         </div>
 
-        {/* Segmented Mode Switcher / Separated Navigation Tabs */}
-        <div className="grid grid-cols-3 gap-2 bg-[#040E21]/90 border border-[#F5C542]/20 rounded-[22px] p-1.5 mb-6 shadow-inner">
+        {/* Segmented Mode Switcher */}
+        <div className="grid grid-cols-3 gap-1.5 bg-slate-100/90 border border-slate-200/80 rounded-2xl p-1.5 mb-5">
           {[
             { id: 'login', icon: <User size={13} />, label: 'User Login' },
-            { id: 'admin', icon: <Shield size={13} />, label: 'Admin Login' },
+            { id: 'admin', icon: <Shield size={13} />, label: 'Admin' },
             { id: 'register', icon: <UserPlus size={13} />, label: 'Register' }
           ].map((tab) => (
             <button
               key={tab.id}
               type="button"
-              onClick={() => setMode(tab.id as any)}
-              className={`flex items-center justify-center gap-1 sm:gap-1.5 py-2.5 px-1.5 rounded-[16px] text-[10px] sm:text-[11px] font-bold transition-all duration-200 border ${
+              onClick={() => {
+                setMode(tab.id as any);
+                setActiveKeypad(null);
+              }}
+              className={`flex items-center justify-center gap-1.5 py-2 px-1.5 rounded-xl text-[11px] font-bold transition-all duration-200 ${
                 mode === tab.id 
-                  ? 'bg-gradient-to-r from-[#F5C542] via-[#E5B532] to-[#F5C542] border-[#F5C542] text-[#051126] shadow-[0_4px_15px_rgba(245,197,66,0.35)] font-black' 
-                  : 'bg-white/5 border-white/5 text-white/70 hover:text-white hover:bg-white/10'
+                  ? 'bg-white text-blue-600 shadow-sm font-extrabold border border-slate-200/60' 
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
               }`}
             >
               <span className="shrink-0">{tab.icon}</span>
@@ -624,7 +631,7 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: {
         </div>
 
         {/* Dynamic Form Content */}
-        <div className="space-y-5">
+        <div className="space-y-4">
           {mode === 'admin' ? (
             <form onSubmit={async (e) => {
               e.preventDefault();
@@ -634,91 +641,119 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: {
               } finally {
                 setLoading(false);
               }
-            }} className="space-y-5">
-              <div className="flex items-center justify-center gap-2 bg-[#F5C542]/10 border border-[#F5C542]/30 rounded-2xl py-2.5 px-4">
-                 <Shield size={15} className="text-[#F5C542]" />
-                 <span className="text-[10px] font-bold uppercase tracking-[2px] text-[#F5C542]">Admin Key Protection</span>
+            }} className="space-y-3.5">
+              <div className="flex items-center justify-center gap-2 bg-blue-50 border border-blue-200/70 rounded-xl py-2 px-3 text-blue-700">
+                 <Shield size={14} className="text-blue-600" />
+                 <span className="text-[10px] font-bold uppercase tracking-[1.5px]">Admin Key Protection</span>
               </div>
               
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold uppercase tracking-[1.5px] text-white/70 flex items-center gap-1.5 pl-1">
-                  <Lock size={12} className="text-[#F5C542]" />
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 pl-1">
+                  <Lock size={12} className="text-blue-600" />
                   ACCESS PASSWORD
                 </label>
                 <div className="relative">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40" size={17} />
+                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                   <input 
                     required
-                    type="password"
-                    placeholder="••••••••••••"
+                    readOnly
+                    type={showPass ? "text" : "password"}
+                    inputMode="none"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    placeholder="Enter admin password..."
                     value={password}
+                    onFocus={(e) => {
+                      e.target.blur();
+                      setActiveKeypad('admin');
+                    }}
+                    onClick={() => setActiveKeypad('admin')}
                     onChange={e => setPassword(e.target.value)}
-                    className="w-full bg-[#040D1F]/80 border border-[#F5C542]/20 rounded-2xl py-3.5 pl-11 pr-4 text-white text-sm outline-none focus:border-[#F5C542] focus:ring-1 focus:ring-[#F5C542]/30 transition-all font-mono"
+                    className="w-full bg-slate-50/80 border border-slate-200 rounded-xl py-2.5 pl-10 pr-10 text-slate-900 text-sm outline-none focus:bg-white focus:border-blue-600 focus:ring-4 focus:ring-blue-100 transition-all font-mono cursor-pointer select-none"
                   />
+                  <button 
+                    type="button"
+                    onClick={() => setShowPass(!showPass)}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors p-1"
+                  >
+                    {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
                 </div>
               </div>
 
               <button 
                 type="submit"
                 disabled={loading}
-                className="w-full relative py-4 bg-gradient-to-r from-[#F5C542] via-[#E5B532] to-[#D5A522] rounded-2xl text-[#051126] font-extrabold text-sm tracking-wider uppercase shadow-[0_8px_25px_rgba(245,197,66,0.35)] hover:shadow-[0_12px_32px_rgba(245,197,66,0.5)] active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold text-sm tracking-wide rounded-xl shadow-md shadow-blue-600/20 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
               >
-                <span>{loading ? 'Authenticating...' : 'Sign In'}</span>
-                {!loading && <ArrowRight size={18} />}
+                <span>{loading ? 'Authenticating...' : 'Sign In as Admin'}</span>
+                {!loading && <ArrowRight size={16} />}
               </button>
             </form>
           ) : (
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-3.5">
               {mode === 'register' && (
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-[1.5px] text-white/70 flex items-center gap-1.5 pl-1">
-                    <UserCircle size={12} className="text-[#F5C542]" />
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 pl-1">
+                    <UserCircle size={12} className="text-blue-600" />
                     FULL NAME
                   </label>
                   <div className="relative">
-                    <UserCircle className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40" size={17} />
+                    <UserCircle className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                     <input 
                       required
                       type="text"
                       placeholder="Your full name"
                       value={fullName}
                       onChange={e => setFullName(e.target.value)}
-                      className="w-full bg-[#040D1F]/80 border border-[#F5C542]/20 rounded-2xl py-3.5 pl-11 pr-4 text-white text-sm outline-none focus:border-[#F5C542] focus:ring-1 focus:ring-[#F5C542]/30 transition-all"
+                      className="w-full bg-slate-50/80 border border-slate-200 rounded-xl py-2.5 pl-10 pr-4 text-slate-900 text-sm outline-none focus:bg-white focus:border-blue-600 focus:ring-4 focus:ring-blue-100 transition-all"
                     />
                   </div>
                 </div>
               )}
 
+              {/* Phone Number Input */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-[1.5px] text-white/70 flex items-center gap-1.5 pl-1">
-                  <Smartphone size={12} className="text-[#F5C542]" />
+                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 pl-1">
+                  <Smartphone size={12} className="text-blue-600" />
                   {mode === 'login' ? 'WHATSAPP NUMBER' : 'PERSONAL NUMBER'}
                 </label>
                 <div className="relative">
-                  <Smartphone className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40" size={17} />
+                  <Smartphone className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                   <input 
                     required
+                    readOnly
                     type="tel"
-                    placeholder="017XXXXXXXX"
+                    inputMode="none"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    placeholder="Enter WhatsApp number (017...)"
                     value={whatsapp}
+                    onFocus={(e) => {
+                      e.target.blur();
+                      setActiveKeypad('phone');
+                    }}
+                    onClick={() => setActiveKeypad('phone')}
                     onChange={e => setWhatsapp(e.target.value)}
-                    className="w-full bg-[#040D1F]/80 border border-[#F5C542]/20 rounded-2xl py-3.5 pl-11 pr-4 text-white text-sm font-mono outline-none focus:border-[#F5C542] focus:ring-1 focus:ring-[#F5C542]/30 transition-all"
+                    className="w-full bg-slate-50/80 border border-slate-200 rounded-xl py-2.5 pl-10 pr-4 text-slate-900 text-sm font-mono outline-none focus:bg-white focus:border-blue-600 focus:ring-4 focus:ring-blue-100 transition-all cursor-pointer select-none"
                   />
                 </div>
               </div>
 
               {mode === 'register' && (
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-[1.5px] text-white/70 flex items-center gap-1.5 pl-1">
-                    <Briefcase size={12} className="text-[#F5C542]" />
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 pl-1">
+                    <Briefcase size={12} className="text-blue-600" />
                     POSITION ROLE
                   </label>
                   <div className="relative">
-                    <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40" size={17} />
+                    <Briefcase className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                     <select 
                       value={position}
                       onChange={e => setPosition(e.target.value)}
-                      className="w-full bg-[#040D1F]/90 border border-[#F5C542]/20 rounded-2xl py-3.5 pl-11 pr-4 text-white text-sm outline-none focus:border-[#F5C542] focus:ring-1 focus:ring-[#F5C842]/30 transition-all appearance-none cursor-pointer"
+                      className="w-full bg-slate-50/80 border border-slate-200 rounded-xl py-2.5 pl-10 pr-4 text-slate-900 text-sm outline-none focus:bg-white focus:border-blue-600 focus:ring-4 focus:ring-blue-100 transition-all appearance-none cursor-pointer"
                     >
                       <option value="Team Leader">Team Leader</option>
                       <option value="Team Trainer">Team Trainer</option>
@@ -726,30 +761,41 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: {
                       <option value="Teacher">Teacher</option>
                       <option value="Counsellor">Counsellor</option>
                     </select>
-                    <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 rotate-90 text-white/40 pointer-events-none" size={16} />
+                    <ChevronRight className="absolute right-3.5 top-1/2 -translate-y-1/2 rotate-90 text-slate-400 pointer-events-none" size={16} />
                   </div>
                 </div>
               )}
 
+              {/* Password Input */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-[1.5px] text-white/70 flex items-center gap-1.5 pl-1">
-                  <Lock size={12} className="text-[#F5C542]" />
+                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 pl-1">
+                  <Lock size={12} className="text-blue-600" />
                   {mode === 'login' ? 'ACCESS PASSWORD' : 'CREATE PASSWORD'}
                 </label>
                 <div className="relative">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40" size={17} />
+                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                   <input 
                     required
+                    readOnly
                     type={showPass ? "text" : "password"}
-                    placeholder="••••••••••••"
+                    inputMode="none"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    placeholder="Enter password..."
                     value={password}
+                    onFocus={(e) => {
+                      e.target.blur();
+                      setActiveKeypad('password');
+                    }}
+                    onClick={() => setActiveKeypad('password')}
                     onChange={e => setPassword(e.target.value)}
-                    className="w-full bg-[#040D1F]/80 border border-[#F5C542]/20 rounded-2xl py-3.5 pl-11 pr-11 text-white text-sm outline-none focus:border-[#F5C542] focus:ring-1 focus:ring-[#F5C542]/30 transition-all"
+                    className="w-full bg-slate-50/80 border border-slate-200 rounded-xl py-2.5 pl-10 pr-10 text-slate-900 text-sm outline-none focus:bg-white focus:border-blue-600 focus:ring-4 focus:ring-blue-100 transition-all font-mono cursor-pointer select-none"
                   />
                   <button 
                     type="button"
                     onClick={() => setShowPass(!showPass)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 hover:text-[#F5C542] transition-colors p-1"
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors p-1"
                   >
                     {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
@@ -758,12 +804,12 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: {
 
               {/* Remember Me & Forgot Password */}
               {mode === 'login' && (
-                <div className="flex items-center justify-between text-xs pt-1">
-                  <label className="flex items-center gap-2 cursor-pointer text-white/70 hover:text-white transition-colors">
-                    <input type="checkbox" className="rounded border-white/20 bg-white/5 text-[#F5C542] focus:ring-0 w-3.5 h-3.5" />
+                <div className="flex items-center justify-between text-xs pt-0.5">
+                  <label className="flex items-center gap-2 cursor-pointer text-slate-600 hover:text-slate-900 transition-colors">
+                    <input type="checkbox" className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5" />
                     <span>Remember me</span>
                   </label>
-                  <button type="button" onClick={() => alert("Please contact your administrator for password reset.")} className="text-[#F5C542] hover:underline font-medium">
+                  <button type="button" onClick={() => alert("Please contact your administrator for password reset.")} className="text-blue-600 hover:underline font-semibold">
                     Forgot Password?
                   </button>
                 </div>
@@ -773,19 +819,22 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: {
               <button 
                 type="submit"
                 disabled={loading}
-                className="w-full relative py-4 mt-3 bg-gradient-to-r from-[#F5C542] via-[#E5B532] to-[#D5A522] rounded-2xl text-[#051126] font-extrabold text-sm tracking-wider uppercase shadow-[0_8px_25px_rgba(245,197,66,0.35)] hover:shadow-[0_12px_32px_rgba(245,197,66,0.5)] active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                className="w-full py-3.5 mt-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold text-sm tracking-wide rounded-xl shadow-md shadow-blue-600/20 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 <span>{loading ? 'Please wait...' : (mode === 'login' ? 'Sign In' : 'Create Account')}</span>
-                {!loading && <ArrowRight size={18} />}
+                {!loading && <ArrowRight size={16} />}
               </button>
 
-              <div className="text-center pt-3">
-                <p className="text-xs text-white/60">
+              <div className="text-center pt-2">
+                <p className="text-xs text-slate-600">
                   {mode === 'login' ? "Don't have an account? " : "Already have an account? "}
                   <button 
                     type="button"
-                    onClick={() => setMode(mode === 'login' ? 'register' : 'login')}
-                    className="text-[#F5C542] font-bold underline hover:text-white transition-colors ml-1"
+                    onClick={() => {
+                      setMode(mode === 'login' ? 'register' : 'login');
+                      setActiveKeypad(null);
+                    }}
+                    className="text-blue-600 font-bold underline hover:text-blue-700 transition-colors ml-1"
                   >
                     {mode === 'login' ? 'Register Here' : 'Login Here'}
                   </button>
@@ -796,15 +845,34 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: {
         </div>
 
         {/* Security Shield Icon & Footer */}
-        <div className="mt-8 pt-5 border-t border-white/10 flex flex-col items-center gap-2 text-center">
-          <div className="w-9 h-9 rounded-full bg-[#F5C542]/10 border border-[#F5C542]/30 flex items-center justify-center text-[#F5C542] shadow-[0_0_12px_rgba(245,197,66,0.2)]">
-            <Shield size={18} />
+        <div className="mt-5 pt-3 border-t border-slate-100 flex flex-col items-center gap-1 text-center">
+          <div className="w-7 h-7 rounded-full bg-blue-50 border border-blue-200/60 flex items-center justify-center text-blue-600">
+            <Shield size={14} />
           </div>
-          <p className="text-[9px] text-white/40 uppercase tracking-[2px] font-black mt-1">
-            © 2025 UNITY DIGITAL AGENCY ALL RIGHTS RESERVED
+          <p className="text-[9px] text-slate-400 uppercase tracking-widest font-bold">
+            © 2025 Unity Earning Platform
           </p>
         </div>
       </motion.div>
+
+      {/* BOTTOM DOCKED VIRTUAL KEYPADS (Prevents phone native keyboard, docks at bottom) */}
+      {activeKeypad === 'phone' && (
+        <PhoneKeypad 
+          value={whatsapp} 
+          onChange={setWhatsapp} 
+          onClose={() => setActiveKeypad(null)} 
+          title={mode === 'login' ? "WhatsApp Number" : "Personal Phone Number"}
+        />
+      )}
+
+      {(activeKeypad === 'password' || activeKeypad === 'admin') && (
+        <PasswordKeyboard 
+          value={password} 
+          onChange={setPassword} 
+          onClose={() => setActiveKeypad(null)} 
+          title={activeKeypad === 'admin' ? "Admin Access Password" : (mode === 'login' ? "Account Password" : "Create New Password")}
+        />
+      )}
     </div>
   );
 };
@@ -998,27 +1066,21 @@ const MonthlySubmissionSummaryCard = ({
   const currentStatus = statusConfig[userStats.submissionStatus as 'Submitted' | 'Pending' | 'Missed'] || statusConfig.Pending;
 
   return (
-    <div className="bg-gradient-to-br from-amber-500/10 via-surface/90 to-surface border border-amber-500/40 rounded-[2rem] p-4 sm:p-5 mb-4 relative overflow-hidden shadow-xl group">
-      <div className="absolute -top-10 -right-10 w-32 h-32 bg-amber-500/5 blur-3xl rounded-full" />
-      
+    <div className="neu-card bg-[#dce7f3] border border-blue-200/80 rounded-2xl p-4 sm:p-5 mb-4 relative overflow-hidden shadow-md group">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 relative z-10">
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center overflow-hidden shadow-inner flex-shrink-0">
-            {profilePic ? (
-              <img src={profilePic} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-            ) : (
-              <User className="text-amber-400" size={28} />
-            )}
+        <div className="flex items-center gap-3.5">
+          <div className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl neu-card-sm border border-blue-200/80 flex items-center justify-center overflow-hidden shadow-sm flex-shrink-0">
+            <CartoonAvatar src={profilePic} name={userName} />
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h3 className="text-base sm:text-lg font-black text-white font-serif truncate">আমার অ্যাকাউন্ট সামারি</h3>
-              <span className="bg-amber-500 text-bg text-[9px] font-black px-1.5 py-0.5 rounded uppercase flex-shrink-0">আপনি</span>
+              <h3 className="text-base sm:text-lg font-black text-[#090d16] tracking-tight truncate">আমার অ্যাকাউন্ট সামারি</h3>
+              <span className="bg-blue-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded-md uppercase flex-shrink-0">আপনি</span>
             </div>
-            <div className="flex items-center gap-3 mt-0.5">
-              <p className="text-[11px] text-muted-main font-medium truncate">{userName}</p>
-              <span className="w-1 h-1 bg-white/20 rounded-full flex-shrink-0" />
-              <div className={`flex items-center gap-1.5 text-[10px] font-bold ${currentStatus.badgeClass} px-0 py-0 flex-shrink-0`}>
+            <div className="flex items-center gap-2.5 mt-0.5">
+              <p className="text-xs text-slate-700 font-bold truncate">{userName}</p>
+              <span className="w-1 h-1 bg-slate-400 rounded-full flex-shrink-0" />
+              <div className={`flex items-center gap-1.5 text-[10px] font-bold ${currentStatus.badgeClass} px-1.5 py-0.5 rounded-md flex-shrink-0 neu-inset`}>
                 <div className={`w-1.5 h-1.5 rounded-full ${currentStatus.dotClass}`} />
                 আজ: {currentStatus.label}
               </div>
@@ -1030,9 +1092,9 @@ const MonthlySubmissionSummaryCard = ({
           {onOpenCalendar && (
             <button 
               onClick={onOpenCalendar}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-[9px] font-black text-white uppercase tracking-wider transition-all active:scale-[0.98] shadow-lg"
+              className="flex items-center gap-1.5 px-3 py-1.5 neu-btn rounded-xl text-[10px] font-black text-slate-800 hover:text-blue-700 uppercase tracking-wider transition-all active:scale-[0.98] shadow-sm"
             >
-              <Calendar size={12} className="text-amber-400" />
+              <Calendar size={13} className="text-blue-600" />
               Calendar
             </button>
           )}
@@ -1244,12 +1306,8 @@ const AllMembersSubmissionSheet: React.FC<AllMembersSubmissionSheetProps> = ({
               >
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-11 h-11 rounded-xl bg-surface border border-white/10 overflow-hidden flex items-center justify-center font-black text-amber-400 flex-shrink-0">
-                      {item.profilePic ? (
-                        <img src={item.profilePic} alt={item.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                      ) : (
-                        item.name[0]?.toUpperCase()
-                      )}
+                    <div className="w-11 h-11 rounded-xl neu-card-sm border border-slate-300/80 overflow-hidden flex items-center justify-center flex-shrink-0">
+                      <CartoonAvatar src={item.profilePic} name={item.name} />
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
@@ -2475,6 +2533,8 @@ export default function App() {
   const [stlAttendance, setStlAttendance] = useState<STLAttendance[]>([]);
   const [showSTLModal, setShowSTLModal] = useState(false);
   const [showSTLHistory, setShowSTLHistory] = useState<boolean>(false);
+  const [selectedStlForAssign, setSelectedStlForAssign] = useState<STLMember | null>(null);
+  const [showStlAssignModal, setShowStlAssignModal] = useState(false);
 
   const [demoMembers, setDemoMembers] = useState<DemoMember[]>([]);
   const [demoAttendance, setDemoAttendance] = useState<DemoAttendance[]>([]);
@@ -2789,8 +2849,20 @@ export default function App() {
     if (config.timerActive && config.timerEndTime) {
       const updateRemaining = () => {
         const now = Date.now();
-        const remaining = Math.max(0, Math.floor((config.timerEndTime - now) / 1000));
+        const diff = config.timerEndTime - now;
+        const remaining = Math.max(0, Math.floor(diff / 1000));
         setTimeLeft(remaining);
+
+        // When timer reaches 0, auto turn it off
+        if (remaining <= 0) {
+          if (interval) clearInterval(interval);
+          if (isAdmin) {
+            updateDoc(doc(db, 'config', 'global'), {
+              timerActive: false,
+              timerEndTime: 0
+            }).catch(console.error);
+          }
+        }
       };
 
       updateRemaining();
@@ -2802,7 +2874,7 @@ export default function App() {
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [config.timerActive, config.timerEndTime]);
+  }, [config.timerActive, config.timerEndTime, isAdmin]);
 
   // Auto-timer Logic
   const configRef = useRef(config);
@@ -2811,7 +2883,9 @@ export default function App() {
   }, [config]);
 
   useEffect(() => {
-    // Check auto-timer on admin client
+    // Only admin client should run the auto-timer trigger to avoid racing across visitors
+    if (!isAdmin) return;
+
     const interval = setInterval(async () => {
       const currentConfig = configRef.current;
       if (!currentConfig || !currentConfig.autoTimerEnabled || !currentConfig.autoTimerTime) return;
@@ -2821,15 +2895,19 @@ export default function App() {
       const mm = String(now.getMinutes()).padStart(2, '0');
       const currentTime = `${HH}:${mm}`;
       const today = format(now, 'yyyy-MM-dd');
-      const duration = currentConfig.timerDuration || 1800; // 30 mins
+      let duration = currentConfig.timerDuration || 1800; // 30 mins
+      if (typeof duration !== 'number' || duration < 600) {
+        duration = 1800;
+      }
       
       if (currentTime === currentConfig.autoTimerTime && currentConfig.lastAutoStartTime !== today && !currentConfig.timerActive) {
         console.log('Auto-timer triggered for time:', currentTime);
         try {
+          const startTime = Date.now();
           await updateDoc(doc(db, 'config', 'global'), {
             timerActive: true,
-            timerStartedAt: Date.now(),
-            timerEndTime: Date.now() + duration * 1000,
+            timerStartedAt: startTime,
+            timerEndTime: startTime + duration * 1000,
             timerDuration: duration,
             lastAutoStartTime: today
           });
@@ -2841,7 +2919,7 @@ export default function App() {
     }, 15000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [isAdmin]);
 
   const formatTime = (s: number) => {
     const mins = Math.floor(s / 60).toString().padStart(2, '0');
@@ -3249,12 +3327,81 @@ export default function App() {
       await updateDoc(userRef, {
         password: newPassword
       });
-      showMsg('পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে!');
+      const updatedUser = { ...currentAuthUser, password: newPassword };
+      setAuthenticatedUser(updatedUser);
+      localStorage.setItem('unity_user', JSON.stringify(updatedUser));
+      showMsg('পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে!', 'success');
       setNewPassword('');
     } catch (err) {
       showMsg('পাসওয়ার্ড পরিবর্তন করতে ব্যর্থ হয়েছে!', 'error');
     } finally {
       setUpdatingPass(false);
+    }
+  };
+
+  const handleSelectCartoonAvatar = async (cartoonId: string) => {
+    if (!currentAuthUser?.whatsapp) {
+      showMsg('অনুগ্রহ করে আগে লগইন করুন!', 'error');
+      return;
+    }
+    const avatarValue = `cartoon:${cartoonId}`;
+    setSavingPic(true);
+    try {
+      const userRef = doc(db, 'registeredUsers', currentAuthUser.whatsapp);
+      await updateDoc(userRef, { profilePic: avatarValue });
+
+      const matchedMember = members.find(m => 
+        (m.whatsapp && m.whatsapp.replace(/\s+/g, '') === currentAuthUser.whatsapp.replace(/\s+/g, '')) || 
+        (m.name && m.name.trim().toLowerCase() === currentAuthUser.fullName.trim().toLowerCase())
+      );
+      if (matchedMember && matchedMember.id) {
+        try {
+          const memberRef = doc(db, 'members', matchedMember.id);
+          await updateDoc(memberRef, { profilePic: avatarValue });
+        } catch (mErr) {
+          console.warn("Could not update member record:", mErr);
+        }
+      }
+
+      const updatedUser = { ...currentAuthUser, profilePic: avatarValue };
+      setAuthenticatedUser(updatedUser);
+      localStorage.setItem('unity_user', JSON.stringify(updatedUser));
+      showMsg('কার্টুন অ্যাভাটার সফলভাবে যুক্ত হয়েছে!', 'success');
+    } catch (err) {
+      showMsg('অ্যাভাটার সেভ করতে সমস্যা হয়েছে', 'error');
+    } finally {
+      setSavingPic(false);
+    }
+  };
+
+  const handleRemoveProfilePic = async () => {
+    if (!currentAuthUser?.whatsapp) return;
+    setSavingPic(true);
+    try {
+      const userRef = doc(db, 'registeredUsers', currentAuthUser.whatsapp);
+      await updateDoc(userRef, { profilePic: '' });
+
+      const matchedMember = members.find(m => 
+        (m.whatsapp && m.whatsapp.replace(/\s+/g, '') === currentAuthUser.whatsapp.replace(/\s+/g, '')) || 
+        (m.name && m.name.trim().toLowerCase() === currentAuthUser.fullName.trim().toLowerCase())
+      );
+      if (matchedMember && matchedMember.id) {
+        try {
+          const memberRef = doc(db, 'members', matchedMember.id);
+          await updateDoc(memberRef, { profilePic: '' });
+        } catch (mErr) {
+          console.warn("Could not update member record:", mErr);
+        }
+      }
+
+      const updatedUser = { ...currentAuthUser, profilePic: '' };
+      setAuthenticatedUser(updatedUser);
+      localStorage.setItem('unity_user', JSON.stringify(updatedUser));
+      showMsg('প্রোফাইল পিকচার মুছে ফেলা হয়েছে, অটো কার্টুন সক্রিয়!', 'success');
+    } catch (err) {
+      showMsg('ছবি মুছতে সমস্যা হয়েছে', 'error');
+    } finally {
+      setSavingPic(false);
     }
   };
 
@@ -3339,7 +3486,7 @@ export default function App() {
     }
   };
 
-  const addMember = async (name: string, type: 'leader' | 'trainer') => {
+  const addMember = async (name: string, type: 'leader' | 'trainer', target: number = 0) => {
     if (!name.trim()) return;
     try {
       const batch = writeBatch(db);
@@ -3349,6 +3496,7 @@ export default function App() {
       batch.set(memberRef, {
         name,
         type,
+        target: Number(target) || 0,
         createdAt: serverTimestamp()
       });
 
@@ -3363,9 +3511,21 @@ export default function App() {
       });
 
       await batch.commit();
-      showMsg(`${name} added to ${type} and ranking!`);
+      showMsg(`${name} added to ${type} (Target: ${target || 0})!`);
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'members', showMsg);
+    }
+  };
+
+  const updateMemberTarget = async (id: string, target: number) => {
+    try {
+      const cleanTarget = Math.max(0, Number(target) || 0);
+      await updateDoc(doc(db, 'members', id), {
+        target: cleanTarget
+      });
+      showMsg('টার্গেট সফলভাবে আপডেট হয়েছে!', 'success');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `members/${id}`, showMsg);
     }
   };
 
@@ -3403,10 +3563,17 @@ export default function App() {
 
   const startTimer = async (overrideDuration?: number) => {
     try {
-      const duration = overrideDuration || timerDurationSelect || config.timerDuration || 1800; // 30 mins default
-      const endTime = Date.now() + duration * 1000;
+      // Ensure minimum 10 minutes (600s), default to 30 minutes (1800s)
+      let duration = overrideDuration || timerDurationSelect || 1800;
+      if (typeof duration !== 'number' || duration < 600 || isNaN(duration)) {
+        duration = 1800;
+      }
+      const now = Date.now();
+      const endTime = now + duration * 1000;
+      setTimeLeft(duration);
       await updateDoc(doc(db, 'config', 'global'), {
         timerActive: true,
+        timerStartedAt: now,
         timerEndTime: endTime,
         timerDuration: duration
       });
@@ -3418,8 +3585,10 @@ export default function App() {
 
   const stopTimer = async () => {
     try {
+      setTimeLeft(0);
       await updateDoc(doc(db, 'config', 'global'), {
-        timerActive: false
+        timerActive: false,
+        timerEndTime: 0
       });
       showMsg('Timer stopped', 'error');
     } catch (err) {
@@ -3434,6 +3603,17 @@ export default function App() {
         announcementActive: active
       });
       showMsg(active ? 'Announcement broadcasted' : 'Announcement hidden');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, 'config/global', showMsg);
+    }
+  };
+
+  const updateWebsiteLogo = async (logoUrl: string | null) => {
+    try {
+      await updateDoc(doc(db, 'config', 'global'), {
+        customLogo: logoUrl || ''
+      });
+      showMsg(logoUrl ? 'ওয়েবসাইট লোগো সফলভাবে আপডেট হয়েছে!' : 'ডিফল্ট লোগোতে রিসেট করা হয়েছে', 'success');
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'config/global', showMsg);
     }
@@ -3597,13 +3777,50 @@ export default function App() {
     }
   };
 
-  const addSTLMember = async (name: string) => {
+  const addSTLMember = async (name: string, target?: number) => {
     if (!name.trim()) return;
     try {
-      await addDoc(collection(db, 'stlMembers'), { name, createdAt: serverTimestamp() });
+      await addDoc(collection(db, 'stlMembers'), { 
+        name, 
+        target: target || 0,
+        createdAt: serverTimestamp() 
+      });
       showMsg('Member added to STL list');
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'stlMembers', showMsg);
+    }
+  };
+
+  const updateStlTarget = async (id: string, target: number) => {
+    try {
+      let realDocId = id;
+      if (id.startsWith('user-')) {
+        const userStl = approvedUsers.find(u => `user-${u.whatsapp}` === id);
+        const nameToFind = userStl ? userStl.fullName.trim().toLowerCase() : '';
+        const existingDoc = stlMembers.find(s => s.name.trim().toLowerCase() === nameToFind);
+        if (existingDoc) {
+          realDocId = existingDoc.id;
+        } else if (userStl) {
+          const docRef = await addDoc(collection(db, 'stlMembers'), {
+            name: userStl.fullName,
+            assignedTLs: [],
+            whatsapp: userStl.whatsapp,
+            profilePic: userStl.profilePic || '',
+            target,
+            createdAt: serverTimestamp()
+          });
+          realDocId = docRef.id;
+        }
+      }
+
+      if (realDocId && !realDocId.startsWith('user-')) {
+        await updateDoc(doc(db, 'stlMembers', realDocId), {
+          target
+        });
+      }
+      showMsg('STL টার্গেট সফলভাবে আপডেট হয়েছে', 'success');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `stlMembers/${id}`, showMsg);
     }
   };
 
@@ -3613,6 +3830,67 @@ export default function App() {
       showMsg('Member removed from STL list');
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, `stlMembers/${id}`, showMsg);
+    }
+  };
+
+  const saveStlAssignments = async (stlId: string, assignedTlIds: string[]) => {
+    try {
+      let realDocId = stlId;
+
+      if (stlId.startsWith('user-')) {
+        const userStl = approvedUsers.find(u => `user-${u.whatsapp}` === stlId);
+        const nameToFind = userStl ? userStl.fullName.trim().toLowerCase() : '';
+        const existingDoc = stlMembers.find(s => s.name.trim().toLowerCase() === nameToFind);
+        if (existingDoc) {
+          realDocId = existingDoc.id;
+        } else if (userStl) {
+          const docRef = await addDoc(collection(db, 'stlMembers'), {
+            name: userStl.fullName,
+            assignedTLs: assignedTlIds,
+            whatsapp: userStl.whatsapp,
+            profilePic: userStl.profilePic || '',
+            createdAt: serverTimestamp()
+          });
+          realDocId = docRef.id;
+        }
+      }
+
+      if (realDocId && !realDocId.startsWith('user-')) {
+        await updateDoc(doc(db, 'stlMembers', realDocId), {
+          assignedTLs: assignedTlIds
+        });
+      }
+
+      // Ensure assigned TLs are removed from any OTHER STL to prevent duplicate assignment
+      for (const otherStl of stlMembers) {
+        if (otherStl.id !== realDocId && otherStl.assignedTLs && otherStl.assignedTLs.length > 0) {
+          const filtered = otherStl.assignedTLs.filter(id => !assignedTlIds.includes(id));
+          if (filtered.length !== otherStl.assignedTLs.length) {
+            await updateDoc(doc(db, 'stlMembers', otherStl.id), {
+              assignedTLs: filtered
+            });
+          }
+        }
+      }
+
+      showMsg('TL assignments updated successfully');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `stlMembers/${stlId}`, showMsg);
+    }
+  };
+
+  const removeTLFromSTL = async (stlId: string, tlId: string) => {
+    try {
+      const stl = stlMembers.find(s => s.id === stlId);
+      if (stl && stl.assignedTLs) {
+        const updated = stl.assignedTLs.filter(id => id !== tlId);
+        await updateDoc(doc(db, 'stlMembers', stlId), {
+          assignedTLs: updated
+        });
+        showMsg('TL removed from STL');
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `stlMembers/${stlId}`, showMsg);
     }
   };
 
@@ -4725,35 +5003,39 @@ export default function App() {
 
   if (!isAuthReady || !isConfigReady) {
     return (
-      <div className="min-h-screen bg-[#051126] text-white flex flex-col items-center justify-center p-6 relative overflow-hidden font-sans">
+      <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col items-center justify-center p-6 relative overflow-hidden font-sans">
         {/* Background ambient glow */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-[#F5C542]/10 rounded-full blur-[100px] pointer-events-none" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-500/10 rounded-full blur-[100px] pointer-events-none" />
 
-        <div className="relative flex flex-col items-center">
+        <div className="relative flex flex-col items-center z-10">
           {/* Round spinning container with 'U' inside */}
-          <div className="relative w-28 h-28 flex items-center justify-center mb-6">
+          <div className="relative w-24 h-24 flex items-center justify-center mb-6">
             {/* Spinning Outer Ring */}
             <motion.div
               animate={{ rotate: 360 }}
-              transition={{ repeat: Infinity, duration: 1.8, ease: "linear" }}
-              className="absolute inset-0 rounded-full border-[3.5px] border-transparent border-t-[#F5C542] border-r-[#F5C542]/50 shadow-[0_0_20px_rgba(245,197,66,0.35)]"
+              transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
+              className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-blue-600 border-r-blue-400 shadow-sm"
             />
-            {/* Secondary subtle glowing ring */}
-            <div className="absolute inset-1 rounded-full border border-[#F5C542]/20" />
+            {/* Secondary subtle ring */}
+            <div className="absolute inset-1.5 rounded-full border border-blue-100" />
             
-            {/* Inner Circle with 'U' */}
-            <div className="w-20 h-20 rounded-full bg-gradient-to-b from-[#0A2046] to-[#040D1F] border-2 border-[#F5C542] flex items-center justify-center shadow-[0_0_25px_rgba(245,197,66,0.4)]">
-              <span className="font-extrabold text-3xl text-[#F5C542] tracking-wider drop-shadow-[0_2px_10px_rgba(245,197,66,0.7)]">
-                U
-              </span>
+            {/* Inner Circle with 'U' or custom logo */}
+            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center shadow-lg shadow-blue-500/30 overflow-hidden p-1">
+              {config.customLogo ? (
+                <img src={config.customLogo} alt="Logo" className="w-full h-full object-contain rounded-full" />
+              ) : (
+                <span className="font-extrabold text-2xl text-white tracking-wider">
+                  U
+                </span>
+              )}
             </div>
           </div>
 
           {/* Brand Titles */}
-          <h2 className="text-xl font-extrabold text-white tracking-wide flex items-center gap-1.5">
-            Unity <span className="text-[#F5C542]">Earning</span>
+          <h2 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-1.5">
+            Unity <span className="text-blue-600">Earning</span>
           </h2>
-          <p className="text-[10px] font-bold tracking-[3.5px] uppercase text-[#F5C542]/80 mt-1">
+          <p className="text-[11px] font-bold tracking-[3px] uppercase text-slate-400 mt-1.5">
             E-Learning Platform
           </p>
         </div>
@@ -4790,104 +5072,109 @@ export default function App() {
               }
             }}
             exit={{ y: -100, opacity: 0 }}
-            className="fixed top-2 left-1/2 -translate-x-1/2 z-[1000] w-[95%] max-w-2xl"
+            className="fixed top-3 left-1/2 -translate-x-1/2 z-[1000] w-[95%] max-w-2xl"
           >
-            <motion.div 
-              animate={{ 
-                y: [0, -8, 0],
-                scale: [1, 1.01, 1]
-              }}
-              transition={{
-                duration: 1.5,
-                repeat: Infinity,
-                ease: "easeInOut"
-              }}
-              className="bg-gradient-to-r from-blue-600 via-purple-600 to-blue-600 bg-300% animate-gradient-x p-[1.5px] rounded-2xl shadow-[0_25px_60px_rgba(37,99,235,0.5)] cursor-default"
-            >
-              <div className="bg-surface/95 backdrop-blur-md rounded-2xl p-4 flex items-center gap-4 border border-white/10 relative overflow-hidden">
-                <div className="bg-blue-accent/20 p-2.5 rounded-xl text-blue-accent animate-bounce">
-                  <Megaphone size={20} />
+            <div className="neu-card p-1.5 rounded-2xl border border-blue-400/50 shadow-2xl bg-[#dfe8f4]">
+              <div className="rounded-xl p-3.5 sm:p-4 flex items-start sm:items-center gap-3.5 relative overflow-hidden bg-gradient-to-r from-blue-100/90 via-white/90 to-amber-100/80 border border-white/80">
+                <div className="w-10 h-10 rounded-xl neu-btn-primary flex items-center justify-center text-white flex-shrink-0 shadow-md mt-0.5 sm:mt-0">
+                  <Megaphone size={19} className="animate-bounce" />
                 </div>
-                <div className="flex-1 min-w-0 pr-6">
-                  <div className="text-[10px] font-black uppercase tracking-[3px] text-blue-accent mb-1 flex items-center gap-2">
+                <div className="flex-1 min-w-0 pr-7">
+                  <div className="text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-blue-800 mb-1 flex items-center gap-2">
                     <span className="relative flex h-2 w-2">
-                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-accent opacity-75"></span>
-                       <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-accent"></span>
+                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-600 opacity-75"></span>
+                       <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-600"></span>
                     </span>
-                    Important Notice
+                    জরুরি ঘোষণা • Announcement
                   </div>
-                  <div className="text-sm font-bold text-white leading-relaxed break-words">{config.announcement}</div>
+                  <div className="text-sm sm:text-base font-black text-[#090d16] leading-relaxed break-words tracking-tight">
+                    {config.announcement}
+                  </div>
                 </div>
                 <button 
                   onClick={() => setAnnouncementDismissed(true)}
-                  className="absolute top-2 right-2 p-1.5 hover:bg-white/10 rounded-full text-muted-main hover:text-white transition-all"
+                  className="absolute top-2.5 right-2.5 w-8 h-8 rounded-xl neu-btn flex items-center justify-center text-slate-800 hover:text-red-600 transition-all active:scale-95"
                   title="Dismiss"
                 >
-                  <X size={16} />
+                  <X size={15} />
                 </button>
               </div>
-            </motion.div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
 
       {/* Header */}
-      <header className="sticky top-0 z-[200] bg-bg border-b border-border/20 px-4 sm:px-6 h-16 sm:h-20 flex items-center justify-between shadow-lg transition-all">
-        <div className="flex items-center gap-2 sm:gap-3">
-          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-gold to-gold2 flex items-center justify-center font-serif font-black text-bg text-base sm:text-lg shadow-[0_0_18px_rgba(245,200,66,0.25)] flex-shrink-0">
-            U
+      <header className="sticky top-0 z-[200] bg-[#d8e2ee]/95 backdrop-blur-xl border-b border-[#c4d2e2] px-3.5 sm:px-6 h-16 sm:h-20 flex items-center justify-between neu-raised-sm transition-all">
+        {/* Left: Logo & Title */}
+        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl neu-btn-primary flex items-center justify-center font-black text-white text-base sm:text-lg flex-shrink-0 shadow-sm overflow-hidden p-0.5">
+            {config.customLogo ? (
+              <img src={config.customLogo} alt="Unity Earning Logo" className="w-full h-full object-contain rounded-xl" />
+            ) : (
+              "U"
+            )}
           </div>
-          <div className="flex flex-col">
-            <div className="font-serif font-bold text-xs sm:text-base leading-tight text-white">
-              <span className="text-gold">Unity</span> Earning
+          <div className="flex flex-col min-w-0">
+            <div className="font-black text-sm sm:text-base leading-tight text-slate-900 truncate">
+              <span className="text-blue-600">Unity</span> Earning
             </div>
-            <div className="text-[8px] sm:text-[10px] text-muted-main tracking-[1.5px] sm:tracking-[2.5px] uppercase font-medium">E-Learning Platform</div>
+            <div className="text-[9px] sm:text-[10px] text-slate-600 tracking-[1.5px] uppercase font-bold truncate">
+              E-Learning Platform
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 sm:gap-3">
+        {/* Right: Actions (Home, Timer, Menu) Perfectly Aligned */}
+        <div className="flex items-center gap-2 sm:gap-2.5 flex-shrink-0">
+          {/* Quick Links / Home */}
           <button 
             onClick={() => setShowQuickLinksModal(true)}
-            className="relative w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center rounded-xl border border-blue-accent/30 bg-blue-accent/5 text-blue-accent hover:bg-blue-accent hover:text-bg transition-all shadow-[0_0_25px_rgba(37,99,235,0.2)] active:scale-90 overflow-hidden group"
+            className="w-10 h-10 sm:w-11 sm:h-11 flex items-center justify-center rounded-2xl neu-btn text-slate-800 hover:text-blue-600 transition-all active:scale-95 flex-shrink-0"
             title="Quick Links"
           >
-             <motion.div 
-               animate={{ 
-                 opacity: [0.2, 0.5, 0.2], 
-                 scale: [0.8, 1.2, 0.8],
-                 rotate: [0, 90, 0]
-               }}
-               transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
-               className="absolute inset-0 bg-blue-accent/20 blur-xl group-hover:bg-blue-accent/30"
-             />
-             <motion.div 
-               animate={{ 
-                 boxShadow: [
-                   "0 0 10px rgba(37,99,235,0.2)",
-                   "0 0 30px rgba(37,99,235,0.4)",
-                   "0 0 10px rgba(37,99,235,0.2)"
-                 ]
-               }}
-               transition={{ duration: 2, repeat: Infinity }}
-               className="relative z-10 w-full h-full flex items-center justify-center"
-             >
-               <Home size={26} className="relative z-10 animate-pulse" />
-             </motion.div>
+            <Home size={19} />
           </button>
 
-          {isTimerActive && (
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-green-accent/30 bg-green-accent/5 text-green-accent shadow-[0_0_15px_rgba(31,217,122,0.1)]">
-              <Clock size={14} className="animate-pulse" />
-              <span className="font-mono font-bold text-sm tracking-tighter">{formatTime(timeLeft)}</span>
+          {/* Live Timer or Start Button */}
+          {isTimerActive ? (
+            <div className="h-10 sm:h-11 flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 rounded-2xl neu-inset text-emerald-700 border border-emerald-300/70 bg-emerald-50/80 flex-shrink-0">
+              <Clock size={15} className="animate-pulse text-emerald-600 flex-shrink-0" />
+              <span className="font-mono font-black text-xs sm:text-sm tracking-tight text-emerald-800 whitespace-nowrap">
+                {formatTime(timeLeft)}
+              </span>
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); stopTimer(); }}
+                  className="ml-1 text-[10px] bg-red-500 hover:bg-red-600 text-white px-2 py-0.5 rounded-lg font-bold transition-all shadow-xs"
+                  title="Stop Timer"
+                >
+                  Stop
+                </button>
+              )}
             </div>
+          ) : (
+            isAdmin && (
+              <button
+                type="button"
+                onClick={() => startTimer(1800)}
+                className="h-10 sm:h-11 flex items-center gap-1.5 px-3 sm:px-4 rounded-2xl neu-btn-primary text-white transition-all text-xs font-bold active:scale-95 flex-shrink-0 shadow-sm"
+                title="Start 30-Minute Timer"
+              >
+                <Play size={13} fill="currentColor" />
+                <span className="font-mono font-bold">30m</span>
+              </button>
+            )
           )}
-          
+
+          {/* Menu Button */}
           <button 
             onClick={() => setShowMenu(!showMenu)}
-            className="w-10 h-10 flex items-center justify-center rounded-xl border border-gold/30 bg-gold/5 text-gold hover:bg-gold hover:text-bg transition-all shadow-[0_0_15px_rgba(245,200,66,0.15)] active:scale-90"
+            className="w-10 h-10 sm:w-11 sm:h-11 flex items-center justify-center rounded-2xl neu-btn text-slate-800 hover:text-blue-600 transition-all active:scale-95 flex-shrink-0"
             title="Open Menu"
           >
-            <Menu size={24} />
+            <Menu size={20} />
           </button>
         </div>
       </header>
@@ -4901,198 +5188,216 @@ export default function App() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setShowMenu(false)}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[400]" 
+              className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[400]" 
             />
             <motion.div 
               initial={{ x: '100%' }}
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed top-0 right-0 w-full max-w-[280px] h-full bg-surface border-l border-border2 z-[500] p-6 shadow-[-20px_0_60px_rgba(0,0,0,0.5)] overflow-y-auto custom-scrollbar"
+              className="fixed top-0 right-0 w-full max-w-[300px] h-full bg-[#e6ecf5] border-l border-[#d2dce8] z-[500] p-6 shadow-2xl overflow-y-auto custom-scrollbar"
             >
-              <div className="flex items-center justify-between mb-8 pb-4 border-b border-border">
-                <h2 className="font-serif text-xl text-gold">Menu</h2>
-                <button onClick={() => setShowMenu(false)} className="text-muted-main hover:text-white p-2">
-                  <X size={20} />
+              <div className="flex items-center justify-between mb-6 pb-4 border-b border-[#d2dce8]">
+                <h2 className="font-serif text-xl font-black text-slate-900">Menu Options</h2>
+                <button onClick={() => setShowMenu(false)} className="neu-btn p-2 rounded-xl text-slate-700 hover:text-blue-600">
+                  <X size={18} />
                 </button>
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-3">
+                {currentAuthUser && (
+                  <button 
+                    onClick={() => { setShowMenu(false); setUserTab('profile'); }}
+                    className="w-full flex items-center justify-between p-3.5 rounded-2xl neu-card-sm hover:scale-[1.01] transition-all border border-blue-300/80 bg-blue-50/50"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl neu-card-sm border border-slate-300 overflow-hidden flex items-center justify-center flex-shrink-0">
+                        <CartoonAvatar src={currentAuthUser.profilePic} name={currentAuthUser.fullName} />
+                      </div>
+                      <div className="text-left">
+                        <span className="block text-sm font-bold text-slate-900 truncate max-w-[150px]">{currentAuthUser.fullName}</span>
+                        <span className="block text-[10px] text-blue-700 uppercase font-bold tracking-wider">আমার প্রোফাইল</span>
+                      </div>
+                    </div>
+                    <ChevronRight size={18} className="text-blue-600" />
+                  </button>
+                )}
+
                 <button 
                   onClick={() => { setShowMenu(false); setShowApplyModal(true); }}
-                  className="w-full flex items-center justify-between p-4 rounded-2xl bg-gold/10 border border-gold/30 hover:bg-gold/20 group transition-all"
+                  className="w-full flex items-center justify-between p-3.5 rounded-2xl neu-card-sm hover:scale-[1.01] transition-all"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-gold text-bg flex items-center justify-center shadow-lg">
-                      <Briefcase size={20} />
+                    <div className="w-10 h-10 rounded-xl neu-btn-primary flex items-center justify-center">
+                      <Briefcase size={18} />
                     </div>
                     <div className="text-left">
-                      <span className="block text-sm font-black text-gold">Apply for the</span>
-                      <span className="block text-[10px] text-white/60 uppercase font-black">Sub-admin Position</span>
+                      <span className="block text-sm font-bold text-slate-900">Apply for Position</span>
+                      <span className="block text-[10px] text-slate-500 uppercase font-semibold">Sub-admin Position</span>
                     </div>
                   </div>
-                  <ChevronRight size={18} className="text-gold" />
+                  <ChevronRight size={18} className="text-blue-600" />
                 </button>
 
                 <button 
                   onClick={() => { setShowMenu(false); setShowLeaderRankingModal(true); }}
-                  className="w-full flex items-center justify-between p-4 rounded-2xl bg-gold/10 border border-gold/30 hover:bg-gold/20 group transition-all"
+                  className="w-full flex items-center justify-between p-3.5 rounded-2xl neu-card-sm hover:scale-[1.01] transition-all"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-gold text-bg flex items-center justify-center shadow-lg">
-                      <Crown size={20} />
+                    <div className="w-10 h-10 rounded-xl neu-btn-primary flex items-center justify-center">
+                      <Crown size={18} />
                     </div>
                     <div className="text-left">
-                      <span className="block text-sm font-black text-gold">Leader Ranking</span>
-                      <span className="block text-[10px] text-white/60 uppercase font-black">Sub-Admin Board</span>
+                      <span className="block text-sm font-bold text-slate-900">Leader Ranking</span>
+                      <span className="block text-[10px] text-slate-500 uppercase font-semibold">Sub-Admin Board</span>
                     </div>
                   </div>
-                  <ChevronRight size={18} className="text-gold" />
+                  <ChevronRight size={18} className="text-blue-600" />
                 </button>
 
                 <button 
                   onClick={() => { setShowMenu(false); setShowTrainerRankingModal(true); }}
-                  className="w-full flex items-center justify-between p-4 rounded-2xl bg-blue-accent/10 border border-blue-accent/30 hover:bg-blue-accent/20 group transition-all"
+                  className="w-full flex items-center justify-between p-3.5 rounded-2xl neu-card-sm hover:scale-[1.01] transition-all"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-blue-accent text-bg flex items-center justify-center shadow-lg">
-                      <Award size={20} />
+                    <div className="w-10 h-10 rounded-xl neu-btn-primary flex items-center justify-center">
+                      <Award size={18} />
                     </div>
                     <div className="text-left">
-                      <span className="block text-sm font-black text-blue-accent">Trainer Ranking</span>
-                      <span className="block text-[10px] text-white/60 uppercase font-black">Sub-Admin Board</span>
+                      <span className="block text-sm font-bold text-slate-900">Trainer Ranking</span>
+                      <span className="block text-[10px] text-slate-500 uppercase font-semibold">Sub-Admin Board</span>
                     </div>
                   </div>
-                  <ChevronRight size={18} className="text-blue-accent" />
+                  <ChevronRight size={18} className="text-blue-600" />
                 </button>
 
                 <button 
                   onClick={() => { setShowMenu(false); setShowAttendanceModal(true); }}
-                  className="w-full flex items-center justify-between p-4 rounded-2xl bg-purple-500/10 border border-purple-500/30 hover:bg-purple-500/20 group transition-all"
+                  className="w-full flex items-center justify-between p-3.5 rounded-2xl neu-card-sm hover:scale-[1.01] transition-all"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-purple-500 text-bg flex items-center justify-center shadow-lg">
-                      <School size={20} />
+                    <div className="w-10 h-10 rounded-xl bg-purple-600 text-white flex items-center justify-center shadow-sm">
+                      <School size={18} />
                     </div>
                     <div className="text-left">
-                      <span className="block text-sm font-black text-purple-500">Teacher</span>
-                      <span className="block text-[10px] text-white/60 uppercase font-black">Attendance System</span>
+                      <span className="block text-sm font-bold text-slate-900">Teacher</span>
+                      <span className="block text-[10px] text-slate-500 uppercase font-semibold">Attendance System</span>
                     </div>
                   </div>
-                  <ChevronRight size={18} className="text-purple-500" />
+                  <ChevronRight size={18} className="text-purple-600" />
                 </button>
 
                 <button 
                   onClick={() => { setShowMenu(false); setShowOverallStatsModal(true); }}
-                  className="w-full flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 group transition-all"
+                  className="w-full flex items-center justify-between p-3.5 rounded-2xl neu-card-sm hover:scale-[1.01] transition-all"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-surface border border-border2 text-gold flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
-                      <Trophy size={20} />
+                    <div className="w-10 h-10 rounded-xl neu-btn text-amber-600 flex items-center justify-center">
+                      <Trophy size={18} />
                     </div>
                     <div className="text-left">
-                      <span className="block text-sm font-black text-white group-hover:text-gold transition-colors">Total Convert</span>
-                      <span className="block text-[10px] text-white/40 uppercase font-black">Overall Progress Board</span>
+                      <span className="block text-sm font-bold text-slate-900">Total Convert</span>
+                      <span className="block text-[10px] text-slate-500 uppercase font-semibold">Overall Progress Board</span>
                     </div>
                   </div>
-                  <ChevronRight size={18} className="text-muted-main group-hover:text-gold" />
+                  <ChevronRight size={18} className="text-slate-400" />
                 </button>
 
                 {(hasStlAccess || config.stlActive) && (
                   <button 
                     onClick={() => { setShowMenu(false); setShowSTLModal(true); }}
-                    className="w-full flex items-center justify-between p-4 rounded-2xl bg-blue-accent/10 border border-blue-accent/30 hover:bg-blue-accent/20 group transition-all"
+                    className="w-full flex items-center justify-between p-3.5 rounded-2xl neu-card-sm hover:scale-[1.01] transition-all"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-blue-accent text-bg flex items-center justify-center shadow-lg">
-                        <Users size={20} />
+                      <div className="w-10 h-10 rounded-xl neu-btn-primary flex items-center justify-center">
+                        <Users size={18} />
                       </div>
                       <div className="text-left">
-                        <span className="block text-sm font-black text-blue-accent">STL Meeting</span>
-                        <span className="block text-[10px] text-white/60 uppercase font-black">Attendance System</span>
+                        <span className="block text-sm font-bold text-slate-900">STL Meeting</span>
+                        <span className="block text-[10px] text-slate-500 uppercase font-semibold">Attendance System</span>
                       </div>
                     </div>
-                    <ChevronRight size={18} className="text-blue-accent" />
+                    <ChevronRight size={18} className="text-blue-600" />
                   </button>
                 )}
 
                 {(hasStlAccess || config.demoActive) && (
                   <button 
                     onClick={() => { setShowMenu(false); setShowDemoModal(true); }}
-                    className="w-full flex items-center justify-between p-4 rounded-2xl bg-green-500/10 border border-green-500/30 hover:bg-green-500/20 group transition-all"
+                    className="w-full flex items-center justify-between p-3.5 rounded-2xl neu-card-sm hover:scale-[1.01] transition-all"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-green-500 text-bg flex items-center justify-center shadow-lg">
-                        <Presentation size={20} />
+                      <div className="w-10 h-10 rounded-xl neu-btn-emerald flex items-center justify-center">
+                        <Presentation size={18} />
                       </div>
                       <div className="text-left">
-                        <span className="block text-sm font-black text-green-500">Demo</span>
-                        <span className="block text-[10px] text-white/60 uppercase font-black">Attendance System</span>
+                        <span className="block text-sm font-bold text-slate-900">Demo</span>
+                        <span className="block text-[10px] text-slate-500 uppercase font-semibold">Attendance System</span>
                       </div>
                     </div>
-                    <ChevronRight size={18} className="text-green-500" />
+                    <ChevronRight size={18} className="text-emerald-600" />
                   </button>
                 )}
 
                 <button 
                   onClick={() => { setShowMenu(false); setShowCounsellingModal(true); }}
-                  className="w-full flex items-center justify-between p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 hover:bg-indigo-500/20 group transition-all"
+                  className="w-full flex items-center justify-between p-3.5 rounded-2xl neu-card-sm hover:scale-[1.01] transition-all"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-indigo-500 text-bg flex items-center justify-center shadow-lg">
-                      <Clock size={20} />
+                    <div className="w-10 h-10 rounded-xl neu-btn text-indigo-600 flex items-center justify-center">
+                      <Clock size={18} />
                     </div>
                     <div className="text-left">
-                      <span className="block text-sm font-black text-indigo-500">Counselling Schedule</span>
-                      <span className="block text-[10px] text-white/60 uppercase font-black">Meeting Times & Payments</span>
+                      <span className="block text-sm font-bold text-slate-900">Counselling Schedule</span>
+                      <span className="block text-[10px] text-slate-500 uppercase font-semibold">Meeting Times</span>
                     </div>
                   </div>
-                  <ChevronRight size={18} className="text-indigo-500" />
+                  <ChevronRight size={18} className="text-indigo-600" />
                 </button>
 
                 <button 
                   onClick={() => { setShowMenu(false); setShowNoticeModal(true); }}
-                  className="w-full flex items-center justify-between p-4 rounded-2xl bg-orange-500/10 border border-orange-500/30 hover:bg-orange-500/20 group transition-all"
+                  className="w-full flex items-center justify-between p-3.5 rounded-2xl neu-card-sm hover:scale-[1.01] transition-all"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-orange-500 text-bg flex items-center justify-center shadow-lg">
-                      <Megaphone size={20} />
+                    <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center">
+                      <Megaphone size={18} />
                     </div>
                     <div className="text-left">
-                      <span className="block text-sm font-black text-orange-500">Notice</span>
-                      <span className="block text-[10px] text-white/60 uppercase font-black">Announcements</span>
+                      <span className="block text-sm font-bold text-slate-900">Notice</span>
+                      <span className="block text-[10px] text-slate-500 uppercase font-semibold">Announcements</span>
                     </div>
                   </div>
-                  <ChevronRight size={18} className="text-orange-500" />
+                  <ChevronRight size={18} className="text-amber-500" />
                 </button>
 
                 <button 
                   onClick={() => { setShowMenu(false); setShowPickingModal(true); }}
-                  className="w-full flex items-center justify-between p-4 rounded-2xl bg-blue-accent/10 border border-blue-accent/30 hover:bg-blue-accent/20 group transition-all"
+                  className="w-full flex items-center justify-between p-3.5 rounded-2xl neu-card-sm hover:scale-[1.01] transition-all"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-blue-accent text-bg flex items-center justify-center shadow-lg">
-                      <Calendar size={20} />
+                    <div className="w-10 h-10 rounded-xl neu-btn-primary flex items-center justify-center">
+                      <Calendar size={18} />
                     </div>
                     <div className="text-left">
-                      <span className="block text-sm font-black text-blue-accent">Picking</span>
-                      <span className="block text-[10px] text-white/60 uppercase font-black">Schedule Board</span>
+                      <span className="block text-sm font-bold text-slate-900">Picking</span>
+                      <span className="block text-[10px] text-slate-500 uppercase font-semibold">Schedule Board</span>
                     </div>
                   </div>
-                  <ChevronRight size={18} className="text-blue-accent" />
+                  <ChevronRight size={18} className="text-blue-600" />
                 </button>
 
-                <div className="pt-4 mt-4 border-t border-border">
-                  <div className="text-[9px] text-muted-main font-black uppercase tracking-widest mb-3 pl-1 opacity-50">System Control</div>
+                <div className="pt-4 mt-4 border-t border-[#d2dce8]">
+                  <div className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-3 pl-1">System Control</div>
                   <button 
                     onClick={() => { setShowMenu(false); setShowSocialsModal(true); }}
-                    className="w-full flex items-center justify-between p-4 rounded-xl bg-bg border border-border hover:border-gold/30 transition-all mb-3 group"
+                    className="w-full flex items-center justify-between p-3 rounded-xl neu-btn mb-2 group text-slate-800"
                   >
                     <div className="flex items-center gap-3">
-                      <Globe className="text-blue-accent group-hover:text-gold transition-colors" size={18} />
-                      <span className="text-sm font-bold text-white group-hover:text-gold transition-colors">Social Link</span>
+                      <Globe className="text-blue-600" size={18} />
+                      <span className="text-sm font-bold">Social Link</span>
                     </div>
-                    <ChevronRight size={16} className="text-muted-main group-hover:text-gold transition-colors" />
+                    <ChevronRight size={16} className="text-slate-400" />
                   </button>
 
                   {config.stlLoginActive && (
@@ -5107,13 +5412,13 @@ export default function App() {
                           setShowStlLoginModal(true);
                         }
                       }}
-                      className="w-full flex items-center justify-between p-4 rounded-xl bg-bg/40 border border-border/30 hover:border-blue-accent/30 transition-all mb-3 group"
+                      className="w-full flex items-center justify-between p-3 rounded-xl neu-btn mb-2 group text-slate-800"
                     >
                       <div className="flex items-center gap-3">
-                        <Users className={stlAuthenticated ? "text-blue-accent" : "text-muted-main"} size={18} />
-                        <span className="text-sm font-bold text-white tracking-tight">{stlAuthenticated ? "STL Logout" : "STL Login"}</span>
+                        <Users className={stlAuthenticated ? "text-blue-600" : "text-slate-500"} size={18} />
+                        <span className="text-sm font-bold">{stlAuthenticated ? "STL Logout" : "STL Login"}</span>
                       </div>
-                      <ChevronRight size={16} className="text-muted-main/50" />
+                      <ChevronRight size={16} className="text-slate-400" />
                     </button>
                   )}
 
@@ -5122,13 +5427,13 @@ export default function App() {
                       setShowMenu(false); 
                       handleInstallApp();
                     }}
-                    className="w-full flex items-center justify-between p-4 rounded-xl bg-green-accent/10 border border-green-accent/30 hover:bg-green-accent/20 transition-all mb-3 group"
+                    className="w-full flex items-center justify-between p-3 rounded-xl neu-btn mb-2 group text-slate-800"
                   >
                     <div className="flex items-center gap-3">
-                      <Smartphone className="text-green-accent" size={18} />
-                      <span className="text-sm font-bold text-white">Install App</span>
+                      <Smartphone className="text-emerald-600" size={18} />
+                      <span className="text-sm font-bold">Install App</span>
                     </div>
-                    <Download size={16} className="text-green-accent" />
+                    <Download size={16} className="text-emerald-600" />
                   </button>
 
                   <button 
@@ -5140,19 +5445,19 @@ export default function App() {
                         setShowAdminLoginModal(true);
                       }
                     }}
-                    className="w-full flex items-center justify-between p-4 rounded-xl bg-surface border border-border/20 hover:border-gold/40 transition-all mb-3 group shadow-lg"
+                    className="w-full flex items-center justify-between p-3 rounded-xl neu-btn mb-2 group text-slate-800"
                   >
                     <div className="flex items-center gap-3">
-                      <Shield className={isAdmin ? "text-gold" : "text-muted-main"} size={18} />
-                      <span className="text-sm font-bold text-white group-hover:text-gold transition-colors">{isAdmin ? "Admin Panel" : "Admin Login"}</span>
+                      <Shield className={isAdmin ? "text-blue-600" : "text-slate-500"} size={18} />
+                      <span className="text-sm font-bold">{isAdmin ? "Admin Panel" : "Admin Login"}</span>
                     </div>
-                    <ChevronRight size={16} className="text-muted-main group-hover:text-gold transition-colors" />
+                    <ChevronRight size={16} className="text-slate-400" />
                   </button>
                 </div>
               </div>
               
-              <div className="absolute bottom-10 left-6 right-6 text-center">
-                <div className="text-[10px] text-muted-main tracking-widest uppercase opacity-30 italic">Unity Earning System</div>
+              <div className="py-6 text-center">
+                <div className="text-[10px] text-slate-400 tracking-widest uppercase font-semibold">Unity Earning System</div>
               </div>
             </motion.div>
           </>
@@ -5164,32 +5469,31 @@ export default function App() {
         {userTab === 'home' && (
           <div className="space-y-10">
             <div className="text-center mb-8 sm:mb-10 animate-fade-in">
-              <div className="inline-flex items-center gap-2 bg-gold/5 border border-gold/20 text-gold px-3 py-1 rounded-full text-[9px] sm:text-[10px] tracking-[2px] uppercase mb-4">
-                <span className="animate-bounce">📊</span> Live Result Board
+              <div className="inline-flex items-center gap-2 neu-card-sm text-blue-700 px-3.5 py-1 rounded-full text-[10px] sm:text-xs font-bold tracking-wider uppercase mb-3">
+                <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" /> Live Result Board
               </div>
-              <h1 className="font-serif text-2xl sm:text-4xl md:text-5xl font-black mb-3 bg-gradient-to-br from-white via-white to-gold bg-clip-text text-transparent px-2">
+              <h1 className="text-2xl sm:text-4xl md:text-5xl font-black mb-2.5 text-slate-900 tracking-tight px-2">
                 Sub-Admin Dashboard
               </h1>
-              <p className="text-muted-main text-[10px] sm:text-sm max-w-[280px] sm:max-w-sm mx-auto opacity-80">
+              <p className="text-slate-600 text-xs sm:text-sm max-w-sm sm:max-w-md mx-auto font-medium">
                 Real-time updates for Lead & Convert stats. Optimized for mobile tracking.
               </p>
             </div>
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-10">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 mb-10">
               {[
-                { label: 'Leaders', value: stats.leaders, color: 'text-gold', icon: <Trophy size={12} /> },
-                { label: 'Trainers', value: stats.trainers, color: 'text-blue-accent', icon: <GraduationCap size={12} /> },
-                { label: 'Leads', value: stats.todayLeads, color: 'text-green-accent', icon: <Send size={12} /> },
-                { label: 'Converts', value: stats.converts, color: 'text-orange-400', icon: <CheckCircle2 size={12} /> }
+                { label: 'Leaders', value: stats.leaders, color: 'text-blue-700', icon: <Trophy size={13} /> },
+                { label: 'Trainers', value: stats.trainers, color: 'text-indigo-700', icon: <GraduationCap size={13} /> },
+                { label: 'Leads', value: stats.todayLeads, color: 'text-emerald-700', icon: <Send size={13} /> },
+                { label: 'Converts', value: stats.converts, color: 'text-amber-700', icon: <CheckCircle2 size={13} /> }
               ].map((stat, i) => (
-                <div key={i} className="group bg-surface border border-border rounded-xl p-3 sm:p-4 text-center relative overflow-hidden transition-all hover:border-gold/30">
-                  <div className="absolute top-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-transparent via-gold/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                  <div className="flex items-center justify-center gap-1.5 mb-1 opacity-50">
-                    <span className={stat.color}>{stat.icon}</span>
-                    <span className="text-[8px] sm:text-[9px] text-muted-main tracking-[1px] uppercase font-bold">{stat.label}</span>
+                <div key={i} className="group neu-card rounded-2xl p-4 text-center relative overflow-hidden transition-all hover:scale-[1.02]">
+                  <div className="flex items-center justify-center gap-1.5 mb-1.5">
+                    <span className={`p-1.5 rounded-lg neu-card-sm ${stat.color}`}>{stat.icon}</span>
+                    <span className="text-[10px] sm:text-xs text-slate-600 tracking-wider uppercase font-bold">{stat.label}</span>
                   </div>
-                  <div className={`font-serif text-2xl sm:text-3xl font-black ${stat.color}`}>{stat.value}</div>
+                  <div className={`text-2xl sm:text-3xl font-black ${stat.color}`}>{stat.value}</div>
                 </div>
               ))}
             </div>
@@ -5198,61 +5502,55 @@ export default function App() {
             {(topLeader || topTrainer) && (
               <div className="mb-12">
                 <div className="flex items-center gap-3 mb-6">
-                  <div className="p-2 bg-gold/10 rounded-lg border border-gold/20">
-                    <Star className="text-gold" size={18} />
+                  <div className="w-9 h-9 neu-btn-primary rounded-xl flex items-center justify-center text-white">
+                    <Star size={18} />
                   </div>
                   <div>
-                    <h2 className="font-serif text-xl font-bold">Elite Performers</h2>
-                    <p className="text-[10px] text-muted-main tracking-widest uppercase">Top contributors of the session</p>
+                    <h2 className="text-xl font-black text-slate-900">Elite Performers</h2>
+                    <p className="text-[10px] text-slate-600 tracking-wider uppercase font-bold">Top contributors of the session</p>
                   </div>
-                  <div className="flex-1 h-[1px] bg-gradient-to-r from-gold/30 to-transparent ml-4" />
+                  <div className="flex-1 h-[2px] neu-inset ml-4" />
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   {topLeader && (
                     <div className="relative group">
-                      <div className="relative bg-surface border border-gold/25 rounded-2xl p-4 sm:p-5 flex items-center gap-4 sm:gap-5 shadow-lg">
+                      <div className="relative neu-card rounded-2xl p-4 sm:p-5 flex items-center gap-4 sm:gap-5">
                         <div className="relative flex-shrink-0">
-                          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gold/10 flex items-center justify-center text-gold border border-gold/20 overflow-hidden">
-                            {approvedUsers.find(u => u.fullName.trim().toLowerCase() === topLeader.name.trim().toLowerCase())?.profilePic ? (
-                              <img 
-                                src={approvedUsers.find(u => u.fullName.trim().toLowerCase() === topLeader.name.trim().toLowerCase())?.profilePic} 
-                                alt={topLeader.name} 
-                                className="w-full h-full object-cover" 
-                                referrerPolicy="no-referrer" 
-                              />
-                            ) : (
-                              <>
-                                <UserCircle size={28} strokeWidth={2} className="sm:hidden" />
-                                <UserCircle size={32} strokeWidth={2} className="hidden sm:block" />
-                              </>
-                            )}
+                          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl neu-card-sm flex items-center justify-center overflow-hidden border border-blue-200/80 shadow-sm">
+                            <CartoonAvatar 
+                              src={approvedUsers.find(u => u.fullName.trim().toLowerCase() === topLeader.name.trim().toLowerCase())?.profilePic} 
+                              name={topLeader.name} 
+                            />
                           </div>
-                          <div className="absolute -bottom-1 -right-1 bg-gold text-bg text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase">Top</div>
+                          <div className="absolute -bottom-1 -right-1 neu-btn-primary text-white text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase shadow-xs">Top</div>
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between mb-0.5">
-                            <div className="text-[8px] sm:text-[10px] text-gold font-bold uppercase tracking-widest mr-2">Best Leader</div>
-                            <span className={`text-[7px] sm:text-[9px] px-1.5 py-0.5 rounded-full font-black uppercase whitespace-nowrap ${topOverall?.id === topLeader.id ? 'bg-gold text-bg' : 'bg-gold/10 text-gold border border-gold/20'}`}>
+                            <div className="text-[9px] sm:text-[10px] text-blue-700 font-bold uppercase tracking-wider mr-2">Best Leader</div>
+                            <span className={`text-[8px] sm:text-[9px] px-2 py-0.5 rounded-full font-black uppercase whitespace-nowrap ${topOverall?.id === topLeader.id ? 'neu-btn-primary text-white' : 'neu-card-sm text-blue-700'}`}>
                               {topOverall?.id === topLeader.id ? 'Overall Best' : 'Elite'}
                             </span>
                           </div>
-                          <div className="font-serif text-lg sm:text-xl font-bold text-white">{topLeader.name}</div>
+                          <div className="text-lg sm:text-2xl font-black text-[#090d16] truncate flex items-center gap-1.5 tracking-tight">
+                            <span className="truncate">{topLeader.name}</span>
+                            <span className="text-blue-600 text-sm flex-shrink-0" title="Top Leader">👑</span>
+                          </div>
                           <div className="flex items-center gap-3 sm:gap-4 mt-2">
                             <div className="flex flex-col">
-                              <span className="text-[7px] sm:text-[9px] text-muted-main uppercase font-bold">Conv</span>
-                              <span className="text-xs sm:text-sm font-black text-green-accent">{topLeader.result.convert}</span>
+                              <span className="text-[8px] sm:text-[9px] text-slate-500 uppercase font-bold">Conv</span>
+                              <span className="text-xs sm:text-sm font-black text-emerald-700">{topLeader.result.convert}</span>
                             </div>
                             
-                            <div className="w-[1px] h-5 sm:h-6 bg-border" />
+                            <div className="w-[2px] h-5 sm:h-6 neu-inset" />
                             <div className="flex flex-col">
-                              <span className="text-[7px] sm:text-[9px] text-muted-main uppercase font-bold">Pers</span>
-                              <span className="text-xs sm:text-sm font-black text-purple-400">{topLeader.result.personalLead}</span>
+                              <span className="text-[8px] sm:text-[9px] text-slate-500 uppercase font-bold">Pers</span>
+                              <span className="text-xs sm:text-sm font-black text-purple-700">{topLeader.result.personalLead}</span>
                             </div>
 
-                            <div className="w-[1px] h-5 sm:h-6 bg-border" />
+                            <div className="w-[2px] h-5 sm:h-6 neu-inset" />
                             <div className="flex flex-col">
-                              <span className="text-[7px] sm:text-[9px] text-muted-main uppercase font-bold">Total</span>
-                              <span className="text-xs sm:text-sm font-black text-gold">{topLeader.score || 0}</span>
+                              <span className="text-[8px] sm:text-[9px] text-slate-500 uppercase font-bold">Total</span>
+                              <span className="text-xs sm:text-sm font-black text-blue-700">{topLeader.score || 0}</span>
                             </div>
                           </div>
                         </div>
@@ -5261,49 +5559,43 @@ export default function App() {
                   )}
                   {topTrainer && (
                     <div className="relative group">
-                      <div className="relative bg-surface border border-blue-accent/25 rounded-2xl p-4 sm:p-5 flex items-center gap-4 sm:gap-5 shadow-lg">
+                      <div className="relative neu-card rounded-2xl p-4 sm:p-5 flex items-center gap-4 sm:gap-5">
                         <div className="relative flex-shrink-0">
-                          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-blue-accent/10 flex items-center justify-center text-blue-accent border border-blue-accent/20 overflow-hidden">
-                            {approvedUsers.find(u => u.fullName.trim().toLowerCase() === topTrainer.name.trim().toLowerCase())?.profilePic ? (
-                              <img 
-                                src={approvedUsers.find(u => u.fullName.trim().toLowerCase() === topTrainer.name.trim().toLowerCase())?.profilePic} 
-                                alt={topTrainer.name} 
-                                className="w-full h-full object-cover" 
-                                referrerPolicy="no-referrer" 
-                              />
-                            ) : (
-                              <>
-                                <UserCircle size={28} strokeWidth={2} className="sm:hidden" />
-                                <UserCircle size={32} strokeWidth={2} className="hidden sm:block" />
-                              </>
-                            )}
+                          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl neu-card-sm flex items-center justify-center overflow-hidden border border-emerald-200/80 shadow-sm">
+                            <CartoonAvatar 
+                              src={approvedUsers.find(u => u.fullName.trim().toLowerCase() === topTrainer.name.trim().toLowerCase())?.profilePic} 
+                              name={topTrainer.name} 
+                            />
                           </div>
-                          <div className="absolute -bottom-1 -right-1 bg-blue-accent text-bg text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase">Top</div>
+                          <div className="absolute -bottom-1 -right-1 neu-btn-emerald text-white text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase shadow-xs">Top</div>
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between mb-0.5">
-                            <div className="text-[8px] sm:text-[10px] text-blue-accent font-bold uppercase tracking-widest mr-2">Best Trainer</div>
-                            <span className={`text-[7px] sm:text-[9px] px-1.5 py-0.5 rounded-full font-black uppercase whitespace-nowrap ${topOverall?.id === topTrainer.id ? 'bg-blue-accent text-bg' : 'bg-blue-accent/10 text-blue-accent border border-blue-accent/20'}`}>
+                            <div className="text-[9px] sm:text-[10px] text-indigo-700 font-bold uppercase tracking-wider mr-2">Best Trainer</div>
+                            <span className={`text-[8px] sm:text-[9px] px-2 py-0.5 rounded-full font-black uppercase whitespace-nowrap ${topOverall?.id === topTrainer.id ? 'neu-btn-emerald text-white' : 'neu-card-sm text-indigo-700'}`}>
                               {topOverall?.id === topTrainer.id ? 'Overall Best' : 'Elite'}
                             </span>
                           </div>
-                          <div className="font-serif text-lg sm:text-xl font-bold text-white">{topTrainer.name}</div>
+                          <div className="text-lg sm:text-2xl font-black text-[#090d16] truncate flex items-center gap-1.5 tracking-tight">
+                            <span className="truncate">{topTrainer.name}</span>
+                            <span className="text-emerald-600 text-sm flex-shrink-0" title="Top Trainer">🎓</span>
+                          </div>
                           <div className="flex items-center gap-3 sm:gap-4 mt-2">
                             <div className="flex flex-col">
-                              <span className="text-[7px] sm:text-[9px] text-muted-main uppercase font-bold">Conv</span>
-                              <span className="text-xs sm:text-sm font-black text-green-accent">{topTrainer.result.convert}</span>
+                              <span className="text-[8px] sm:text-[9px] text-slate-500 uppercase font-bold">Conv</span>
+                              <span className="text-xs sm:text-sm font-black text-emerald-700">{topTrainer.result.convert}</span>
                             </div>
                             
-                            <div className="w-[1px] h-5 sm:h-6 bg-border" />
+                            <div className="w-[2px] h-5 sm:h-6 neu-inset" />
                             <div className="flex flex-col">
-                              <span className="text-[7px] sm:text-[9px] text-muted-main uppercase font-bold">Pers</span>
-                              <span className="text-xs sm:text-sm font-black text-purple-400">{topTrainer.result.personalLead}</span>
+                              <span className="text-[8px] sm:text-[9px] text-slate-500 uppercase font-bold">Pers</span>
+                              <span className="text-xs sm:text-sm font-black text-purple-700">{topTrainer.result.personalLead}</span>
                             </div>
 
-                            <div className="w-[1px] h-5 sm:h-6 bg-border" />
+                            <div className="w-[2px] h-5 sm:h-6 neu-inset" />
                             <div className="flex flex-col">
-                              <span className="text-[7px] sm:text-[9px] text-muted-main uppercase font-bold">Total</span>
-                              <span className="text-xs sm:text-sm font-black text-blue-accent">{topTrainer.score || 0}</span>
+                              <span className="text-[8px] sm:text-[9px] text-slate-500 uppercase font-bold">Total</span>
+                              <span className="text-xs sm:text-sm font-black text-indigo-700">{topTrainer.score || 0}</span>
                             </div>
                           </div>
                         </div>
@@ -5317,21 +5609,20 @@ export default function App() {
             {/* Top 3 Team Leaders & Top 3 Team Trainers lists */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
               {/* Top 3 Leaders */}
-              <div className="bg-surface/30 border border-border/40 rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-gold/5 blur-3xl rounded-full" />
+              <div className="neu-card rounded-3xl p-5 sm:p-6 relative overflow-hidden">
                 <div className="flex items-center justify-between mb-5">
-                  <div className="flex items-center gap-2">
-                    <div className="p-2 bg-gold/10 rounded-xl text-gold border border-gold/20">
-                      <Trophy size={18} />
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 neu-btn-primary rounded-xl flex items-center justify-center text-white">
+                      <Trophy size={16} />
                     </div>
                     <div>
-                      <h3 className="font-serif text-base font-black text-white">সেরা ৩ জন টিম লিডার</h3>
-                      <p className="text-[8px] text-gold/80 uppercase tracking-widest font-bold">Top 3 Team Leaders</p>
+                      <h3 className="text-base font-bold text-slate-900">সেরা ৩ জন টিম লিডার</h3>
+                      <p className="text-[9px] text-blue-700 uppercase tracking-wider font-bold">Top 3 Team Leaders</p>
                     </div>
                   </div>
-                  <span className="text-[10px] bg-gold/10 text-gold border border-gold/20 px-2 py-0.5 rounded-lg font-black font-mono">Rankings</span>
+                  <span className="text-[10px] neu-card-sm text-blue-700 px-2.5 py-0.5 rounded-lg font-bold">Rankings</span>
                 </div>
-                <div className="space-y-3">
+                <div className="space-y-2.5">
                   {sortedLeadersByRanking.slice(0, 3).map((member, i) => {
                     const rank = i + 1;
                     const result = results[member.id] || { lead: 0, convert: 0, personalLead: 0, submitted: false };
@@ -5340,36 +5631,37 @@ export default function App() {
                     );
                     const rankIcon = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`;
                     return (
-                      <div key={member.id} className="p-3 bg-bg/40 border border-white/5 rounded-2xl flex items-center justify-between gap-3 group hover:border-gold/25 transition-all">
+                      <div key={member.id} className="p-3 neu-card-sm rounded-2xl flex items-center justify-between gap-3 transition-all">
                         <div className="flex items-center gap-3 min-w-0">
                           <div className="relative flex-shrink-0">
-                            <div className={`w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center font-black ${matchedUser?.profilePic ? '' : 'bg-white/5 text-gold'}`}>
-                              {matchedUser?.profilePic ? (
-                                <img src={matchedUser.profilePic} alt={member.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                              ) : (
-                                <span className="text-[10px]">{member.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}</span>
-                              )}
+                            <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center neu-card-sm border border-slate-300/80">
+                              <CartoonAvatar 
+                                src={matchedUser?.profilePic} 
+                                name={member.name} 
+                              />
                             </div>
-                            <div className="absolute -top-1.5 -right-1.5 bg-surface border border-border/40 rounded-full w-5 h-5 flex items-center justify-center text-[10px] shadow-md font-bold">
+                            <div className="absolute -top-1.5 -right-1.5 bg-white border border-slate-300 rounded-full w-5 h-5 flex items-center justify-center text-[10px] shadow-sm font-bold">
                               {rankIcon}
                             </div>
                           </div>
                           <div className="min-w-0">
-                            <h4 className="font-bold text-white text-sm truncate">{member.name}</h4>
-                            <p className="text-[9px] text-muted-main uppercase tracking-widest font-bold">
-                              Verified Sub-Admin
+                            <h4 className="font-black text-[#090d16] text-sm sm:text-base tracking-tight truncate flex items-center gap-1 hover:text-blue-700 transition-colors">
+                              <span>{member.name}</span>
+                            </h4>
+                            <p className="text-[10px] text-blue-700 uppercase tracking-wider font-bold">
+                              Verified Leader
                             </p>
                           </div>
                         </div>
                         <div className="text-right flex flex-col items-end">
-                          <div className="text-[8px] font-black uppercase tracking-wider text-gold/80">
+                          <div className="text-[9px] font-bold uppercase tracking-wider text-slate-500">
                             Converts
                           </div>
-                          <div className="text-base font-serif font-black text-white leading-none">
+                          <div className="text-base font-black text-slate-900 leading-none">
                             {member.score || 0}
                           </div>
                           {result.convert > 0 && (
-                            <div className="text-[8px] font-black text-green-accent mt-1 font-mono bg-green-accent/10 px-1.5 py-0.5 rounded-md border border-green-accent/20">
+                            <div className="text-[9px] font-bold text-emerald-700 mt-1 neu-card-sm px-1.5 py-0.5 rounded-md">
                               +{result.convert} Today
                             </div>
                           )}
@@ -5378,7 +5670,7 @@ export default function App() {
                     );
                   })}
                   {sortedLeadersByRanking.length === 0 && (
-                    <div className="text-center py-8 text-xs italic text-muted-main2">
+                    <div className="text-center py-8 text-xs italic text-slate-500 font-medium">
                       No team leaders available yet
                     </div>
                   )}
@@ -5386,21 +5678,20 @@ export default function App() {
               </div>
 
               {/* Top 3 Trainers */}
-              <div className="bg-surface/30 border border-border/40 rounded-3xl p-5 sm:p-6 shadow-xl relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-blue-accent/5 blur-3xl rounded-full" />
+              <div className="neu-card rounded-3xl p-5 sm:p-6 relative overflow-hidden">
                 <div className="flex items-center justify-between mb-5">
-                  <div className="flex items-center gap-2">
-                    <div className="p-2 bg-blue-accent/10 rounded-xl text-blue-accent border border-blue-accent/20">
-                      <GraduationCap size={18} />
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 neu-btn-emerald rounded-xl flex items-center justify-center text-white">
+                      <GraduationCap size={16} />
                     </div>
                     <div>
-                      <h3 className="font-serif text-base font-black text-white">সেরা ৩ জন ট্রেইনার</h3>
-                      <p className="text-[8px] text-blue-accent/80 uppercase tracking-widest font-bold">Top 3 Team Trainers</p>
+                      <h3 className="text-base font-bold text-slate-900">সেরা ৩ জন ট্রেইনার</h3>
+                      <p className="text-[9px] text-emerald-700 uppercase tracking-wider font-bold">Top 3 Team Trainers</p>
                     </div>
                   </div>
-                  <span className="text-[10px] bg-blue-accent/10 text-blue-accent border border-blue-accent/20 px-2 py-0.5 rounded-lg font-black font-mono">Rankings</span>
+                  <span className="text-[10px] neu-card-sm text-emerald-700 px-2.5 py-0.5 rounded-lg font-bold">Rankings</span>
                 </div>
-                <div className="space-y-3">
+                <div className="space-y-2.5">
                   {sortedTrainersByRanking.slice(0, 3).map((member, i) => {
                     const rank = i + 1;
                     const result = results[member.id] || { lead: 0, convert: 0, personalLead: 0, submitted: false };
@@ -5409,36 +5700,37 @@ export default function App() {
                     );
                     const rankIcon = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`;
                     return (
-                      <div key={member.id} className="p-3 bg-bg/40 border border-white/5 rounded-2xl flex items-center justify-between gap-3 group hover:border-blue-accent/25 transition-all">
+                      <div key={member.id} className="p-3 neu-card-sm rounded-2xl flex items-center justify-between gap-3 transition-all">
                         <div className="flex items-center gap-3 min-w-0 flex-1">
                           <div className="relative flex-shrink-0">
-                            <div className={`w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center font-black ${matchedUser?.profilePic ? '' : 'bg-white/5 text-blue-accent'}`}>
-                              {matchedUser?.profilePic ? (
-                                <img src={matchedUser.profilePic} alt={member.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                              ) : (
-                                <span className="text-[10px]">{member.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}</span>
-                              )}
+                            <div className="w-10 h-10 rounded-xl overflow-hidden flex items-center justify-center neu-card-sm border border-slate-300/80">
+                              <CartoonAvatar 
+                                src={matchedUser?.profilePic} 
+                                name={member.name} 
+                              />
                             </div>
-                            <div className="absolute -top-1.5 -right-1.5 bg-surface border border-border/40 rounded-full w-5 h-5 flex items-center justify-center text-[10px] shadow-md font-bold">
+                            <div className="absolute -top-1.5 -right-1.5 bg-white border border-slate-300 rounded-full w-5 h-5 flex items-center justify-center text-[10px] shadow-sm font-bold">
                               {rankIcon}
                             </div>
                           </div>
                           <div className="min-w-0">
-                            <h4 className="font-bold text-white text-sm truncate">{member.name}</h4>
-                            <p className="text-[9px] text-muted-main uppercase tracking-widest font-bold">
+                            <h4 className="font-black text-[#090d16] text-sm sm:text-base tracking-tight truncate flex items-center gap-1 hover:text-emerald-700 transition-colors">
+                              <span>{member.name}</span>
+                            </h4>
+                            <p className="text-[10px] text-emerald-700 uppercase tracking-wider font-bold">
                               Verified Trainer
                             </p>
                           </div>
                         </div>
                         <div className="text-right flex flex-col items-end">
-                          <div className="text-[8px] font-black uppercase tracking-wider text-blue-accent/80">
+                          <div className="text-[9px] font-bold uppercase tracking-wider text-slate-500">
                             Converts
                           </div>
-                          <div className="text-base font-serif font-black text-white leading-none">
+                          <div className="text-base font-black text-slate-900 leading-none">
                             {member.score || 0}
                           </div>
                           {result.convert > 0 && (
-                            <div className="text-[8px] font-black text-green-accent mt-1 font-mono bg-green-accent/10 px-1.5 py-0.5 rounded-md border border-green-accent/20">
+                            <div className="text-[9px] font-bold text-emerald-700 mt-1 neu-card-sm px-1.5 py-0.5 rounded-md">
                               +{result.convert} Today
                             </div>
                           )}
@@ -5447,7 +5739,7 @@ export default function App() {
                     );
                   })}
                   {sortedTrainersByRanking.length === 0 && (
-                    <div className="text-center py-8 text-xs italic text-muted-main2">
+                    <div className="text-center py-8 text-xs italic text-slate-500 font-medium">
                       No team trainers available yet
                     </div>
                   )}
@@ -5459,113 +5751,38 @@ export default function App() {
 
         {userTab === 'submit' && (
           <div className="space-y-8">
-            <div className="text-center mb-8">
-              <div className="inline-flex items-center gap-2 bg-green-accent/5 border border-green-accent/20 text-green-accent px-3 py-1 rounded-full text-[9px] sm:text-[10px] tracking-[2px] uppercase mb-4">
-                <CheckSquare size={12} /> রেজাল্ট সাবমিশন
-              </div>
-              <h1 className="font-serif text-2xl sm:text-4xl font-black mb-2 bg-gradient-to-br from-white via-white to-green-400 bg-clip-text text-transparent px-2">
-                রিপোর্ট সাবমিট করুন
-              </h1>
-              <p className="text-muted-main text-[10px] sm:text-sm max-w-md mx-auto opacity-80">
-                আপনার সেশনের কাজের রিপোর্ট সরাসরি এখান থেকে জমা দিতে পারবেন।
-              </p>
-            </div>
+            {/* Top Priority: Self Result Submission Box */}
+            <UserQuickSubmitCard
+              currentAuthUser={currentAuthUser}
+              myMember={myMember}
+              members={members}
+              results={results}
+              isTimerActive={isTimerActive}
+              timeLeft={timeLeft}
+              formatTime={formatTime}
+              onSubmit={submitResult}
+              isAdmin={isAdmin}
+            />
 
-            {/* Quick Submit Form for Logged-In User */}
-            {myMember ? (
-              !results[myMember.id]?.submitted ? (
-                <div className="bg-gradient-to-br from-gold/10 via-surface to-surface border-2 border-gold/25 rounded-[28px] p-6 sm:p-8 mb-8 relative overflow-hidden shadow-2xl">
-                  <div className="absolute top-0 right-0 w-32 h-32 bg-gold/5 blur-3xl rounded-full" />
-                  <div className="flex items-center gap-3.5 mb-6">
-                    <div className="p-2.5 bg-gold/15 rounded-xl text-gold border border-gold/25 shadow-md">
-                      <Send size={20} />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-bold text-white">আমার আজকের রিপোর্ট ({currentAuthUser?.fullName})</h3>
-                      <p className="text-[9px] text-gold/80 font-mono tracking-wider uppercase">Quick Submit for Your Account</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-[9px] text-muted-main uppercase font-black tracking-widest ml-1 flex items-center gap-1">
-                        <Send size={10} className="text-blue-accent" /> Total Lead
-                      </label>
-                      <input 
-                        type="number" 
-                        defaultValue={results[myMember.id]?.lead || ''}
-                        id="my-lead-input"
-                        placeholder="0"
-                        disabled={!isTimerActive}
-                        className="w-full bg-bg/50 border-2 border-border2 focus:border-gold rounded-xl px-3 py-3 text-sm font-black text-center outline-none disabled:opacity-40 transition-all text-white"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-[9px] text-muted-main uppercase font-black tracking-widest ml-1 flex items-center gap-1">
-                        <CheckCircle2 size={10} className="text-green-accent" /> Total Convert
-                      </label>
-                      <input 
-                        type="number" 
-                        defaultValue={results[myMember.id]?.convert || ''}
-                        id="my-convert-input"
-                        placeholder="0"
-                        disabled={!isTimerActive}
-                        className="w-full bg-bg/50 border-2 border-border2 focus:border-gold rounded-xl px-3 py-3 text-sm font-black text-center outline-none disabled:opacity-40 transition-all text-white"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-[9px] text-muted-main uppercase font-black tracking-widest ml-1 flex items-center gap-1">
-                        <User size={10} className="text-purple-400" /> Personal Lead
-                      </label>
-                      <input 
-                        type="number" 
-                        defaultValue={results[myMember.id]?.personalLead || ''}
-                        id="my-personal-input"
-                        placeholder="0"
-                        disabled={!isTimerActive}
-                        className="w-full bg-bg/50 border-2 border-border2 focus:border-gold rounded-xl px-3 py-3 text-sm font-black text-center outline-none disabled:opacity-40 transition-all text-white"
-                      />
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => {
-                      const l = parseInt((document.getElementById('my-lead-input') as HTMLInputElement)?.value) || 0;
-                      const c = parseInt((document.getElementById('my-convert-input') as HTMLInputElement)?.value) || 0;
-                      const p = parseInt((document.getElementById('my-personal-input') as HTMLInputElement)?.value) || 0;
-                      submitResult(myMember.id, l, c, p);
-                    }}
-                    disabled={!isTimerActive}
-                    className="w-full py-3 rounded-2xl bg-gradient-to-r from-gold via-gold2 to-gold font-black text-bg uppercase tracking-widest hover:opacity-95 disabled:opacity-30 active:scale-[0.98] transition-all shadow-xl text-xs"
-                  >
-                    {!isTimerActive ? 'SUBMISSION CLOSED' : 'UPDATE MY REPORT'}
-                  </button>
-                </div>
-              ) : (
-                <div className="bg-gradient-to-br from-green-accent/10 via-surface to-surface border border-green-accent/20 rounded-[28px] p-6 mb-8 text-center shadow-lg">
-                  <div className="w-12 h-12 bg-green-accent/20 text-green-accent rounded-full flex items-center justify-center mx-auto mb-4 border border-green-accent/30">
-                    <CheckSquare size={24} />
-                  </div>
-                  <h3 className="text-lg font-bold text-white mb-1">রিপোর্ট জমা দেওয়া হয়েছে!</h3>
-                  <p className="text-xs text-muted-main">আপনার আজকের রিপোর্ট সফলভাবে জমা হয়েছে। আপনি নিচে বোর্ড থেকে আপনার পজিশন দেখতে পারেন।</p>
-                </div>
-              )
-            ) : (
-              <div className="bg-surface border border-border rounded-2xl p-6 mb-8 text-center text-xs text-muted-main2 italic">
-                আপনার নামটি এখনও মেম্বার তালিকায় যোগ করা হয়নি। দয়া করে এডমিনকে আপনার নামটি যোগ করতে বলুন।
-              </div>
-            )}
+            {/* STL Result Display */}
+            <StlWiseResultSection
+              stlMembers={stlMembers}
+              registeredUsers={approvedUsers}
+              teamLeaders={members.filter(m => m.type === 'leader')}
+              leaderRanking={leaderRanking}
+              results={results}
+            />
 
             {/* Admin Quick Result Copy Bar */}
             {isAdmin && (
-              <div className="mb-8 p-4 sm:p-5 bg-gradient-to-r from-gold/10 via-surface to-surface border border-gold/30 rounded-2xl sm:rounded-3xl shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="mb-8 p-4 sm:p-5 neu-card rounded-2xl sm:rounded-3xl flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-gold/20 border border-gold/40 text-gold flex items-center justify-center shadow-inner flex-shrink-0">
+                  <div className="w-10 h-10 rounded-2xl neu-btn-primary text-white flex items-center justify-center flex-shrink-0">
                     <Copy size={20} />
                   </div>
                   <div>
-                    <h3 className="font-serif font-black text-sm sm:text-base text-white">রেজাল্ট কপি অপশন (Admin Quick Copy)</h3>
-                    <p className="text-[9px] sm:text-[10px] text-muted-main">কনভার্ট ক্রম অনুযায়ী সাজানো সকল রেজাল্ট এক ক্লিকে কপি করুন</p>
+                    <h3 className="font-serif font-black text-sm sm:text-base text-slate-900">রেজাল্ট কপি অপশন (Admin Quick Copy)</h3>
+                    <p className="text-[9px] sm:text-[10px] text-slate-600">কনভার্ট ক্রম অনুযায়ী সাজানো সকল রেজাল্ট এক ক্লিকে কপি করুন</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
@@ -5582,7 +5799,7 @@ export default function App() {
                       if (ok) showMsg('সকল রেজাল্ট সফলভাবে কপি হয়েছে!', 'success');
                       else showMsg('কপি করতে সমস্যা হয়েছে', 'error');
                     }}
-                    className="px-3.5 py-2.5 bg-gold text-bg font-black rounded-xl text-[10px] uppercase tracking-wider hover:opacity-90 transition-all flex items-center gap-1.5 shadow-md active:scale-95"
+                    className="px-3.5 py-2.5 neu-btn-primary text-white font-bold rounded-xl text-[10px] uppercase tracking-wider transition-all flex items-center gap-1.5 active:scale-95"
                   >
                     <Copy size={12} />
                     📋 কপি অল রেজাল্ট
@@ -5600,7 +5817,7 @@ export default function App() {
                       const ok = await copyTextToClipboard(text);
                       if (ok) showMsg('লিডারদের রেজাল্ট কপি হয়েছে!', 'success');
                     }}
-                    className="px-3 py-2 bg-gold/10 text-gold hover:bg-gold/20 border border-gold/20 font-black rounded-xl text-[9px] sm:text-[10px] uppercase tracking-wider transition-all flex items-center gap-1 active:scale-95"
+                    className="px-3 py-2 neu-btn text-blue-700 font-bold rounded-xl text-[9px] sm:text-[10px] uppercase tracking-wider transition-all flex items-center gap-1 active:scale-95"
                   >
                     👑 লিডার কপি
                   </button>
@@ -5617,7 +5834,7 @@ export default function App() {
                       const ok = await copyTextToClipboard(text);
                       if (ok) showMsg('ট্রেনারদের রেজাল্ট কপি হয়েছে!', 'success');
                     }}
-                    className="px-3 py-2 bg-blue-accent/10 text-blue-accent hover:bg-blue-accent/20 border border-blue-accent/20 font-black rounded-xl text-[9px] sm:text-[10px] uppercase tracking-wider transition-all flex items-center gap-1 active:scale-95"
+                    className="px-3 py-2 neu-btn text-emerald-700 font-bold rounded-xl text-[9px] sm:text-[10px] uppercase tracking-wider transition-all flex items-center gap-1 active:scale-95"
                   >
                     🎓 ট্রেনার কপি
                   </button>
@@ -5625,7 +5842,7 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => setShowAdminPanel(true)}
-                    className="px-3 py-2 bg-white/5 text-muted-main hover:text-white border border-white/10 font-bold rounded-xl text-[9px] sm:text-[10px] uppercase tracking-wider transition-all"
+                    className="px-3 py-2 neu-btn text-slate-700 font-bold rounded-xl text-[9px] sm:text-[10px] uppercase tracking-wider transition-all"
                   >
                     সেটিংস ও প্রিভিউ
                   </button>
@@ -5645,6 +5862,7 @@ export default function App() {
               approvedUsers={approvedUsers}
               isAdmin={isAdmin}
               currentMemberId={myMember?.id || null}
+              onUpdateTarget={updateMemberTarget}
             />
 
             <Board 
@@ -5658,6 +5876,7 @@ export default function App() {
               approvedUsers={approvedUsers}
               isAdmin={isAdmin}
               currentMemberId={myMember?.id || null}
+              onUpdateTarget={updateMemberTarget}
             />
           </div>
         )}
@@ -5715,10 +5934,10 @@ export default function App() {
               <div className="inline-flex items-center gap-2 bg-blue-accent/5 border border-blue-accent/20 text-blue-accent px-3 py-1 rounded-full text-[9px] sm:text-[10px] tracking-[2px] uppercase mb-4">
                 <Link size={12} /> প্রজেক্ট লিঙ্ক সমূহ
               </div>
-              <h1 className="font-serif text-2xl sm:text-4xl font-black mb-2 bg-gradient-to-br from-white via-white to-blue-400 bg-clip-text text-transparent px-2">
+              <h1 className="font-serif text-2xl sm:text-4xl font-black mb-2 text-[#0a1128] dark:text-white px-2">
                 গুরুত্বপূর্ণ লিংকসমূহ
               </h1>
-              <p className="text-muted-main text-[10px] sm:text-sm max-w-md mx-auto opacity-80">
+              <p className="text-slate-600 dark:text-slate-400 text-[10px] sm:text-sm max-w-md mx-auto font-medium">
                 প্রয়োজনীয় এবং প্রয়োজনীয় প্রজেক্ট ও ফাইলগুলোর শর্টকাট লিংক।
               </p>
             </div>
@@ -5757,143 +5976,313 @@ export default function App() {
         )}
 
         {userTab === 'profile' && (
-          <div className="space-y-8">
-            <div className="text-center mb-8">
-              <div className="inline-flex items-center gap-2 bg-purple-500/5 border border-purple-500/20 text-purple-400 px-3 py-1 rounded-full text-[9px] sm:text-[10px] tracking-[2px] uppercase mb-4">
-                <User size={12} /> প্রোফাইল সেটিংস
+          <div className="space-y-8 animate-fade-in">
+            {/* Header / Intro */}
+            <div className="text-center mb-6">
+              <div className="inline-flex items-center gap-2 neu-card-sm text-blue-700 px-3.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-3">
+                <User size={13} className="text-blue-600" /> প্রোফাইল ও সেটিংস
               </div>
-              <h1 className="font-serif text-2xl sm:text-4xl font-black mb-2 bg-gradient-to-br from-white via-white to-purple-400 bg-clip-text text-transparent px-2">
+              <h1 className="text-2xl sm:text-4xl font-black mb-2 text-[#090d16] tracking-tight px-2">
                 আমার প্রোফাইল
               </h1>
-              <p className="text-muted-main text-[10px] sm:text-sm max-w-md mx-auto opacity-80">
-                আপনার ব্যক্তিগত প্রোফাইল তথ্য এবং ছবি সেটিংস পরিবর্তন করুন।
+              <p className="text-slate-600 text-xs sm:text-sm max-w-md mx-auto font-medium">
+                আপনার ব্যক্তিগত প্রোফাইল তথ্য, কার্টুন অ্যাভাটার ও সিকিউরিটি সেটিংস
               </p>
             </div>
 
-            {/* Profile Detail Card */}
-            <div className="bg-surface border border-border rounded-[32px] overflow-hidden shadow-xl">
-              <div className="p-6 sm:p-8 flex flex-col items-center border-b border-border relative">
-                {/* Background Decor */}
-                <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-r from-purple-900/10 via-gold/5 to-transparent" />
+            {!currentAuthUser ? (
+              /* Non-authenticated state / Admin only */
+              <div className="neu-card bg-[#dce7f4] border border-blue-200/80 rounded-3xl p-8 text-center max-w-lg mx-auto shadow-md">
+                <div className="w-16 h-16 rounded-2xl neu-card-sm flex items-center justify-center text-blue-600 mx-auto mb-4 border border-blue-200">
+                  <Shield size={36} />
+                </div>
+                <h3 className="text-xl font-black text-[#090d16] mb-2 tracking-tight">
+                  {isAdmin ? 'এডমিন অ্যাকাউন্ট সক্রিয়' : 'লগইন প্রয়োজন'}
+                </h3>
+                <p className="text-slate-600 text-xs sm:text-sm mb-6 leading-relaxed">
+                  {isAdmin 
+                    ? 'আপনি বর্তমানে সিস্টেম অ্যাডমিনিস্ট্রেটর হিসেবে লগইন আছেন। আপনি এডমিন প্যানেল থেকে সমস্ত ডেটা পরিচালনা করতে পারবেন।'
+                    : 'আপনার ব্যক্তিগত প্রোফাইল দেখতে ও কার্টুন অ্যাভাটার পরিচালনা করতে অনুগ্রহ করে আপনার অ্যাকাউন্টে সাইন ইন করুন।'}
+                </p>
+                {isAdmin ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowAdminPanel(true)}
+                    className="neu-btn-primary text-white font-black py-3.5 px-8 rounded-2xl inline-flex items-center gap-2.5 transition-all active:scale-95 shadow-md text-sm"
+                  >
+                    <Shield size={18} />
+                    এডমিন প্যানেল খুলুন
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAuthenticatedUser(null);
+                      localStorage.removeItem('unity_user');
+                    }}
+                    className="neu-btn-primary text-white font-black py-3.5 px-8 rounded-2xl inline-flex items-center gap-2.5 transition-all active:scale-95 shadow-md text-sm"
+                  >
+                    <LogIn size={18} />
+                    লগইন স্ক্রিন-এ যান
+                  </button>
+                )}
+              </div>
+            ) : (
+              /* Authenticated Profile Content */
+              <div className="neu-card bg-[#dce7f4] border border-blue-200/80 rounded-3xl overflow-hidden shadow-lg">
+                {/* Profile Top Section */}
+                <div className="p-6 sm:p-8 flex flex-col items-center border-b border-[#cbd9e8] relative bg-gradient-to-b from-blue-50/40 to-transparent">
+                  {/* Avatar Picker Frame */}
+                  <div 
+                    className="relative group cursor-pointer mb-4" 
+                    onClick={() => fileInputRef.current?.click()}
+                    title="ছবি পরিবর্তন করতে ক্লিক করুন"
+                  >
+                    <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-3xl overflow-hidden neu-card-sm border-2 border-white/90 relative flex items-center justify-center shadow-md">
+                      {savingPic ? (
+                        <div className="absolute inset-0 bg-blue-900/70 backdrop-blur-xs flex items-center justify-center text-xs text-white font-black z-20">
+                          সংরক্ষণ হচ্ছে...
+                        </div>
+                      ) : (
+                        <CartoonAvatar 
+                          src={currentAuthUser.profilePic} 
+                          name={currentAuthUser.fullName} 
+                        />
+                      )}
+                    </div>
+                    <div className="absolute -bottom-2 -right-2 neu-btn-primary text-white p-2 rounded-xl shadow-md border border-white/80 transition-all hover:scale-110 active:scale-95">
+                      <Camera size={16} />
+                    </div>
+                  </div>
 
-                {/* Profile Picture Picker */}
-                <div className="relative group cursor-pointer mb-5 z-10" onClick={() => fileInputRef.current?.click()}>
-                  <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-3xl overflow-hidden border-2 border-purple-500/40 relative flex items-center justify-center bg-bg/80 shadow-2xl">
-                    {savingPic ? (
-                      <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-xs text-white font-black">
-                        Uploading...
-                      </div>
-                    ) : currentAuthUser?.profilePic ? (
-                      <img 
-                        src={currentAuthUser.profilePic} 
-                        alt="Profile" 
-                        className="w-full h-full object-cover"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <UserCircle size={56} className="text-purple-400" />
+                  <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    onChange={handleProfilePicChange} 
+                    accept="image/*" 
+                    className="hidden" 
+                  />
+
+                  <h2 className="text-2xl sm:text-3xl font-black text-[#090d16] tracking-tight text-center">
+                    {currentAuthUser.fullName}
+                  </h2>
+                  <div className="px-3.5 py-1 rounded-full neu-inset text-blue-800 font-extrabold text-[11px] uppercase tracking-wider border border-blue-200/70 mt-2">
+                    {currentAuthUser.position || 'Sub-Admin'}
+                  </div>
+
+                  {/* Avatar Action Buttons */}
+                  <div className="flex flex-wrap items-center justify-center gap-2.5 mt-5">
+                    <button 
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={savingPic}
+                      className="neu-btn-primary text-white font-bold py-2.5 px-4 rounded-xl flex items-center gap-2 text-xs uppercase tracking-wider shadow-sm transition-all active:scale-95 disabled:opacity-50"
+                    >
+                      <Upload size={15} />
+                      {savingPic ? 'আপলোড হচ্ছে...' : 'কাস্টম ছবি আপলোড'}
+                    </button>
+                    {currentAuthUser.profilePic && (
+                      <button 
+                        type="button"
+                        onClick={handleRemoveProfilePic}
+                        disabled={savingPic}
+                        className="neu-btn text-red-600 hover:text-red-700 font-bold py-2.5 px-3.5 rounded-xl flex items-center gap-1.5 text-xs transition-all active:scale-95 border border-red-200/80 bg-red-50/50 hover:bg-red-50"
+                        title="অটো কার্টুন সেট করুন"
+                      >
+                        <Trash2 size={14} />
+                        ছবি মুছুন (অটো কার্টুন)
+                      </button>
                     )}
                   </div>
-                  <div className="absolute -bottom-2 -right-2 bg-purple-500 text-bg p-2 rounded-xl shadow-lg border border-purple-600/20 opacity-0 group-hover:opacity-100 sm:opacity-100 transition-all hover:scale-110 active:scale-95">
-                    <Camera size={16} />
-                  </div>
                 </div>
 
-                <input 
-                  type="file" 
-                  ref={fileInputRef} 
-                  onChange={handleProfilePicChange} 
-                  accept="image/*" 
-                  className="hidden" 
-                />
-
-                <h2 className="text-2xl font-black text-white tracking-tight text-center">{currentAuthUser?.fullName}</h2>
-                <div className="px-3 py-1 rounded-full bg-purple-500/10 text-purple-400 border border-purple-500/20 text-[10px] font-black uppercase tracking-widest mt-2">
-                  {currentAuthUser?.position}
-                </div>
-
-                <button 
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={savingPic}
-                  className="mt-6 w-full max-w-[240px] bg-purple-500 hover:bg-purple-600 disabled:opacity-50 text-bg font-black py-4 px-6 rounded-2xl flex items-center justify-center gap-3 transition-all active:scale-95 shadow-lg shadow-purple-500/20 text-xs uppercase tracking-wider"
-                >
-                  <Upload size={18} />
-                  {savingPic ? 'আপলোড হচ্ছে...' : 'প্রোফাইল পিকচার আপলোড'}
-                </button>
-              </div>
-
-              {/* Information Rows */}
-              <div className="p-6 sm:p-8 space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="bg-bg/40 border border-white/5 rounded-2xl p-4">
-                    <span className="block text-[10px] text-muted-main uppercase font-black tracking-wider mb-1">পূর্ণ নাম (Full Name)</span>
-                    <span className="text-white font-bold">{currentAuthUser?.fullName}</span>
-                  </div>
-                  <div className="bg-bg/40 border border-white/5 rounded-2xl p-4">
-                    <span className="block text-[10px] text-muted-main uppercase font-black tracking-wider mb-1">হোয়াটসঅ্যাপ নাম্বার (WhatsApp)</span>
-                    <span className="text-white font-bold font-mono">{currentAuthUser?.whatsapp}</span>
-                  </div>
-                  <div className="bg-bg/40 border border-white/5 rounded-2xl p-4">
-                    <span className="block text-[10px] text-muted-main uppercase font-black tracking-wider mb-1">মোট ভেরিফাইড কনভার্ট (Total Converts)</span>
-                    <span className="text-gold font-serif font-black text-lg flex items-center gap-1">
-                      👑 {
-                        [...leaderRanking, ...trainerRanking].find(
-                          r => r.name.trim().toLowerCase() === currentAuthUser?.fullName.trim().toLowerCase()
-                        )?.score || 0
-                      }
+                {/* Cartoon Avatar Picker Gallery */}
+                <div className="p-5 sm:p-6 border-b border-[#cbd9e8] bg-[#e4edf8]">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg neu-btn-primary flex items-center justify-center text-white">
+                        <Sparkles size={14} />
+                      </div>
+                      <h3 className="text-xs sm:text-sm font-black text-[#090d16] uppercase tracking-wider">
+                        কার্টুন অ্যাভাটার বেছে নিন (Choose Cartoon Avatar)
+                      </h3>
+                    </div>
+                    <span className="text-[10px] neu-inset text-slate-700 font-black px-2.5 py-0.5 rounded-full">
+                      ৮টি অপশন
                     </span>
                   </div>
-                  {myMember && (
-                    <>
-                      <div className="bg-bg/40 border border-white/5 rounded-2xl p-4">
-                        <span className="block text-[10px] text-muted-main uppercase font-black tracking-wider mb-1">আজকের সেশন কনভার্ট (Today's Converts)</span>
-                        <span className="text-green-accent font-serif font-black text-lg flex items-center gap-1">
-                          ⚡ {results[myMember.id]?.convert || 0}
+                  <p className="text-[11px] text-slate-600 font-medium mb-4 leading-relaxed">
+                    যেকোনো কার্টুন কার্ডে ক্লিক করলেই তা সরাসরি আপনার অ্যাকাউন্টে সেভ হয়ে যাবে। আপনি ছবি আপলোড না করলেও অটো কার্টুন স্বয়ংক্রিয়ভাবে শো করবে।
+                  </p>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                    {CARTOON_AVATAR_LIST.map((avatar) => {
+                      const isSelected = currentAuthUser.profilePic === `cartoon:${avatar.id}`;
+                      return (
+                        <button
+                          key={avatar.id}
+                          type="button"
+                          onClick={() => handleSelectCartoonAvatar(avatar.id)}
+                          disabled={savingPic}
+                          className={`p-2.5 rounded-2xl flex flex-col items-center gap-2 transition-all text-center group cursor-pointer ${
+                            isSelected 
+                              ? 'neu-card-sm ring-2 ring-blue-600 bg-blue-100/90 shadow-md' 
+                              : 'neu-card bg-[#dce7f4] hover:scale-[1.02] border border-slate-300/60'
+                          }`}
+                        >
+                          <div className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl overflow-hidden neu-card-sm border border-slate-300/70 p-0.5 relative">
+                            <CartoonAvatar src={`cartoon:${avatar.id}`} name={avatar.label} />
+                            {isSelected && (
+                              <div className="absolute top-1 right-1 w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] shadow-xs font-black">
+                                ✓
+                              </div>
+                            )}
+                          </div>
+                          <div className="min-w-0 w-full">
+                            <div className="text-xs font-black text-[#090d16] truncate">
+                              {avatar.label}
+                            </div>
+                            <div className={`text-[9px] font-extrabold uppercase mt-0.5 ${avatar.gender === 'male' ? 'text-blue-700' : 'text-pink-700'}`}>
+                              {avatar.gender === 'male' ? 'ছেলে • Boy' : 'মেয়ে • Girl'}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Profile Information Cards */}
+                <div className="p-6 sm:p-8 space-y-6">
+                  <div>
+                    <h3 className="text-xs sm:text-sm font-black text-[#090d16] uppercase tracking-wider mb-3">
+                      ব্যক্তিগত তথ্য ও অ্যাক্টিভিটি (Account Overview)
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                      <div className="neu-card-sm bg-[#e7eff9] border border-white/80 rounded-2xl p-4">
+                        <span className="block text-[10px] text-slate-500 uppercase font-black tracking-wider mb-1">
+                          পূর্ণ নাম (Full Name)
+                        </span>
+                        <span className="text-[#090d16] font-black text-base">
+                          {currentAuthUser.fullName}
                         </span>
                       </div>
-                      <div className="bg-bg/40 border border-white/5 rounded-2xl p-4">
-                        <span className="block text-[10px] text-muted-main uppercase font-black tracking-wider mb-1">আজকের পার্সোনাল লিড (Today's Personal Leads)</span>
-                        <span className="text-purple-400 font-serif font-black text-lg flex items-center gap-1">
-                          🎯 {results[myMember.id]?.personalLead || 0}
+
+                      <div className="neu-card-sm bg-[#e7eff9] border border-white/80 rounded-2xl p-4">
+                        <span className="block text-[10px] text-slate-500 uppercase font-black tracking-wider mb-1">
+                          হোয়াটসঅ্যাপ নাম্বার (WhatsApp)
+                        </span>
+                        <span className="text-blue-700 font-black text-base font-mono">
+                          {currentAuthUser.whatsapp}
                         </span>
                       </div>
-                    </>
-                  )}
-                  <div className="bg-bg/40 border border-white/5 rounded-2xl p-4">
-                    <span className="block text-[10px] text-muted-main uppercase font-black tracking-wider mb-1">লগইন পাসওয়ার্ড (Password)</span>
-                    <div className="flex items-center justify-between">
-                      <span className="text-white font-bold font-mono">
-                        {showPass ? currentAuthUser?.password : '••••••'}
-                      </span>
-                      <button onClick={() => setShowPass(!showPass)} className="text-purple-400 hover:text-white p-1 text-xs font-black">
-                        {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+
+                      <div className="neu-card-sm bg-[#e7eff9] border border-white/80 rounded-2xl p-4">
+                        <span className="block text-[10px] text-slate-500 uppercase font-black tracking-wider mb-1">
+                          পদবী (Position)
+                        </span>
+                        <span className="text-[#090d16] font-black text-base">
+                          {currentAuthUser.position || 'Sub-Admin'}
+                        </span>
+                      </div>
+
+                      <div className="neu-card-sm bg-[#e7eff9] border border-white/80 rounded-2xl p-4">
+                        <span className="block text-[10px] text-slate-500 uppercase font-black tracking-wider mb-1">
+                          মোট ভেরিফাইড কনভার্ট (Total Converts)
+                        </span>
+                        <span className="text-amber-700 font-black text-xl flex items-center gap-1.5">
+                          👑 {
+                            [...leaderRanking, ...trainerRanking].find(
+                              r => r.name.trim().toLowerCase() === currentAuthUser?.fullName.trim().toLowerCase()
+                            )?.score || 0
+                          }
+                        </span>
+                      </div>
+
+                      {myMember && (
+                        <>
+                          <div className="neu-card-sm bg-[#e7eff9] border border-white/80 rounded-2xl p-4">
+                            <span className="block text-[10px] text-slate-500 uppercase font-black tracking-wider mb-1">
+                              আজকের সেশন কনভার্ট (Today's Converts)
+                            </span>
+                            <span className="text-emerald-700 font-black text-xl flex items-center gap-1.5">
+                              ⚡ {results[myMember.id]?.convert || 0}
+                            </span>
+                          </div>
+                          <div className="neu-card-sm bg-[#e7eff9] border border-white/80 rounded-2xl p-4">
+                            <span className="block text-[10px] text-slate-500 uppercase font-black tracking-wider mb-1">
+                              আজকের পার্সোনাল লিড (Today's Personal Leads)
+                            </span>
+                            <span className="text-purple-700 font-black text-xl flex items-center gap-1.5">
+                              🎯 {results[myMember.id]?.personalLead || 0}
+                            </span>
+                          </div>
+                        </>
+                      )}
+
+                      <div className="neu-card-sm bg-[#e7eff9] border border-white/80 rounded-2xl p-4">
+                        <span className="block text-[10px] text-slate-500 uppercase font-black tracking-wider mb-1">
+                          লগইন পাসওয়ার্ড (Password)
+                        </span>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[#090d16] font-black font-mono text-base tracking-wider">
+                            {showPass ? currentAuthUser.password : '••••••'}
+                          </span>
+                          <button 
+                            type="button"
+                            onClick={() => setShowPass(!showPass)} 
+                            className="text-blue-600 hover:text-blue-800 p-1.5 rounded-lg neu-btn text-xs font-bold transition-all"
+                            title={showPass ? 'পাসওয়ার্ড লুকান' : 'পাসওয়ার্ড দেখুন'}
+                          >
+                            {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Password Change Sub-Form */}
+                  <div className="pt-5 border-t border-[#cbd9e8]">
+                    <h3 className="text-xs sm:text-sm font-black text-[#090d16] uppercase tracking-wider mb-3">
+                      পাসওয়ার্ড পরিবর্তন করুন (Change Password)
+                    </h3>
+                    <div className="flex flex-col sm:flex-row items-stretch gap-3">
+                      <input 
+                        type="password" 
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="নতুন পাসওয়ার্ড লিখুন"
+                        className="neu-input flex-1 rounded-xl px-4 py-3.5 text-sm font-bold text-[#090d16] placeholder:text-slate-400 outline-none border border-slate-300 transition-all bg-[#e6eef8]"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleSavePasswordFromProfile}
+                        disabled={updatingPass}
+                        className="neu-btn-primary text-white font-black px-6 py-3.5 rounded-xl uppercase tracking-wider text-xs shadow-md active:scale-95 disabled:opacity-50 transition-all"
+                      >
+                        {updatingPass ? 'সেভ হচ্ছে...' : 'পাসওয়ার্ড সেভ করুন'}
                       </button>
                     </div>
                   </div>
-                </div>
 
-                {/* Password Change Sub-Form */}
-                <div className="mt-8 pt-6 border-t border-border">
-                  <h3 className="text-sm font-black text-white uppercase tracking-wider mb-4">পাসওয়ার্ড পরিবর্তন করুন (Change Password)</h3>
-                  <div className="flex flex-col sm:flex-row items-stretch gap-3">
-                    <input 
-                      type="password" 
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      placeholder="নতুন পাসওয়ার্ড লিখুন"
-                      className="flex-1 bg-bg/50 border-2 border-border2 focus:border-purple-500 rounded-2xl px-4 py-3.5 text-sm font-bold outline-none transition-all text-white"
-                    />
+                  {/* Logout Button */}
+                  <div className="pt-4 border-t border-[#cbd9e8] flex justify-end">
                     <button
-                      onClick={handleSavePasswordFromProfile}
-                      disabled={updatingPass}
-                      className="px-6 py-3.5 rounded-2xl bg-purple-500 hover:bg-purple-600 text-bg font-black uppercase tracking-wider text-xs shadow-xl active:scale-95 disabled:opacity-40 transition-all"
+                      type="button"
+                      onClick={() => {
+                        setAuthenticatedUser(null);
+                        localStorage.removeItem('unity_user');
+                        showMsg('সফলভাবে লগআউট করা হয়েছে!', 'success');
+                      }}
+                      className="neu-btn text-red-600 hover:text-red-700 font-black py-2.5 px-5 rounded-xl text-xs uppercase tracking-wider flex items-center gap-2 border border-red-200/80 bg-red-50/50 hover:bg-red-50 active:scale-95 transition-all shadow-sm"
                     >
-                      {updatingPass ? 'Saving...' : 'সেভ করুন'}
+                      <LogOut size={15} />
+                      লগআউট করুন (Logout)
                     </button>
                   </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         )}
       </main>
@@ -5902,11 +6291,8 @@ export default function App() {
       <nav 
         id="bottom-navigation-bar"
         aria-label="Bottom Navigation"
-        className="fixed bottom-0 sm:bottom-3 inset-x-0 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 w-full sm:w-[96%] sm:max-w-[640px] bg-[#070b16]/95 sm:bg-[#0c1224]/92 backdrop-blur-2xl border-t sm:border border-white/15 sm:rounded-3xl px-1 sm:px-2.5 py-1.5 sm:py-2 z-[300] shadow-[0_-12px_40px_rgba(0,0,0,0.9),0_0_25px_rgba(223,179,61,0.1)]"
+        className="fixed bottom-0 sm:bottom-3 inset-x-0 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 w-full sm:w-[96%] sm:max-w-[640px] neu-nav sm:rounded-2xl px-1 sm:px-2.5 py-1.5 sm:py-2 z-[300]"
       >
-        {/* Top ambient rainbow glow divider */}
-        <div className="absolute top-0 inset-x-0 h-[2px] bg-gradient-to-r from-amber-400 via-emerald-400 via-cyan-400 via-rose-400 via-orange-400 via-blue-400 to-purple-400 opacity-75 sm:rounded-t-3xl pointer-events-none" />
-
         <div className="flex items-center justify-between sm:justify-around w-full gap-0.5 sm:gap-1">
           {[
             { 
@@ -5914,22 +6300,22 @@ export default function App() {
               label: 'হোম', 
               icon: <Home size={18} className="sm:w-5 sm:h-5" />, 
               isExternal: false,
-              labelColor: 'text-amber-300',
-              activeLabelColor: 'text-amber-200 font-black',
-              boxDefault: 'bg-amber-500/15 border-amber-400/40 text-amber-300 shadow-[0_0_10px_rgba(245,158,11,0.25)] hover:bg-amber-500/25',
-              boxActive: 'bg-gradient-to-br from-amber-400 to-yellow-500 text-gray-950 border-amber-200 ring-2 ring-amber-400/60 shadow-[0_0_18px_rgba(245,158,11,0.7)] scale-105 font-bold',
-              indicatorColor: 'bg-amber-400'
+              labelColor: 'text-slate-600 font-bold',
+              activeLabelColor: 'text-blue-600 font-black',
+              boxDefault: 'neu-card-sm text-slate-700 hover:text-blue-600',
+              boxActive: 'neu-btn-primary text-white scale-105 font-bold',
+              indicatorColor: 'bg-blue-600'
             },
             { 
               id: 'submit', 
               label: 'রেজাল্ট', 
               icon: <CheckSquare size={18} className="sm:w-5 sm:h-5" />, 
               isExternal: false,
-              labelColor: 'text-emerald-300',
-              activeLabelColor: 'text-emerald-200 font-black',
-              boxDefault: 'bg-emerald-500/15 border-emerald-400/40 text-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.25)] hover:bg-emerald-500/25',
-              boxActive: 'bg-gradient-to-br from-emerald-400 to-teal-500 text-gray-950 border-emerald-200 ring-2 ring-emerald-400/60 shadow-[0_0_18px_rgba(16,185,129,0.7)] scale-105 font-bold',
-              indicatorColor: 'bg-emerald-400'
+              labelColor: 'text-slate-600 font-bold',
+              activeLabelColor: 'text-emerald-600 font-black',
+              boxDefault: 'neu-card-sm text-slate-700 hover:text-emerald-600',
+              boxActive: 'neu-btn-emerald text-white scale-105 font-bold',
+              indicatorColor: 'bg-emerald-600'
             },
             { 
               id: 'seat_booking', 
@@ -5937,9 +6323,9 @@ export default function App() {
               icon: <Ticket size={18} className="sm:w-5 sm:h-5" />, 
               isExternal: true,
               url: 'https://seat-booking-unity.vercel.app/',
-              labelColor: 'text-cyan-300 font-black',
-              boxDefault: 'bg-cyan-500/20 border-cyan-400/50 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.35)] hover:bg-gradient-to-br hover:from-cyan-400 hover:to-blue-500 hover:text-gray-950 hover:scale-105',
-              beaconColor: 'bg-cyan-400'
+              labelColor: 'text-cyan-700 font-bold',
+              boxDefault: 'neu-card-sm text-cyan-700 hover:scale-105',
+              beaconColor: 'bg-cyan-500'
             },
             { 
               id: 'withdraw_request', 
@@ -5947,42 +6333,42 @@ export default function App() {
               icon: <Wallet size={18} className="sm:w-5 sm:h-5" />, 
               isExternal: true,
               url: 'https://withdraw-request.vercel.app/',
-              labelColor: 'text-rose-300 font-black',
-              boxDefault: 'bg-rose-500/20 border-rose-400/50 text-rose-300 shadow-[0_0_12px_rgba(244,63,94,0.35)] hover:bg-gradient-to-br hover:from-rose-400 hover:to-pink-500 hover:text-gray-950 hover:scale-105',
-              beaconColor: 'bg-rose-400'
+              labelColor: 'text-emerald-700 font-bold',
+              boxDefault: 'neu-card-sm text-emerald-700 hover:scale-105',
+              beaconColor: 'bg-emerald-500'
             },
             { 
               id: 'sheet', 
               label: 'শিট / হিসাব', 
               icon: <FileText size={18} className="sm:w-5 sm:h-5" />, 
               isExternal: false,
-              labelColor: 'text-orange-300',
-              activeLabelColor: 'text-orange-200 font-black',
-              boxDefault: 'bg-orange-500/15 border-orange-400/40 text-orange-300 shadow-[0_0_10px_rgba(249,115,22,0.25)] hover:bg-orange-500/25',
-              boxActive: 'bg-gradient-to-br from-orange-400 to-amber-500 text-gray-950 border-orange-200 ring-2 ring-orange-400/60 shadow-[0_0_18px_rgba(249,115,22,0.7)] scale-105 font-bold',
-              indicatorColor: 'bg-orange-400'
+              labelColor: 'text-slate-600 font-bold',
+              activeLabelColor: 'text-blue-600 font-black',
+              boxDefault: 'neu-card-sm text-slate-700 hover:text-blue-600',
+              boxActive: 'neu-btn-primary text-white scale-105 font-bold',
+              indicatorColor: 'bg-blue-600'
             },
             { 
               id: 'links', 
               label: 'লিংক সমূহ', 
               icon: <Link size={18} className="sm:w-5 sm:h-5" />, 
               isExternal: false,
-              labelColor: 'text-blue-300',
-              activeLabelColor: 'text-blue-200 font-black',
-              boxDefault: 'bg-blue-500/15 border-blue-400/40 text-blue-300 shadow-[0_0_10px_rgba(59,130,246,0.25)] hover:bg-blue-500/25',
-              boxActive: 'bg-gradient-to-br from-blue-400 to-indigo-500 text-gray-950 border-blue-200 ring-2 ring-blue-400/60 shadow-[0_0_18px_rgba(59,130,246,0.7)] scale-105 font-bold',
-              indicatorColor: 'bg-blue-400'
+              labelColor: 'text-slate-600 font-bold',
+              activeLabelColor: 'text-blue-600 font-black',
+              boxDefault: 'neu-card-sm text-slate-700 hover:text-blue-600',
+              boxActive: 'neu-btn-primary text-white scale-105 font-bold',
+              indicatorColor: 'bg-blue-600'
             },
             { 
               id: 'profile', 
               label: 'প্রোফাইল', 
               icon: <User size={18} className="sm:w-5 sm:h-5" />, 
               isExternal: false,
-              labelColor: 'text-purple-300',
-              activeLabelColor: 'text-purple-200 font-black',
-              boxDefault: 'bg-purple-500/15 border-purple-400/40 text-purple-300 shadow-[0_0_10px_rgba(168,85,247,0.25)] hover:bg-purple-500/25',
-              boxActive: 'bg-gradient-to-br from-purple-400 to-fuchsia-500 text-gray-950 border-purple-200 ring-2 ring-purple-400/60 shadow-[0_0_18px_rgba(168,85,247,0.7)] scale-105 font-bold',
-              indicatorColor: 'bg-purple-400'
+              labelColor: 'text-slate-600 font-bold',
+              activeLabelColor: 'text-blue-600 font-black',
+              boxDefault: 'neu-card-sm text-slate-700 hover:text-blue-600',
+              boxActive: 'neu-btn-primary text-white scale-105 font-bold',
+              indicatorColor: 'bg-blue-600'
             }
           ].map((tab) => {
             const isActive = !tab.isExternal && userTab === tab.id;
@@ -6083,6 +6469,15 @@ export default function App() {
               {/* Admin Navigation "Slots" (Three-line style alternative) */}
               <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 custom-scrollbar space-y-4">
                 
+                {/* 1. Website Branding & Logo */}
+                <AdminAccordion title="Website Logo & Branding (লোগো পরিবর্তন)" icon={<Upload size={16} />} colorClass="text-blue-accent" defaultOpen={false}>
+                   <BrandLogoManager 
+                     config={config} 
+                     onUpdateLogo={updateWebsiteLogo} 
+                     showMsg={showMsg} 
+                   />
+                </AdminAccordion>
+
                 {/* 2. Operations Slot (Timer & Results) */}
                 <AdminAccordion title="Operations & Boards" icon={<Clock size={16} />} colorClass="text-blue-accent" defaultOpen={true}>
                    <div className="grid grid-cols-1 gap-3 sm:gap-4">
@@ -6257,8 +6652,46 @@ export default function App() {
                 {/* 5. Team & Roster Slot */}
                 <AdminAccordion title="Team Roster Management" icon={<Users size={16} />} colorClass="text-indigo-400">
                    <div className="space-y-4">
-                      <AdminSection title="Team Leaders" onAdd={(name) => addMember(name, 'leader')} members={members.filter(m => m.type === 'leader')} onDelete={deleteMember} />
-                      <AdminSection title="Team Trainers" onAdd={(name) => addMember(name, 'trainer')} members={members.filter(m => m.type === 'trainer')} onDelete={deleteMember} />
+                      <StlAdminManager
+                        stlMembers={stlMembers}
+                        registeredUsers={approvedUsers}
+                        teamLeaders={members.filter(m => m.type === 'leader')}
+                        results={results}
+                        onAddSTL={addSTLMember}
+                        onDeleteSTL={deleteSTLMember}
+                        onOpenAssignModal={(stl) => {
+                          setSelectedStlForAssign(stl);
+                          setShowStlAssignModal(true);
+                        }}
+                        onRemoveTLFromSTL={removeTLFromSTL}
+                        onUpdateTarget={updateStlTarget}
+                      />
+                      <div className="p-4 bg-bg/80 border border-border rounded-2xl mb-4">
+                        <div className="flex items-center justify-between mb-3 pb-2 border-b border-border">
+                          <div className="flex items-center gap-2">
+                            <Target size={18} className="text-gold" />
+                            <h4 className="text-xs font-bold text-white uppercase tracking-wider">🎯 মেম্বার টার্গেট ম্যানেজমেন্ট (Target Roster Control)</h4>
+                          </div>
+                          <span className="text-[10px] text-muted-main">কনভার্ট টার্গেট ও অর্জন রেশিও</span>
+                        </div>
+                        <p className="text-[11px] text-muted-main mb-3">
+                          এখানে প্রতিটি টিম লিডার এবং ট্রেইনারের জন্য কনভার্ট টার্গেট সেট করুন। রেজাল্ট বোর্ডে তাদের অর্জনের পার্সেন্টেজ (সবুজ/হলুদ/লাল) রেশিও লাইন আকারে দৃশ্যমান হবে।
+                        </p>
+                      </div>
+                      <AdminSection 
+                        title="Team Leaders" 
+                        onAdd={(name, target) => addMember(name, 'leader', target)} 
+                        members={members.filter(m => m.type === 'leader')} 
+                        onDelete={deleteMember} 
+                        onUpdateTarget={updateMemberTarget}
+                      />
+                      <AdminSection 
+                        title="Team Trainers" 
+                        onAdd={(name, target) => addMember(name, 'trainer', target)} 
+                        members={members.filter(m => m.type === 'trainer')} 
+                        onDelete={deleteMember} 
+                        onUpdateTarget={updateMemberTarget}
+                      />
                       <TeacherManagementSection teachers={teachers} attendanceRecords={attendanceRecords} onAdd={addTeacher} onDelete={deleteTeacher} onViewHistory={(teacher) => setShowTeacherHistory(teacher)} />
                    </div>
                 </AdminAccordion>
@@ -6374,6 +6807,19 @@ export default function App() {
       {/* Notifications disabled by user request */}
 
       <GiftBoxOverlay config={config} />
+
+      <StlAssignmentModal
+        isOpen={showStlAssignModal}
+        onClose={() => {
+          setShowStlAssignModal(false);
+          setSelectedStlForAssign(null);
+        }}
+        stl={selectedStlForAssign}
+        allStls={stlMembers}
+        teamLeaders={members.filter(m => m.type === 'leader')}
+        results={results}
+        onSave={saveStlAssignments}
+      />
 
       <AnimatePresence>
         {showPickingModal && (
@@ -6733,24 +7179,28 @@ interface BoardProps {
   isAdmin: boolean;
   currentMemberId: string | null;
   computeUserSubmissionStats?: (userWhatsapp: string, memberId?: string) => any;
+  onUpdateTarget?: (id: string, target: number) => void;
 }
 
-const Board: React.FC<BoardProps> = ({ title, icon, members, results, timerActive, onSubmit, accentColor, approvedUsers, isAdmin, currentMemberId, computeUserSubmissionStats }) => {
+const Board: React.FC<BoardProps> = ({ title, icon, members, results, timerActive, onSubmit, accentColor, approvedUsers, isAdmin, currentMemberId, computeUserSubmissionStats, onUpdateTarget }) => {
   return (
     <div className="mb-12">
-      <div className="flex items-center gap-4 mb-6">
-        <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm ${
-          accentColor === 'gold' ? 'bg-gold/10 border border-gold/20 text-gold' : 'bg-blue-accent/10 border border-blue-accent/20 text-blue-accent'
+      <div className="flex items-center gap-3.5 mb-6">
+        <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-sm font-bold ${
+          accentColor === 'gold' ? 'neu-btn-primary text-white' : 'neu-btn-emerald text-white'
         }`}>
           {icon}
         </div>
-        <h2 className="font-serif text-lg whitespace-nowrap">{title}</h2>
-        <div className="flex-1 h-[1px] bg-gradient-to-r from-border to-transparent" />
+        <h2 className="text-xl font-bold text-slate-900 whitespace-nowrap">{title}</h2>
+        <div className="flex-1 h-[2px] neu-inset ml-2" />
+        <span className="text-xs font-bold px-3 py-1 rounded-full neu-card-sm text-slate-700">
+          {members.length} Members
+        </span>
       </div>
 
       <div className="space-y-3">
         {members.length === 0 ? (
-          <div className="text-center text-muted-main2 py-8 text-sm border border-dashed border-border rounded-2xl">
+          <div className="text-center text-slate-500 py-10 text-sm neu-card rounded-2xl font-medium">
             No members added yet
           </div>
         ) : (
@@ -6767,6 +7217,7 @@ const Board: React.FC<BoardProps> = ({ title, icon, members, results, timerActiv
               isAdmin={isAdmin}
               isMe={m.id === currentMemberId}
               computeUserSubmissionStats={computeUserSubmissionStats}
+              onUpdateTarget={onUpdateTarget}
             />
           ))
         )}
@@ -6786,13 +7237,16 @@ interface MemberCardProps {
   isAdmin: boolean;
   isMe: boolean;
   computeUserSubmissionStats?: (userWhatsapp: string, memberId?: string) => any;
+  onUpdateTarget?: (id: string, target: number) => void;
 }
 
-const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, onSubmit, accentColor, rank, approvedUsers, isAdmin, isMe, computeUserSubmissionStats }) => {
+const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, onSubmit, accentColor, rank, approvedUsers, isAdmin, isMe, computeUserSubmissionStats, onUpdateTarget }) => {
   const [lead, setLead] = useState<string>('');
   const [convert, setConvert] = useState<string>('');
   const [personalLead, setPersonalLead] = useState<string>('');
   const [isEditing, setIsEditing] = useState(false);
+  const [isEditingTarget, setIsEditingTarget] = useState(false);
+  const [targetInput, setTargetInput] = useState<string>(member.target?.toString() || '');
 
   // Reset local state when result is cleared from DB or initial load
   useEffect(() => {
@@ -6802,6 +7256,10 @@ const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, on
       setPersonalLead(result?.personalLead.toString() || '');
     }
   }, [result, isEditing]);
+
+  useEffect(() => {
+    setTargetInput(member.target?.toString() || '');
+  }, [member.target]);
 
   const initials = member.name.split(' ').map((w: string) => w[0]).join('').toUpperCase().slice(0, 2);
   const rankIcon = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`;
@@ -6821,6 +7279,46 @@ const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, on
 
   const subStats = computeUserSubmissionStats ? computeUserSubmissionStats(matchedUser?.whatsapp || '', member.id) : null;
 
+  // Target Calculations: Base ratio on Total Converts as requested
+  const targetConvert = member.target || 0;
+  const totalConverts = (member as any).score !== undefined ? (member as any).score : (result?.convert || 0);
+  const currentConvert = totalConverts;
+  const hasTarget = targetConvert > 0;
+  const rawRatio = hasTarget ? Math.round((currentConvert / targetConvert) * 100) : 0;
+  const progressRatio = hasTarget ? Math.min(rawRatio, 100) : 0;
+
+  // Color Coding for Target Progress:
+  // Green / High: >= 80%
+  // Yellow / Medium: 40% - 79%
+  // Red / Low: < 40%
+  const getTargetTheme = () => {
+    if (!hasTarget) return null;
+    if (rawRatio >= 80) {
+      return {
+        badgeStyle: 'bg-emerald-100/90 text-emerald-800 border-emerald-300',
+        barGradient: 'bg-gradient-to-r from-emerald-500 to-green-400',
+        textColor: 'text-emerald-700',
+        dotColor: 'bg-emerald-500'
+      };
+    }
+    if (rawRatio >= 40) {
+      return {
+        badgeStyle: 'bg-amber-100/90 text-amber-800 border-amber-300',
+        barGradient: 'bg-gradient-to-r from-amber-500 to-yellow-400',
+        textColor: 'text-amber-700',
+        dotColor: 'bg-amber-500'
+      };
+    }
+    return {
+      badgeStyle: 'bg-rose-100/90 text-rose-800 border-rose-300',
+      barGradient: 'bg-gradient-to-r from-rose-500 to-red-400',
+      textColor: 'text-rose-700',
+      dotColor: 'bg-rose-500'
+    };
+  };
+
+  const targetTheme = getTargetTheme();
+
   return (
     <motion.div 
       layout
@@ -6830,57 +7328,130 @@ const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, on
         layout: { type: 'spring', damping: 25, stiffness: 200 },
         opacity: { duration: 0.2 }
       }}
-      className={`bg-surface border border-border rounded-2xl overflow-hidden transition-all duration-300 hover:border-gold/20 hover:shadow-lg ${result?.submitted ? 'border-green-accent/20 bg-green-accent/5' : ''}`}
+      className={`neu-card rounded-2xl overflow-hidden transition-all duration-300 ${result?.submitted ? 'border-emerald-300/80 ring-1 ring-emerald-400/30' : ''}`}
     >
       <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-4">
         <div className="flex items-center gap-4 flex-1">
           <div 
-            className={`w-12 h-12 rounded-2xl flex items-center justify-center font-serif font-black text-bg text-lg shadow-xl relative overflow-hidden flex-shrink-0 ${
-              matchedUser?.profilePic ? 'border border-gold/15' : (accentColor === 'gold' ? 'bg-gradient-to-br from-gold to-gold2' : 'bg-gradient-to-br from-blue-accent to-blue-accent2')
-            }`}
+            className="w-12 h-12 rounded-2xl flex items-center justify-center relative overflow-hidden flex-shrink-0 shadow-md neu-card-sm border border-slate-300/80"
           >
-            {matchedUser?.profilePic ? (
-              <img 
-                src={matchedUser.profilePic} 
-                alt={member.name} 
-                className="w-full h-full object-cover"
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <UserCircle size={28} strokeWidth={2} />
-            )}
+            <CartoonAvatar 
+              src={matchedUser?.profilePic} 
+              name={member.name} 
+            />
             {rank <= 3 && (
-              <div className="absolute -top-1 -right-1 bg-surface border border-border rounded-full w-5 h-5 flex items-center justify-center text-[10px] shadow-md z-10">
+              <div className="absolute -top-1 -right-1 bg-white border border-slate-300 rounded-full w-5 h-5 flex items-center justify-center text-[10px] shadow-sm z-10 font-bold">
                 {rankIcon}
               </div>
             )}
           </div>
           
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <div className="font-bold text-base text-white truncate">{member.name}</div>
-              <div className={`px-2 py-0.5 rounded-lg text-[10px] font-black border ${accentColor === 'gold' ? 'bg-gold/10 text-gold border-gold/20' : 'bg-blue-accent/10 text-blue-accent border-blue-accent/20'}`}>
-                { (member as any).score || 0 } Total Convert
+              <div className="font-black text-base sm:text-lg text-[#090d16] truncate flex items-center gap-1.5 tracking-tight group-hover:text-blue-700 transition-colors">
+                <span>{member.name}</span>
+                {rank === 1 && <span className="text-amber-500 text-xs" title="Top Ranked">👑</span>}
+              </div>
+              <div className={`px-2.5 py-0.5 rounded-full text-[10px] font-black neu-card-sm border flex items-center gap-1 shadow-xs ${accentColor === 'gold' ? 'text-blue-800 bg-blue-100/70 border-blue-200' : 'text-emerald-800 bg-emerald-100/70 border-emerald-200'}`}>
+                <span>{ (member as any).score || 0 } Total Convert</span>
               </div>
               {status && (
-                <span className={`text-[8px] px-2 py-0.5 rounded-full border border-current font-black uppercase tracking-widest ${status.color}`}>
+                <span className={`text-[9px] px-2 py-0.5 rounded-full border border-current font-extrabold uppercase tracking-wider ${status.color}`}>
                   {status.label}
                 </span>
               )}
             </div>
-            <div className="text-[10px] text-muted-main mt-0.5 flex items-center gap-2">
-              <span className="opacity-60">{rankIcon} Position</span>
-              {result?.submitted && <span className="w-1 h-1 rounded-full bg-green-accent" />}
-              {result?.submitted && <span className="text-green-accent font-bold">Verified</span>}
+            <div className="text-xs text-slate-600 mt-0.5 flex items-center gap-2 font-semibold">
+              <span>{rankIcon} Position</span>
+              {result?.submitted && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
+              {result?.submitted && <span className="text-emerald-700 font-bold">Verified</span>}
+            </div>
+
+            {/* Target Progress Bar & Ratio Graph (চিকন করে সাইড দিয়ে গ্রাফ/লাইন বার) */}
+            <div className="mt-2 pt-1.5 border-t border-slate-200/70 max-w-sm">
+              <div className="flex items-center justify-between gap-1 text-[10px] mb-1">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="font-extrabold text-slate-700 flex items-center gap-1">
+                    🎯 টার্গেট:
+                  </span>
+                  {hasTarget ? (
+                    <span className={`px-2 py-0.5 rounded-md font-black border text-[10px] flex items-center gap-1.5 shadow-xs ${targetTheme?.badgeStyle}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${targetTheme?.dotColor}`} />
+                      <span>{currentConvert}/{targetConvert}</span>
+                      <span className="font-extrabold font-mono">({rawRatio}%)</span>
+                    </span>
+                  ) : (
+                    <span className="text-[9px] text-slate-400 font-medium italic">
+                      টার্গেট সেট করা হয়নি
+                    </span>
+                  )}
+                </div>
+
+                {isAdmin && onUpdateTarget && !isEditingTarget && (
+                  <button 
+                    onClick={() => {
+                      setTargetInput(member.target?.toString() || '');
+                      setIsEditingTarget(true);
+                    }}
+                    className="text-[9px] text-blue-600 hover:text-blue-800 font-bold px-1.5 py-0.5 rounded bg-blue-50 border border-blue-200/60 hover:bg-blue-100 transition-colors flex items-center gap-0.5"
+                    title="টার্গেট পরিবর্তন করুন"
+                  >
+                    <Pencil size={8} /> সেট টার্গেট
+                  </button>
+                )}
+              </div>
+
+              {/* Thin Progress Line / Graph */}
+              {hasTarget && (
+                <div className="w-full h-1.5 bg-slate-200/90 rounded-full overflow-hidden neu-inset relative">
+                  <div 
+                    className={`h-full rounded-full transition-all duration-500 ${targetTheme?.barGradient}`}
+                    style={{ width: `${Math.min(progressRatio, 100)}%` }}
+                  />
+                </div>
+              )}
+
+              {/* Inline Target Editor for Admin */}
+              {isEditingTarget && (
+                <div className="flex items-center gap-1.5 mt-1.5 bg-slate-100 p-1.5 rounded-lg border border-slate-300 shadow-xs">
+                  <span className="text-[10px] font-bold text-slate-700">টার্গেট সংখ্যা:</span>
+                  <input 
+                    type="number"
+                    value={targetInput}
+                    onChange={(e) => setTargetInput(e.target.value)}
+                    placeholder="0"
+                    className="w-14 px-1.5 py-0.5 text-xs font-bold neu-input rounded-md text-center"
+                    min="0"
+                    autoFocus
+                  />
+                  <button 
+                    onClick={() => {
+                      if (onUpdateTarget) {
+                        onUpdateTarget(member.id, parseInt(targetInput) || 0);
+                      }
+                      setIsEditingTarget(false);
+                    }}
+                    className="px-2 py-0.5 text-[10px] font-bold bg-blue-600 text-white rounded-md hover:bg-blue-700 active:scale-95 transition-all"
+                  >
+                    Save
+                  </button>
+                  <button 
+                    onClick={() => setIsEditingTarget(false)}
+                    className="px-1.5 py-0.5 text-[10px] font-bold bg-slate-200 text-slate-700 rounded-md hover:bg-slate-300 active:scale-95 transition-all"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* User Submission & Fine Badges */}
             {subStats && (
               <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                <span className="inline-flex items-center gap-1 text-[10px] font-black bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded-md">
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-red-50 text-red-700 border border-red-200 px-2 py-0.5 rounded-md">
                   <AlertTriangle size={10} /> রেজাল্ট মিসড/বাতিল: {subStats.missedDays} দিন
                 </span>
-                <span className="inline-flex items-center gap-1 text-[10px] font-black bg-gold/10 text-gold border border-gold/20 px-2 py-0.5 rounded-md">
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-md">
                   <Wallet size={10} /> চার্জ/জরিমানা: ৳{subStats.totalFine}
                 </span>
               </div>
@@ -6891,24 +7462,24 @@ const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, on
         {result?.submitted && !isEditing ? (
           <div className="flex items-center gap-3">
             <div className="grid grid-cols-3 sm:flex items-center gap-2">
-              <div className="bg-blue-accent/10 text-blue-accent border border-blue-accent/20 px-3 py-2 rounded-xl text-xs font-black flex flex-col sm:flex-row items-center gap-1 sm:gap-2">
-                <Send size={10} className="opacity-50" /> 
-                <span className="opacity-40 font-bold uppercase text-[8px] sm:text-[10px]">Lead</span>
-                <span className="text-sm">{result.lead}</span>
+              <div className="neu-card-sm text-blue-700 px-3 py-2 rounded-xl text-xs font-bold flex flex-col sm:flex-row items-center gap-1 sm:gap-2">
+                <Send size={11} className="opacity-70 text-blue-600" /> 
+                <span className="opacity-70 font-semibold uppercase text-[8px] sm:text-[10px] text-slate-600">Lead</span>
+                <span className="text-sm font-black text-slate-900">{result.lead}</span>
               </div>
-              <div className="bg-green-accent/10 text-green-accent border border-green-accent/20 px-3 py-2 rounded-xl text-xs font-black flex flex-col sm:flex-row items-center gap-1 sm:gap-2">
-                <CheckCircle2 size={10} className="opacity-50" /> 
-                <span className="opacity-40 font-bold uppercase text-[8px] sm:text-[10px]">Convert</span>
-                <span className="text-sm">{result.convert}</span>
+              <div className="neu-card-sm text-emerald-700 px-3 py-2 rounded-xl text-xs font-bold flex flex-col sm:flex-row items-center gap-1 sm:gap-2">
+                <CheckCircle2 size={11} className="opacity-70 text-emerald-600" /> 
+                <span className="opacity-70 font-semibold uppercase text-[8px] sm:text-[10px] text-slate-600">Convert</span>
+                <span className="text-sm font-black text-slate-900">{result.convert}</span>
               </div>
-              <div className="bg-purple-500/10 text-purple-400 border border-purple-500/20 px-3 py-2 rounded-xl text-xs font-black flex flex-col sm:flex-row items-center gap-1 sm:gap-2">
-                <UserCircle size={10} className="opacity-50" /> 
-                <span className="opacity-40 font-bold uppercase text-[8px] sm:text-[10px]">Personal</span>
-                <span className="text-sm">{result.personalLead}</span>
+              <div className="neu-card-sm text-purple-700 px-3 py-2 rounded-xl text-xs font-bold flex flex-col sm:flex-row items-center gap-1 sm:gap-2">
+                <UserCircle size={11} className="opacity-70 text-purple-600" /> 
+                <span className="opacity-70 font-semibold uppercase text-[8px] sm:text-[10px] text-slate-600">Personal</span>
+                <span className="text-sm font-black text-slate-900">{result.personalLead}</span>
               </div>
             </div>
             {timerActive && (isAdmin || isMe) && (
-              <button onClick={() => setIsEditing(true)} className="p-2 text-muted-main hover:text-gold transition-colors">
+              <button onClick={() => setIsEditing(true)} className="p-2 neu-btn rounded-xl text-slate-700 hover:text-blue-600 transition-colors">
                 <Pencil size={18} />
               </button>
             )}
@@ -6917,42 +7488,42 @@ const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, on
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
             <div className="grid grid-cols-3 gap-2 flex-1">
               <div className="flex flex-col gap-1">
-                <label className="text-[8px] text-muted-main uppercase font-black tracking-widest ml-1">Lead</label>
+                <label className="text-[9px] text-slate-600 uppercase font-bold tracking-wider ml-1">Lead</label>
                 <input 
                   type="number" 
                   value={lead}
                   onChange={(e) => setLead(e.target.value)}
                   disabled={!timerActive}
-                  className="w-full bg-bg/50 border border-border2 rounded-xl px-2 py-2 text-sm font-black text-center focus:border-blue-accent outline-none disabled:opacity-20 transition-all"
+                  className="w-full neu-input rounded-xl px-2 py-2 text-sm font-black text-slate-900 text-center outline-none disabled:opacity-30 transition-all"
                   placeholder="0"
                 />
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-[8px] text-muted-main uppercase font-black tracking-widest ml-1">Convert</label>
+                <label className="text-[9px] text-slate-600 uppercase font-bold tracking-wider ml-1">Convert</label>
                 <input 
                   type="number" 
                   value={convert}
                   onChange={(e) => setConvert(e.target.value)}
                   disabled={!timerActive}
-                  className="w-full bg-bg/50 border border-border2 rounded-xl px-2 py-2 text-sm font-black text-center focus:border-green-accent outline-none disabled:opacity-20 transition-all"
+                  className="w-full neu-input rounded-xl px-2 py-2 text-sm font-black text-slate-900 text-center outline-none disabled:opacity-30 transition-all"
                   placeholder="0"
                 />
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-[8px] text-muted-main uppercase font-black tracking-widest ml-1">Personal</label>
+                <label className="text-[9px] text-slate-600 uppercase font-bold tracking-wider ml-1">Personal</label>
                 <input 
                   type="number" 
                   value={personalLead}
                   onChange={(e) => setPersonalLead(e.target.value)}
                   disabled={!timerActive}
-                  className="w-full bg-bg/50 border border-border2 rounded-xl px-2 py-2 text-sm font-black text-center focus:border-purple-500 outline-none disabled:opacity-20 transition-all"
+                  className="w-full neu-input rounded-xl px-2 py-2 text-sm font-black text-slate-900 text-center outline-none disabled:opacity-30 transition-all"
                   placeholder="0"
                 />
               </div>
             </div>
             <div className="flex items-center gap-2">
               {isEditing && (
-                <button onClick={() => setIsEditing(false)} className="bg-surface border border-border text-white font-black py-2.5 px-4 rounded-xl text-[10px] uppercase tracking-widest shadow-lg hover:scale-105 active:scale-95 transition-all mt-5">
+                <button onClick={() => setIsEditing(false)} className="neu-btn text-slate-700 font-bold py-2.5 px-3.5 rounded-xl text-xs uppercase tracking-wider active:scale-95 transition-all mt-5">
                   <X size={16} />
                 </button>
               )}
@@ -6962,21 +7533,21 @@ const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, on
                   setIsEditing(false);
                 }}
                 disabled={!timerActive}
-                className="bg-gold text-bg font-black py-2.5 px-6 rounded-xl text-[10px] uppercase tracking-widest shadow-lg hover:scale-105 active:scale-95 disabled:opacity-10 transition-all mt-5"
+                className="neu-btn-primary font-bold py-2.5 px-5 rounded-xl text-xs uppercase tracking-wider active:scale-95 disabled:opacity-30 transition-all mt-5"
               >
                 {isEditing ? 'Update' : 'Submit'}
               </button>
             </div>
           </div>
         ) : (
-          <div className="text-[10px] text-muted-main italic opacity-60 px-4">
+          <div className="text-xs text-slate-500 italic px-3 font-medium">
             Only the owner can submit results
           </div>
         )}
       </div>
       {!timerActive && !result?.submitted && (
-        <div className="bg-red-accent/10 py-1.5 text-center text-[9px] text-red-accent/80 font-black tracking-[3px] uppercase border-t border-red-accent/10">
-          Locked
+        <div className="neu-inset py-1.5 text-center text-[10px] text-slate-500 font-bold tracking-widest uppercase">
+          Submission Locked
         </div>
       )}
     </motion.div>
@@ -7145,32 +7716,32 @@ function ResultCopyManager({
   const totalConvertsCount = [...sortedLeaders, ...sortedTrainers].reduce((sum, m) => sum + (results[m.id]?.convert || 0), 0);
 
   return (
-    <div className="bg-surface/40 border border-white/5 p-4 sm:p-6 rounded-2xl sm:rounded-3xl relative overflow-hidden space-y-5">
-      <div className="absolute top-0 right-0 w-40 h-40 bg-gold/5 blur-3xl rounded-full pointer-events-none" />
-
+    <div className="neu-card p-4 sm:p-6 rounded-2xl sm:rounded-3xl relative overflow-hidden space-y-5">
       {/* Header & Stats */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/5 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-4">
         <div>
           <div className="flex items-center gap-2">
-            <Copy size={16} className="text-gold" />
-            <h4 className="text-xs sm:text-sm font-black text-white uppercase tracking-widest">
+            <div className="w-8 h-8 neu-btn-primary rounded-xl flex items-center justify-center text-white">
+              <Copy size={16} />
+            </div>
+            <h4 className="text-xs sm:text-sm font-black text-slate-900 uppercase tracking-widest">
               রেজাল্ট কপি হাব (Copy Results Text)
             </h4>
           </div>
-          <p className="text-[9px] sm:text-[10px] text-muted-main mt-0.5">
+          <p className="text-[10px] text-slate-600 mt-1 font-medium">
             টিম লিডার ও ট্রেনারদের কনভার্ট ক্রম অনুযায়ী সাজানো রেজাল্ট এক ক্লিকে কপি করুন
           </p>
         </div>
 
         {/* Quick stat badges */}
         <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="px-2.5 py-1 rounded-lg bg-gold/10 border border-gold/20 text-gold text-[9px] font-mono font-bold">
+          <span className="px-2.5 py-1 rounded-lg neu-card-sm text-blue-700 text-[10px] font-bold">
             👑 লিডার সাবমিট: {submittedLeadersCount}/{sortedLeaders.length}
           </span>
-          <span className="px-2.5 py-1 rounded-lg bg-blue-accent/10 border border-blue-accent/20 text-blue-accent text-[9px] font-mono font-bold">
+          <span className="px-2.5 py-1 rounded-lg neu-card-sm text-emerald-700 text-[10px] font-bold">
             🎓 ট্রেনার সাবমিট: {submittedTrainersCount}/{sortedTrainers.length}
           </span>
-          <span className="px-2.5 py-1 rounded-lg bg-green-accent/10 border border-green-accent/20 text-green-accent text-[9px] font-mono font-bold">
+          <span className="px-2.5 py-1 rounded-lg neu-card-sm text-slate-800 text-[10px] font-bold">
             ✨ মোট কনভার্ট: {totalConvertsCount}
           </span>
         </div>
@@ -7178,24 +7749,24 @@ function ResultCopyManager({
 
       {/* Primary 1-Click Action Buttons */}
       <div>
-        <label className="text-[8px] sm:text-[9px] text-muted-main uppercase font-black tracking-widest block mb-2">
+        <label className="text-[10px] text-slate-600 uppercase font-bold tracking-wider block mb-2">
           ১-ক্লিক দ্রুত কপি বাটনসমূহ (Quick Copy Actions)
         </label>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
           {/* Copy All */}
           <button
             type="button"
             onClick={() => handleCopy('all', 'সকল মেম্বারের রেজাল্ট')}
-            className="py-3 px-3 rounded-xl bg-gold/20 hover:bg-gold text-gold hover:text-bg font-black uppercase text-[10px] sm:text-[11px] tracking-wider transition-all border border-gold/40 flex items-center justify-center gap-2 shadow-md active:scale-95 group"
+            className="py-3 px-3 rounded-xl neu-btn-primary font-bold uppercase text-[10px] sm:text-[11px] tracking-wider transition-all flex items-center justify-center gap-2 active:scale-95 group"
           >
             {copiedKey === 'all' ? (
               <>
-                <CheckCheck size={14} className="text-green-accent" />
+                <CheckCheck size={15} />
                 <span>কপি হয়েছে!</span>
               </>
             ) : (
               <>
-                <Copy size={14} />
+                <Copy size={15} />
                 <span>কপি অল রেজাল্ট (সব)</span>
               </>
             )}
@@ -7205,11 +7776,11 @@ function ResultCopyManager({
           <button
             type="button"
             onClick={() => handleCopy('leaders', 'টিম লিডারদের রেজাল্ট')}
-            className="py-3 px-3 rounded-xl bg-gold/10 hover:bg-gold/25 text-gold font-black uppercase text-[10px] sm:text-[11px] tracking-wider transition-all border border-gold/20 flex items-center justify-center gap-2 shadow-sm active:scale-95"
+            className="py-3 px-3 rounded-xl neu-btn text-blue-700 font-bold uppercase text-[10px] sm:text-[11px] tracking-wider transition-all flex items-center justify-center gap-2 active:scale-95"
           >
             {copiedKey === 'leaders' ? (
               <>
-                <CheckCheck size={14} className="text-green-accent" />
+                <CheckCheck size={15} className="text-emerald-600" />
                 <span>কপি হয়েছে!</span>
               </>
             ) : (
@@ -7224,11 +7795,11 @@ function ResultCopyManager({
           <button
             type="button"
             onClick={() => handleCopy('trainers', 'টিম ট্রেনারদের রেজাল্ট')}
-            className="py-3 px-3 rounded-xl bg-blue-accent/10 hover:bg-blue-accent/25 text-blue-accent font-black uppercase text-[10px] sm:text-[11px] tracking-wider transition-all border border-blue-accent/20 flex items-center justify-center gap-2 shadow-sm active:scale-95"
+            className="py-3 px-3 rounded-xl neu-btn text-emerald-700 font-bold uppercase text-[10px] sm:text-[11px] tracking-wider transition-all flex items-center justify-center gap-2 active:scale-95"
           >
             {copiedKey === 'trainers' ? (
               <>
-                <CheckCheck size={14} className="text-green-accent" />
+                <CheckCheck size={15} className="text-emerald-600" />
                 <span>কপি হয়েছে!</span>
               </>
             ) : (
@@ -7242,15 +7813,15 @@ function ResultCopyManager({
       </div>
 
       {/* Customizer Controls */}
-      <div className="bg-bg/60 border border-white/5 p-3.5 sm:p-4 rounded-xl sm:rounded-2xl space-y-3">
+      <div className="neu-card-sm p-3.5 sm:p-4 rounded-xl sm:rounded-2xl space-y-3">
         {/* Scope and Format selector */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {/* Scope Selector */}
           <div>
-            <label className="text-[8px] text-muted-main uppercase font-black tracking-widest block mb-1.5">
+            <label className="text-[10px] text-slate-600 uppercase font-bold tracking-wider block mb-1.5">
               ফিল্টার স্কোপ (Target Board)
             </label>
-            <div className="grid grid-cols-3 gap-1 bg-surface p-1 rounded-xl border border-white/5">
+            <div className="grid grid-cols-3 gap-1 neu-inset p-1 rounded-xl">
               {[
                 { key: 'all', label: 'উভয় (All)' },
                 { key: 'leaders', label: 'লিডার (Leaders)' },
@@ -7263,10 +7834,10 @@ function ResultCopyManager({
                     setScope(item.key as any);
                     setIsCustomEditing(false);
                   }}
-                  className={`py-1.5 px-2 rounded-lg text-[9px] sm:text-[10px] font-black uppercase transition-all ${
+                  className={`py-1.5 px-2 rounded-lg text-[10px] font-bold uppercase transition-all ${
                     scope === item.key
-                      ? 'bg-gold text-bg shadow-sm'
-                      : 'text-muted-main hover:text-white'
+                      ? 'neu-btn-primary text-white'
+                      : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
                   {item.label}
@@ -7277,10 +7848,10 @@ function ResultCopyManager({
 
           {/* Format Selector */}
           <div>
-            <label className="text-[8px] text-muted-main uppercase font-black tracking-widest block mb-1.5">
+            <label className="text-[10px] text-slate-600 uppercase font-bold tracking-wider block mb-1.5">
               টেক্সট ফরম্যাট (Format Style)
             </label>
-            <div className="grid grid-cols-3 gap-1 bg-surface p-1 rounded-xl border border-white/5">
+            <div className="grid grid-cols-3 gap-1 neu-inset p-1 rounded-xl">
               {[
                 { key: 'compact', label: 'শর্টকাট (C/L/P)' },
                 { key: 'detailed', label: 'বিস্তারিত' },
@@ -7293,10 +7864,10 @@ function ResultCopyManager({
                     setFormatType(item.key as any);
                     setIsCustomEditing(false);
                   }}
-                  className={`py-1.5 px-2 rounded-lg text-[9px] sm:text-[10px] font-black uppercase transition-all ${
+                  className={`py-1.5 px-2 rounded-lg text-[10px] font-bold uppercase transition-all ${
                     formatType === item.key
-                      ? 'bg-gold text-bg shadow-sm'
-                      : 'text-muted-main hover:text-white'
+                      ? 'neu-btn-primary text-white'
+                      : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
                   {item.label}
@@ -7307,7 +7878,7 @@ function ResultCopyManager({
         </div>
 
         {/* Toggles */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-white/5">
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-200/80">
           <label className="flex items-center gap-2 cursor-pointer select-none">
             <input
               type="checkbox"
@@ -7316,9 +7887,9 @@ function ResultCopyManager({
                 setOnlySubmitted(e.target.checked);
                 setIsCustomEditing(false);
               }}
-              className="rounded accent-gold cursor-pointer"
+              className="rounded accent-blue-600 cursor-pointer w-4 h-4"
             />
-            <span className="text-[9px] sm:text-[10px] text-white font-bold">
+            <span className="text-[10px] text-slate-800 font-bold">
               শুধুমাত্র সাবমিট করা মেম্বার রাখুন (Only Submitted)
             </span>
           </label>
@@ -7331,9 +7902,9 @@ function ResultCopyManager({
                 setIncludeHeader(e.target.checked);
                 setIsCustomEditing(false);
               }}
-              className="rounded accent-gold cursor-pointer"
+              className="rounded accent-blue-600 cursor-pointer w-4 h-4"
             />
-            <span className="text-[9px] sm:text-[10px] text-white font-bold">
+            <span className="text-[10px] text-slate-800 font-bold">
               হেডার শিরোনাম অন্তর্ভুক্ত করুন (Include Headers)
             </span>
           </label>
@@ -7343,7 +7914,7 @@ function ResultCopyManager({
       {/* Live Text Preview Box */}
       <div>
         <div className="flex items-center justify-between mb-1.5">
-          <label className="text-[8px] sm:text-[9px] text-muted-main uppercase font-black tracking-widest">
+          <label className="text-[10px] text-slate-600 uppercase font-bold tracking-wider">
             কপি প্রিভিউ টেক্সট (Live Text Preview)
           </label>
           <div className="flex items-center gap-2">
@@ -7354,12 +7925,12 @@ function ResultCopyManager({
                   setIsCustomEditing(false);
                   setCustomText(generatedText);
                 }}
-                className="text-[9px] text-red-accent font-bold hover:underline"
+                className="text-[10px] text-red-600 font-bold hover:underline"
               >
                 Reset to Auto
               </button>
             )}
-            <span className="text-[8px] text-muted-main2 font-mono">
+            <span className="text-[10px] text-slate-500 font-mono font-medium">
               {customText.split('\n').filter(Boolean).length} lines
             </span>
           </div>
@@ -7373,7 +7944,7 @@ function ResultCopyManager({
               setIsCustomEditing(true);
             }}
             rows={7}
-            className="w-full bg-bg border border-white/10 focus:border-gold rounded-xl p-3 text-xs sm:text-sm font-mono text-white/90 outline-none leading-relaxed custom-scrollbar transition-all resize-y"
+            className="w-full neu-input rounded-xl p-3 text-xs sm:text-sm font-mono text-slate-900 outline-none leading-relaxed custom-scrollbar transition-all resize-y"
             placeholder="ফলাফল এখানে দৃশ্যমান হবে..."
           />
         </div>
@@ -7382,11 +7953,11 @@ function ResultCopyManager({
         <button
           type="button"
           onClick={() => handleCopy(undefined, 'প্রিভিউ টেক্সট')}
-          className="w-full mt-2 py-3 px-4 rounded-xl bg-gold text-bg font-black uppercase text-xs tracking-widest hover:opacity-90 transition-all flex items-center justify-center gap-2 shadow-lg active:scale-98"
+          className="w-full mt-2.5 py-3.5 px-4 rounded-xl neu-btn-primary font-bold uppercase text-xs tracking-wider transition-all flex items-center justify-center gap-2 shadow-md active:scale-98"
         >
           {copiedKey === 'custom' ? (
             <>
-              <CheckCheck size={16} className="text-bg font-black" />
+              <CheckCheck size={16} />
               <span>টেক্সট সফলভাবে কপি হয়েছে!</span>
             </>
           ) : (
@@ -7502,51 +8073,111 @@ function PickingScheduleManager({ items, onAdd, onDelete, onToggle }: {
   );
 }
 
-function AdminSection({ title, onAdd, members, onDelete }: {
+function AdminSection({ title, onAdd, members, onDelete, onUpdateTarget }: {
   title: string,
-  onAdd: (name: string) => void,
+  onAdd: (name: string, target?: number) => void,
   members: Member[],
-  onDelete: (id: string) => void
+  onDelete: (id: string) => void,
+  onUpdateTarget?: (id: string, target: number) => void
 }) {
   const [name, setName] = useState('');
+  const [target, setTarget] = useState<string>('');
+  const [editingTargets, setEditingTargets] = useState<Record<string, string>>({});
 
   const handleAdd = () => {
     if (!name.trim()) return;
-    onAdd(name);
+    onAdd(name, parseInt(target) || 0);
     setName('');
+    setTarget('');
   };
 
   return (
-    <div className="mb-8">
-      <h4 className="text-[10px] text-muted-main tracking-[2px] uppercase mb-3 pb-2 border-b border-border">{title}</h4>
-      <div className="flex gap-2 mb-4">
+    <div className="mb-8 p-4 bg-bg/60 border border-border/80 rounded-2xl">
+      <div className="flex items-center justify-between mb-3 pb-2 border-b border-border">
+        <h4 className="text-xs text-slate-300 font-bold tracking-wider uppercase flex items-center gap-1.5">
+          <span>{title}</span>
+          <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded-full text-muted-main">{members.length}</span>
+        </h4>
+        <span className="text-[10px] text-muted-main italic">🎯 টার্গেট কনভার্ট সহ যুক্ত করুন</span>
+      </div>
+      <div className="flex flex-wrap sm:flex-nowrap gap-2 mb-4">
         <input 
           type="text" 
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Enter name..."
-          className="flex-1 bg-bg border border-border2 rounded-lg px-3 py-2 text-sm outline-none focus:border-gold"
+          placeholder="নাম লিখুন (Name)..."
+          className="flex-1 min-w-[140px] bg-bg border border-border2 rounded-xl px-3 py-2 text-sm outline-none focus:border-gold text-white placeholder:text-muted-main/60"
+        />
+        <input 
+          type="number" 
+          value={target}
+          onChange={(e) => setTarget(e.target.value)}
+          placeholder="টার্গেট (0)"
+          className="w-24 bg-bg border border-border2 rounded-xl px-3 py-2 text-sm outline-none focus:border-gold text-white text-center placeholder:text-muted-main/60"
+          min="0"
         />
         <button 
           onClick={handleAdd}
           disabled={!name.trim()}
-          className="bg-gradient-to-br from-gold to-gold2 text-bg font-bold px-6 py-2 rounded-lg text-xs disabled:opacity-50"
+          className="bg-gradient-to-br from-gold to-gold2 text-bg font-bold px-5 py-2 rounded-xl text-xs disabled:opacity-50 active:scale-95 transition-all flex items-center gap-1"
         >
-          Add
+          <span>Add</span>
         </button>
       </div>
-      <div className="space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+      <div className="space-y-2 max-h-56 overflow-y-auto pr-1 custom-scrollbar">
         {members.length === 0 ? (
-          <div className="text-center text-muted-main2 text-xs py-4">None added yet</div>
+          <div className="text-center text-muted-main2 text-xs py-4 italic">কোন মেম্বার যুক্ত নেই</div>
         ) : (
-          members.map((m: Member) => (
-            <div key={m.id} className="flex items-center justify-between bg-bg border border-border rounded-lg p-2 px-3 text-sm">
-              <span>{m.name}</span>
-              <button onClick={() => onDelete(m.id)} className="text-red-accent hover:opacity-70">
-                <Trash2 size={14} />
-              </button>
-            </div>
-          ))
+          members.map((m: Member) => {
+            const currentEditing = editingTargets[m.id] !== undefined ? editingTargets[m.id] : (m.target?.toString() || '');
+            return (
+              <div key={m.id} className="flex items-center justify-between bg-bg/90 border border-border rounded-xl p-2.5 px-3 text-sm gap-2">
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <span className="font-semibold text-white truncate">{m.name}</span>
+                  {m.target !== undefined && m.target > 0 ? (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono font-bold flex items-center gap-1">
+                      🎯 টার্গেট: {m.target}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-muted-main/50 italic">টার্গেট নেই</span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {onUpdateTarget && (
+                    <div className="flex items-center gap-1">
+                      <input 
+                        type="number"
+                        value={currentEditing}
+                        onChange={(e) => setEditingTargets(prev => ({ ...prev, [m.id]: e.target.value }))}
+                        placeholder="0"
+                        className="w-14 bg-black/40 border border-border rounded-lg px-2 py-1 text-xs text-center font-mono outline-none focus:border-gold text-white"
+                        min="0"
+                      />
+                      <button 
+                        onClick={() => {
+                          const tVal = parseInt(currentEditing) || 0;
+                          onUpdateTarget(m.id, tVal);
+                        }}
+                        className="px-2 py-1 bg-gold/20 hover:bg-gold/30 text-gold text-[10px] font-bold rounded-lg transition-colors active:scale-95"
+                        title="Save Target"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  )}
+
+                  <button 
+                    onClick={() => onDelete(m.id)} 
+                    className="text-muted-main2 hover:text-red-accent p-1 transition-colors"
+                    title="Delete Member"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+            );
+          })
         )}
       </div>
     </div>
@@ -8293,6 +8924,164 @@ function AdminAccordion({ title, icon, colorClass, defaultOpen = false, children
   );
 }
 
+function BrandLogoManager({
+  config,
+  onUpdateLogo,
+  showMsg
+}: {
+  config: Config;
+  onUpdateLogo: (logoUrl: string | null) => Promise<void>;
+  showMsg: (msg: string, type?: 'success' | 'error' | 'info') => void;
+}) {
+  const [logoInput, setLogoInput] = useState(config.customLogo || '');
+  const [isSaving, setIsSaving] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setLogoInput(config.customLogo || '');
+  }, [config.customLogo]);
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      showMsg('দয়া করে একটি ছবি (.jpg, .png, .svg, .webp) নির্বাচন করুন', 'error');
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      showMsg('ছবির সাইজ ২MB এর চেয়ে কম হতে হবে', 'error');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      setLogoInput(result);
+      showMsg('ছবি লোড করা হয়েছে, সেভ করতে "Save & Apply Logo" বাটনে চাপুন', 'info');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      await onUpdateLogo(logoInput.trim() || null);
+    } catch (e) {
+      // Handled in caller
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleReset = async () => {
+    setIsSaving(true);
+    try {
+      setLogoInput('');
+      await onUpdateLogo(null);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="bg-bg border border-border rounded-xl p-4 sm:p-5 mb-6">
+      <div className="flex items-center justify-between mb-4 pb-3 border-b border-white/5">
+        <div className="flex items-center gap-2">
+          <Upload size={16} className="text-blue-accent" />
+          <h4 className="text-[11px] text-white font-bold uppercase tracking-[1.5px]">Website Logo & Branding (লোগো কাস্টমাইজেশন)</h4>
+        </div>
+        {config.customLogo && (
+          <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            Custom Logo Active
+          </span>
+        )}
+      </div>
+
+      {/* Live Preview Box */}
+      <div className="mb-5 p-4 rounded-2xl bg-surface border border-border2 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <div className="w-12 h-12 rounded-2xl neu-btn-primary flex items-center justify-center font-black text-white text-lg flex-shrink-0 shadow-sm overflow-hidden p-1 border border-white/10">
+            {logoInput ? (
+              <img src={logoInput} alt="Preview Logo" className="w-full h-full object-contain rounded-xl" />
+            ) : (
+              "U"
+            )}
+          </div>
+          <div>
+            <div className="text-xs font-bold text-white flex items-center gap-1.5">
+              <span>Header Preview</span>
+              <span className="text-[10px] text-muted-main">(হেডারে যেভাবে দেখাবে)</span>
+            </div>
+            <div className="text-[10px] text-muted-main mt-0.5">
+              {logoInput ? 'কাস্টম লোগো নির্বাচিত হয়েছে' : 'ডিফল্ট "U" লোগো সক্রিয় রয়েছে'}
+            </div>
+          </div>
+        </div>
+
+        {/* Action Buttons for File Picker */}
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            onChange={handleFileUpload} 
+            accept="image/*" 
+            className="hidden" 
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="flex-1 sm:flex-initial px-3.5 py-2.5 rounded-xl bg-blue-accent/15 border border-blue-accent/30 text-blue-accent hover:bg-blue-accent hover:text-bg transition-all font-bold text-xs flex items-center justify-center gap-2 active:scale-95 shadow-xs"
+          >
+            <Upload size={14} />
+            <span>লোগো আপলোড করুন (Upload Logo)</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Direct URL Input Option */}
+      <div className="space-y-3 mb-5">
+        <div>
+          <label className="text-[9px] text-muted-main uppercase font-black tracking-widest block mb-1.5 px-1">
+            অথবা লোগোর সরাসরি ইমেজ লিঙ্ক (Image URL):
+          </label>
+          <input 
+            type="text"
+            className="w-full bg-surface border border-border2 rounded-xl p-3 text-xs outline-none focus:border-blue-accent text-white transition-all font-mono"
+            placeholder="https://example.com/logo.png"
+            value={logoInput}
+            onChange={(e) => setLogoInput(e.target.value)}
+          />
+        </div>
+      </div>
+
+      {/* Save & Reset Controls */}
+      <div className="flex flex-col sm:flex-row gap-2.5">
+        <button 
+          onClick={handleSave}
+          disabled={isSaving}
+          className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black py-3 rounded-xl text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-md active:scale-98 disabled:opacity-60"
+        >
+          <Check size={14} />
+          {isSaving ? 'সংরক্ষণ হচ্ছে...' : 'Save & Apply Logo'}
+        </button>
+
+        {config.customLogo && (
+          <button 
+            onClick={handleReset}
+            disabled={isSaving}
+            className="px-4 py-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 font-bold rounded-xl text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 active:scale-98 disabled:opacity-60"
+          >
+            <RotateCcw size={14} />
+            Reset to Default
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function NoticeManager({ config, onUpdate }: { config: Config, onUpdate: (text: string) => void }) {
   const [text, setText] = useState(config.noticeText || '');
 
@@ -8913,15 +9702,15 @@ function RankingBoardModal({
 }) {
   if (!isActive) {
     return (
-      <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 text-center">
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} onClick={onClose} className="absolute inset-0 bg-black/90 backdrop-blur-md" />
-        <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="relative bg-[#0A0A0F] border border-white/10 p-10 rounded-[32px] max-w-sm w-full shadow-2xl">
-           <div className="w-20 h-20 bg-gold/10 text-gold rounded-[24px] flex items-center justify-center mx-auto mb-8 border border-gold/20">
-              <Crown size={40} />
+      <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 sm:p-6 text-center">
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} onClick={onClose} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+        <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="relative neu-card bg-[#dce6f2] border border-blue-200/80 p-8 sm:p-10 rounded-3xl max-w-sm w-full shadow-2xl">
+           <div className="w-16 h-16 neu-btn-primary rounded-2xl flex items-center justify-center mx-auto mb-6 text-white shadow-lg">
+              <Crown size={32} />
            </div>
-           <h3 className="text-2xl font-serif font-black text-white mb-3">Ranking Locked</h3>
-           <p className="text-muted-main text-sm mb-8 leading-relaxed opacity-60 font-medium">The performance board is currently hidden by admin. It will be live soon.</p>
-           <button onClick={onClose} className="w-full py-4 bg-white/5 rounded-2xl text-white font-black uppercase tracking-[2px] border border-white/10 hover:bg-white/10 transition-all">Close Panel</button>
+           <h3 className="text-xl sm:text-2xl font-black text-slate-950 mb-2">Ranking Locked</h3>
+           <p className="text-slate-600 text-xs sm:text-sm mb-6 leading-relaxed font-semibold">The performance board is currently hidden by admin. It will be live soon.</p>
+           <button onClick={onClose} className="w-full py-3.5 neu-btn rounded-xl text-slate-950 font-black uppercase text-xs tracking-wider hover:text-blue-700 transition-all">Close Panel</button>
         </motion.div>
       </div>
     );
@@ -8929,36 +9718,35 @@ function RankingBoardModal({
 
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} onClick={onClose} className="absolute inset-0 bg-black/90 backdrop-blur-md" />
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} onClick={onClose} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
       <motion.div 
         initial={{ y: 50, opacity: 0 }} 
         animate={{ y: 0, opacity: 1 }} 
-        className="relative bg-[#0A0A0F] border border-white/10 rounded-[40px] max-w-lg w-full overflow-hidden shadow-[0_40px_100px_rgba(0,0,0,0.9)] flex flex-col max-h-[85vh]"
+        className="relative neu-card bg-[#dce6f2] border border-blue-200/80 rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl flex flex-col max-h-[85vh]"
       >
-        {/* Dynamic header background based on colorClass or just gold is safer */}
-        <div className="h-2 w-full bg-gradient-to-r from-transparent via-gold to-transparent opacity-50"></div>
+        <div className="h-1.5 w-full bg-gradient-to-r from-blue-600 via-indigo-500 to-emerald-500"></div>
 
-        <div className="p-8 pb-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className={`p-3 rounded-2xl bg-white/5 border border-white/10 ${colorClass} shadow-lg`}>
-              <Icon size={28} />
+        <div className="p-6 sm:p-8 pb-4 flex items-center justify-between">
+          <div className="flex items-center gap-3.5">
+            <div className={`p-3 rounded-2xl neu-btn-primary text-white shadow-md`}>
+              <Icon size={24} />
             </div>
             <div>
-              <h3 className="text-2xl sm:text-3xl font-serif font-black text-white tracking-tight">{title}</h3>
-              <p className="text-[10px] text-muted-main uppercase tracking-[3px] font-black opacity-30">Prime Distinction • Sub-Admin</p>
+              <h3 className="text-xl sm:text-2xl font-black text-slate-950 tracking-tight">{title}</h3>
+              <p className="text-[10px] text-blue-700 uppercase tracking-widest font-black">Prime Distinction • Performance</p>
             </div>
           </div>
           <button 
             onClick={onClose} 
-            className="w-10 h-10 bg-white/5 rounded-2xl flex items-center justify-center hover:bg-white/10 text-muted-main hover:text-white transition-all border border-white/10"
+            className="w-9 h-9 neu-btn rounded-xl flex items-center justify-center text-slate-800 hover:text-red-600 transition-all active:scale-95"
           >
-            <X size={20} />
+            <X size={18} />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 sm:px-8 py-6 custom-scrollbar space-y-4">
+        <div className="flex-1 overflow-y-auto px-5 sm:px-8 py-4 custom-scrollbar space-y-3">
            {members.length === 0 ? (
-             <div className="text-center py-20 text-muted-main2 italic font-serif opacity-30">The podium is empty...</div>
+             <div className="text-center py-16 text-slate-500 italic font-medium">The podium is empty...</div>
            ) : (
              members.map((m, idx) => {
                const isTop1 = idx === 0;
@@ -8970,45 +9758,43 @@ function RankingBoardModal({
                    key={m.id}
                    initial={{ x: -20, opacity: 0 }}
                    animate={{ x: 0, opacity: 1 }}
-                   transition={{ delay: idx * 0.05 }}
-                   className={`relative flex items-center justify-between p-5 rounded-[30px] border transition-all duration-500 group ${
-                     isTop1 ? 'bg-gradient-to-br from-gold/30 via-gold/5 to-transparent border-gold/50 shadow-[0_15px_40px_rgba(255,215,0,0.2)] scale-x-[1.03] my-3' : 
-                     isTop2 ? 'bg-blue-accent/10 border-blue-accent/30' :
-                     isTop3 ? 'bg-white/5 border-orange-400/30' :
-                     'bg-white/[0.02] border-white/5'
+                   transition={{ delay: idx * 0.04 }}
+                   className={`relative flex items-center justify-between p-4 sm:p-5 rounded-2xl transition-all duration-300 border ${
+                     isTop1 ? 'neu-card bg-amber-50/80 border-amber-300/80 shadow-md' : 
+                     isTop2 ? 'neu-card-sm bg-blue-50/70 border-blue-200/80' :
+                     isTop3 ? 'neu-card-sm bg-emerald-50/70 border-emerald-200/80' :
+                     'neu-card-sm bg-[#e2ebf5] border-slate-200/60'
                    }`}
                  >
-                   <div className="flex items-center gap-5 relative flex-1 min-w-0">
-                     <div className={`w-12 h-12 rounded-[20px] flex items-center justify-center font-serif text-xl font-black shadow-xl shrink-0 ${
-                       isTop1 ? 'bg-gold text-bg' :
-                       isTop2 ? 'bg-blue-accent text-bg shadow-blue-accent/20' :
-                       isTop3 ? 'bg-orange-400 text-bg shadow-orange-400/20' :
-                       'bg-[#12121A] text-muted-main border border-white/10'
+                   <div className="flex items-center gap-3.5 relative flex-1 min-w-0">
+                     <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-base font-black shadow-sm shrink-0 ${
+                       isTop1 ? 'bg-amber-400 text-amber-950' :
+                       isTop2 ? 'bg-blue-500 text-white' :
+                       isTop3 ? 'bg-emerald-500 text-white' :
+                       'neu-inset text-slate-700 font-bold'
                      }`}>
-                       {isTop1 ? <Crown size={24} fill="currentColor" /> : 
-                        isTop2 ? <Medal size={24} /> :
-                        isTop3 ? <Award size={24} /> : 
+                       {isTop1 ? <Crown size={20} fill="currentColor" /> : 
+                        isTop2 ? <Medal size={20} /> :
+                        isTop3 ? <Award size={20} /> : 
                         idx + 1}
                      </div>
                      <div className="min-w-0 flex-1">
-                       <div className={`font-serif text-lg font-black tracking-tight leading-tight ${isTop1 ? 'text-gold' : 'text-white'}`}>
-                         {m.name}
+                       <div className="text-base sm:text-lg font-black text-[#090d16] tracking-tight truncate flex items-center gap-1.5">
+                         <span>{m.name}</span>
+                         {isTop1 && <span className="text-amber-600 text-xs">👑</span>}
                        </div>
-                       <div className="flex items-center gap-2 opacity-50 mt-1">
-                         <div className={`w-1.5 h-1.5 rounded-full ${isTop1 ? 'bg-gold animate-pulse' : 'bg-muted-main'}`} />
-                         <span className="text-[10px] uppercase font-black tracking-[2px] whitespace-nowrap">{idx + 1}{idx === 0 ? 'st' : idx === 1 ? 'nd' : idx === 2 ? 'rd' : 'th'} Elite</span>
+                       <div className="flex items-center gap-2 mt-0.5">
+                         <div className={`w-1.5 h-1.5 rounded-full ${isTop1 ? 'bg-amber-500 animate-pulse' : 'bg-slate-400'}`} />
+                         <span className="text-[10px] uppercase font-bold tracking-wider text-slate-600">{idx + 1}{idx === 0 ? 'st' : idx === 1 ? 'nd' : idx === 2 ? 'rd' : 'th'} Elite</span>
                        </div>
                      </div>
                    </div>
 
-                   <div className="flex flex-col items-end gap-1">
-                      <div className="flex items-center gap-2">
-                        <span className={`text-[8px] font-black uppercase opacity-30 ${isTop1 ? 'text-gold' : 'text-white'}`}>Conv</span>
-                        <div className={`text-2xl sm:text-3xl font-serif font-black ${isTop1 ? 'text-gold' : 'text-white'}`}>
-                          {m.score.toLocaleString()}
-                        </div>
+                   <div className="flex flex-col items-end gap-0.5">
+                      <span className="text-[9px] font-black uppercase text-slate-500">Converts</span>
+                      <div className="text-xl sm:text-2xl font-black text-[#090d16]">
+                        {m.score.toLocaleString()}
                       </div>
-                      
                    </div>
                  </motion.div>
                );
@@ -9016,10 +9802,10 @@ function RankingBoardModal({
            )}
         </div>
 
-        <div className="p-8 border-t border-white/5 bg-white/[0.02]">
+        <div className="p-5 sm:p-6 border-t border-slate-300/60 bg-[#d8e2ee]/60">
            <button 
              onClick={onClose}
-             className="w-full bg-white text-bg font-serif font-black py-5 rounded-[24px] text-sm uppercase tracking-[4px] shadow-2xl hover:-translate-y-1 hover:shadow-white/10 transition-all flex items-center justify-center gap-3"
+             className="w-full neu-btn-primary font-black py-3.5 rounded-xl text-xs uppercase tracking-wider shadow-md hover:scale-[1.01] transition-all flex items-center justify-center gap-2 text-white"
            >
              Acknowledge Ranking
            </button>
@@ -9342,19 +10128,21 @@ function CounsellingScheduleModal({ config, onClose }: { config: Config, onClose
 
 function NoticeModal({ text, onClose }: { text?: string, onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 text-center">
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} onClick={onClose} className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
-      <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="relative bg-surface border border-border2 p-8 rounded-3xl max-w-sm w-full">
-         <div className="flex items-center justify-center mb-6">
-            <div className="w-16 h-16 bg-orange-400/10 border border-orange-400/20 text-orange-400 rounded-full flex items-center justify-center shadow-[0_0_20px_rgba(251,146,60,0.2)]">
-               <Megaphone size={32} />
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 sm:p-6 text-center">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} onClick={onClose} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <motion.div initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="relative neu-card border border-blue-300/80 p-6 sm:p-8 rounded-3xl max-w-md w-full shadow-2xl bg-[#dfe8f4]">
+         <div className="flex items-center justify-center mb-5">
+            <div className="w-16 h-16 neu-btn-primary rounded-2xl flex items-center justify-center text-white shadow-lg">
+               <Megaphone size={28} />
             </div>
          </div>
-         <h3 className="text-xl font-serif font-black text-white mb-4 tracking-wide">Important Notice</h3>
-         <div className="text-left text-sm text-gray-300 bg-bg/50 border border-border2 p-4 rounded-xl min-h-[100px] whitespace-pre-wrap leading-relaxed max-h-[40vh] overflow-y-auto custom-scrollbar mb-8">
-           {text ? text : <span className="text-muted-main2 italic">No notice available at the moment.</span>}
+         <h3 className="text-xl sm:text-2xl font-black text-slate-950 mb-3 tracking-tight">জরুরি নোটিশ • Notice</h3>
+         <div className="text-left text-sm sm:text-base font-bold text-[#090d16] neu-inset p-4 rounded-2xl min-h-[120px] whitespace-pre-wrap leading-relaxed max-h-[45vh] overflow-y-auto custom-scrollbar mb-6 border border-slate-300/80 bg-[#d3dfeb]">
+           {text ? text : <span className="text-slate-600 italic font-medium">বর্তমানে কোনো নোটিশ নেই।</span>}
          </div>
-         <button onClick={onClose} className="w-full py-3.5 bg-white/10 rounded-xl text-white text-sm font-bold tracking-wider hover:bg-white/20 transition-colors uppercase">Close Panel</button>
+         <button onClick={onClose} className="w-full py-3.5 neu-btn rounded-xl text-slate-950 text-xs sm:text-sm font-black tracking-wider hover:text-blue-700 transition-colors uppercase active:scale-98">
+           নোটিশ বন্ধ করুন (Close)
+         </button>
       </motion.div>
     </div>
   );
@@ -9757,12 +10545,12 @@ function SiteLock({ correctPassword, onUnlock, onAdminLogin }: { correctPassword
   );
 
   return (
-    <div className="fixed inset-0 z-[99999] bg-bg text-[#F0EAD6] font-['DM_Sans',_sans-serif] overflow-hidden">
+    <div className="fixed inset-0 z-[99999] bg-slate-50 text-slate-900 font-sans overflow-hidden">
       {onAdminLogin && (
         <div className="absolute top-6 right-6 z-[200]">
           <button
             onClick={onAdminLogin}
-            className="w-10 h-10 flex flex-col items-center justify-center bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-[#F0EAD6]/50 hover:text-[#F5C842] transition-colors shadow-[0_0_15px_rgba(245,200,66,0.05)] active:scale-95"
+            className="w-10 h-10 flex flex-col items-center justify-center bg-white border border-slate-200 rounded-xl text-slate-500 hover:text-blue-600 hover:border-blue-200 transition-colors shadow-xs active:scale-95"
             title="Admin Login"
           >
             <Shield size={18} />
@@ -9770,14 +10558,12 @@ function SiteLock({ correctPassword, onUnlock, onAdminLogin }: { correctPassword
         </div>
       )}
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;1,300&display=swap');
-        
         .sitelock-bg {
           position: fixed; inset: 0; z-index: 0;
           background:
-            radial-gradient(ellipse 80% 60% at 20% 80%, rgba(245,200,66,0.07) 0%, transparent 60%),
-            radial-gradient(ellipse 60% 50% at 80% 10%, rgba(245,200,66,0.05) 0%, transparent 55%),
-            radial-gradient(ellipse 100% 100% at 50% 50%, #0A0A0F 60%, #0D0D15 100%);
+            radial-gradient(ellipse 80% 60% at 20% 80%, rgba(37,99,235,0.06) 0%, transparent 60%),
+            radial-gradient(ellipse 60% 50% at 80% 10%, rgba(16,185,129,0.05) 0%, transparent 55%),
+            #f8fafc;
         }
 
         .sitelock-orb {
@@ -9790,13 +10576,13 @@ function SiteLock({ correctPassword, onUnlock, onAdminLogin }: { correctPassword
         }
         .sitelock-orb-1 {
           width: 500px; height: 500px;
-          background: radial-gradient(circle, rgba(245,200,66,0.12) 0%, transparent 70%);
+          background: radial-gradient(circle, rgba(37,99,235,0.08) 0%, transparent 70%);
           top: -150px; left: -100px;
           animation-delay: 0s;
         }
         .sitelock-orb-2 {
           width: 400px; height: 400px;
-          background: radial-gradient(circle, rgba(245,200,66,0.08) 0%, transparent 70%);
+          background: radial-gradient(circle, rgba(16,185,129,0.07) 0%, transparent 70%);
           bottom: -100px; right: -80px;
           animation-delay: -6s;
         }
@@ -9809,9 +10595,9 @@ function SiteLock({ correctPassword, onUnlock, onAdminLogin }: { correctPassword
         .sitelock-grid {
           position: fixed; inset: 0; z-index: 0; pointer-events: none;
           background-image:
-            linear-gradient(rgba(245,200,66,0.03) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(245,200,66,0.03) 1px, transparent 1px);
-          background-size: 60px 60px;
+            linear-gradient(rgba(15,23,42,0.03) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(15,23,42,0.03) 1px, transparent 1px);
+          background-size: 48px 48px;
           mask-image: radial-gradient(ellipse 70% 70% at 50% 50%, black 30%, transparent 100%);
         }
 
@@ -9824,44 +10610,17 @@ function SiteLock({ correctPassword, onUnlock, onAdminLogin }: { correctPassword
           80% { transform: translateX(6px); }
         }
 
-        .hero-heading .line-gold::after {
-          content: '';
-          position: absolute;
-          bottom: -4px; left: 0;
-          width: 100%; height: 2px;
-          background: linear-gradient(90deg, #F5C842, transparent);
-        }
-
         .deco-ring {
           position: absolute;
           bottom: -80px; left: -80px;
           width: 350px; height: 350px;
           border-radius: 50%;
-          border: 1px solid rgba(245,200,66,0.08);
+          border: 1px solid rgba(37,99,235,0.12);
           animation: sitelock-rotate 30s linear infinite;
         }
         @keyframes sitelock-rotate {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
-        }
-
-        .login-btn-shine:hover::after {
-          animation: shine-sweep 0.6s ease forwards;
-        }
-        @keyframes shine-sweep {
-          to { left: 150%; }
-        }
-        
-        .brand-tag-glow::before {
-          content: '';
-          width: 6px; height: 6px;
-          background: #F5C842;
-          border-radius: 50%;
-          animation: pulse-glow 2s ease-in-out infinite;
-        }
-        @keyframes pulse-glow {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50% { opacity: 0.4; transform: scale(0.7); }
         }
       `}</style>
 
@@ -9872,15 +10631,16 @@ function SiteLock({ correctPassword, onUnlock, onAdminLogin }: { correctPassword
 
       <div className="relative z-10 h-full grid grid-cols-1 md:grid-cols-2">
         {/* LEFT PANEL */}
-        <div className="hidden md:flex flex-col justify-center p-[60px_70px] relative overflow-hidden border-r border-[#F5C842]/20">
-          <div className="deco-ring"><div className="absolute w-[10px] h-[10px] bg-[#F5C842] rounded-full top-1/2 -left-[5px] -mt-[5px] shadow-[0_0_12px_#F5C842]"></div></div>
+        <div className="hidden md:flex flex-col justify-center p-[60px_70px] relative overflow-hidden border-r border-slate-200/80">
+          <div className="deco-ring"><div className="absolute w-[10px] h-[10px] bg-blue-600 rounded-full top-1/2 -left-[5px] -mt-[5px] shadow-[0_0_12px_rgba(37,99,235,0.5)]"></div></div>
 
           <motion.span 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="inline-flex items-center gap-2 bg-[#F5C842]/10 border border-[#F5C842]/20 rounded-full p-[6px_14px] text-[11px] tracking-[0.12em] uppercase text-[#F5C842] mb-10 w-fit brand-tag-glow"
+            className="inline-flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-full px-3.5 py-1 text-[11px] font-bold tracking-[0.1em] uppercase text-blue-600 mb-8 w-fit shadow-xs"
           >
+            <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
             E-Learning Platform
           </motion.span>
 
@@ -9888,10 +10648,10 @@ function SiteLock({ correctPassword, onUnlock, onAdminLogin }: { correctPassword
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.4 }}
-            className="font-['Syne'] font-extrabold text-[clamp(36px,4vw,56px)] leading-[1.05] mb-6 hero-heading"
+            className="font-black text-[clamp(34px,3.8vw,52px)] leading-[1.1] mb-6 text-slate-900 tracking-tight"
           >
             Invest in
-            <span className="text-[#F5C842] block relative line-gold">Your Knowledge.</span>
+            <span className="text-blue-600 block">Your Knowledge.</span>
             Earn Your Future.
           </motion.h1>
 
@@ -9899,7 +10659,7 @@ function SiteLock({ correctPassword, onUnlock, onAdminLogin }: { correctPassword
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.6 }}
-            className="text-[15px] leading-[1.75] text-[#F0EAD6]/45 max-w-[380px] mb-12"
+            className="text-[15px] leading-relaxed text-slate-600 max-w-[380px] mb-10"
           >
             Unity Earning দিচ্ছে বিশ্বমানের শিক্ষা, রিয়েল-টাইম আর্নিং সুযোগ এবং একটি শক্তিশালী কমিউনিটি — একসাথে।
           </motion.p>
@@ -9908,50 +10668,50 @@ function SiteLock({ correctPassword, onUnlock, onAdminLogin }: { correctPassword
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.8 }}
-            className="flex gap-10"
+            className="flex gap-8"
           >
-            <div className="flex flex-col gap-1">
-              <span className="font-['Syne'] font-bold text-2xl text-[#F5C842]">50K+</span>
-              <span className="text-[12px] text-[#F0EAD6]/45 tracking-[0.06em] uppercase">শিক্ষার্থী</span>
+            <div className="flex flex-col gap-0.5 bg-white/80 p-3.5 rounded-2xl border border-slate-200 shadow-xs min-w-[90px]">
+              <span className="font-black text-2xl text-blue-600">50K+</span>
+              <span className="text-[11px] text-slate-500 font-semibold uppercase tracking-wider">শিক্ষার্থী</span>
             </div>
-            <div className="flex flex-col gap-1">
-              <span className="font-['Syne'] font-bold text-2xl text-[#F5C842]">200+</span>
-              <span className="text-[12px] text-[#F0EAD6]/45 tracking-[0.06em] uppercase">কোর্স</span>
+            <div className="flex flex-col gap-0.5 bg-white/80 p-3.5 rounded-2xl border border-slate-200 shadow-xs min-w-[90px]">
+              <span className="font-black text-2xl text-emerald-600">200+</span>
+              <span className="text-[11px] text-slate-500 font-semibold uppercase tracking-wider">কোর্স</span>
             </div>
-            <div className="flex flex-col gap-1">
-              <span className="font-['Syne'] font-bold text-2xl text-[#F5C842]">৳4.8Cr</span>
-              <span className="text-[12px] text-[#F0EAD6]/45 tracking-[0.06em] uppercase">আর্নিং</span>
+            <div className="flex flex-col gap-0.5 bg-white/80 p-3.5 rounded-2xl border border-slate-200 shadow-xs min-w-[90px]">
+              <span className="font-black text-2xl text-blue-700">৳4.8Cr</span>
+              <span className="text-[11px] text-slate-500 font-semibold uppercase tracking-wider">আর্নিং</span>
             </div>
           </motion.div>
         </div>
 
         {/* RIGHT PANEL */}
-        <div className="flex items-center justify-center p-10 md:p-[60px_70px]">
+        <div className="flex items-center justify-center p-6 sm:p-10 md:p-[60px_70px]">
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
-            className="w-full max-w-[400px]"
+            className="w-full max-w-[420px] bg-white p-8 sm:p-10 rounded-3xl border border-slate-200 shadow-xl shadow-slate-200/50"
           >
             {/* Logo */}
-            <div className="flex items-center gap-3 mb-10">
-              <div className="w-[46px] h-[46px] bg-gradient-to-br from-[#F5C842] to-[#C49A00] rounded-[14px] flex items-center justify-center font-['Syne'] font-extrabold text-lg text-[#0A0A0F] shadow-[0_8px_24px_rgba(245,200,66,0.3)]">UE</div>
+            <div className="flex items-center gap-3 mb-8">
+              <div className="w-12 h-12 bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl flex items-center justify-center font-black text-xl text-white shadow-md shadow-blue-500/25">UE</div>
               <div className="flex flex-col">
-                <span className="font-['Syne'] font-bold text-[15px] leading-[1.2] text-[#F0EAD6]">Unity Earning</span>
-                <span className="text-[11px] text-[#F0EAD6]/45 tracking-[0.08em] uppercase">E-Learning Platform</span>
+                <span className="font-black text-base text-slate-900">Unity Earning</span>
+                <span className="text-[11px] text-slate-400 tracking-[0.08em] uppercase font-semibold">E-Learning Platform</span>
               </div>
             </div>
 
-            <h2 className="font-['Syne'] font-bold text-3xl mb-2">স্বাগতম 👋</h2>
-            <p className="text-sm text-[#F0EAD6]/45 mb-9">আপনার পাসওয়ার্ড দিয়ে প্রবেশ করুন</p>
+            <h2 className="font-black text-2xl sm:text-3xl text-slate-900 mb-1.5">স্বাগতম 👋</h2>
+            <p className="text-sm text-slate-500 mb-8">আপনার পাসওয়ার্ড দিয়ে প্রবেশ করুন</p>
 
-            <div className={`space-y-7 ${isShake ? 'sitelock-shake' : ''}`}>
-              <div className="space-y-2.5">
-                <label className="block text-[12px] tracking-[0.1em] uppercase text-[#F0EAD6]/45 pl-1">🔐 Access Password</label>
+            <div className={`space-y-6 ${isShake ? 'sitelock-shake' : ''}`}>
+              <div className="space-y-2">
+                <label className="block text-[11px] tracking-[0.08em] uppercase text-slate-500 font-bold pl-1">🔐 Access Password</label>
                 <div className="relative">
                   <input
                     type={showPassword ? 'text' : 'password'}
-                    className="w-full bg-white/5 border border-[#F5C842]/15 rounded-[14px] p-[16px_52px_16px_20px] font-['DM_Sans'] text-[15px] text-[#F0EAD6] outline-none transition-all focus:border-[#F5C842]/50 focus:bg-[#F5C842]/5 focus:shadow-[0_0_0_4px_rgba(245,200,66,0.06)]"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 pr-12 text-sm text-slate-900 outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
                     placeholder="••••••••••"
                     value={password}
                     onChange={(e) => {
@@ -9962,79 +10722,70 @@ function SiteLock({ correctPassword, onUnlock, onAdminLogin }: { correctPassword
                   />
                   <button 
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 text-[#F0EAD6]/45 hover:text-[#F5C842] transition-colors p-1"
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 transition-colors p-1"
                   >
                     {showPassword ? eyeOffIcon : eyeIcon}
                   </button>
                 </div>
                 {password && (
-                  <div className="mt-3 flex gap-1.5 items-center pl-1">
+                  <div className="mt-2.5 flex gap-1.5 items-center pl-1">
                     {[0, 1, 2, 3].map(i => (
                       <div 
                         key={i} 
-                        className="flex-1 h-[3px] rounded-full transition-all duration-500"
-                        style={{ background: i < strength ? colors[strength-1] : 'rgba(255,255,255,0.07)' }}
+                        className="flex-1 h-[4px] rounded-full transition-all duration-500"
+                        style={{ background: i < strength ? colors[strength-1] : '#e2e8f0' }}
                       ></div>
                     ))}
-                    <span className="text-[11px] text-[#F0EAD6]/45 ml-1.5 min-w-[50px]" style={{ color: strength > 0 ? colors[strength-1] : 'inherit' }}>
+                    <span className="text-[11px] font-bold ml-1.5 min-w-[50px]" style={{ color: strength > 0 ? colors[strength-1] : 'inherit' }}>
                       {strength > 0 ? labels[strength-1] : ''}
                     </span>
                   </div>
                 )}
               </div>
 
-              <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-3 pt-2">
                 <button 
                   onClick={handleLogin}
                   disabled={isVerifying}
-                  className="w-full relative bg-gradient-to-br from-[#F5C842] to-[#E8B800] rounded-[14px] p-[17px] font-['Syne'] text-[15px] font-bold text-[#0A0A0F] tracking-[0.05em] shadow-[0_8px_32px_rgba(245,200,66,0.25)] hover:-translate-y-0.5 hover:shadow-[0_12px_40px_rgba(245,200,66,0.4)] active:translate-y-0 transition-all overflow-hidden group disabled:opacity-70 login-btn-shine"
+                  className="w-full bg-blue-600 hover:bg-blue-700 active:scale-[0.98] rounded-xl py-3.5 px-4 font-bold text-sm text-white tracking-wide shadow-md shadow-blue-500/25 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
                 >
-                  <div className="absolute inset-0 bg-gradient-to-br from-white/15 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                  <div className="absolute top-0 -left-full w-3/5 h-full bg-gradient-to-r from-transparent via-white/20 to-transparent skew-x-[-20deg]"></div>
-                  
-                  <div className="relative z-10 flex items-center justify-center gap-2.5">
-                    <span>{isVerifying ? 'যাচাই হচ্ছে...' : 'প্রবেশ করুন'}</span>
-                    {!isVerifying && (
-                      <div className="group-hover:translate-x-1 transition-transform">
-                        <ChevronRight size={18} strokeWidth={2.5} />
-                      </div>
-                    )}
-                  </div>
+                  <span>{isVerifying ? 'যাচাই হচ্ছে...' : 'প্রবেশ করুন'}</span>
+                  {!isVerifying && <ChevronRight size={18} />}
                 </button>
 
                 {onAdminLogin && (
-                  <div className="flex flex-col gap-2">
+                  <div className="flex flex-col gap-2 pt-1">
                     <button 
                       onClick={() => onAdminLogin()}
-                      className="w-full bg-white/5 border border-white/10 text-[#F0EAD6]/60 font-['Syne'] font-bold py-3.5 rounded-[12px] hover:bg-white/10 hover:text-[#F5C842] transition-all text-[11px] uppercase tracking-widest flex items-center justify-center gap-2"
+                      className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-xl transition-all text-xs uppercase tracking-wider flex items-center justify-center gap-2 border border-slate-200"
                     >
-                      <Shield size={14} /> Admin Access
+                      <Shield size={14} className="text-blue-600" /> Admin Access
                     </button>
                     <button 
                       onClick={() => { auth.signOut(); window.location.reload(); }}
-                      className="w-full bg-red-accent/10 border border-red-accent/20 text-red-accent font-['Syne'] font-bold py-3.5 rounded-[12px] hover:bg-red-accent hover:text-bg transition-all text-[11px] uppercase tracking-widest flex items-center justify-center gap-2"
+                      className="w-full bg-red-50 hover:bg-red-100 text-red-600 font-bold py-2.5 rounded-xl transition-all text-xs uppercase tracking-wider flex items-center justify-center gap-2 border border-red-200"
                     >
-                      <LogOut size={14} />Logout
+                      <LogOut size={14} /> Logout
                     </button>
                   </div>
                 )}
               </div>
             </div>
 
-            <div className="flex items-center gap-3.5 my-5 text-[12px] text-[#F0EAD6]/20">
-              <div className="flex-1 h-px bg-[#F5C842]/10"></div>
-              <span>secured access</span>
-              <div className="flex-1 h-px bg-[#F5C842]/10"></div>
+            <div className="flex items-center gap-3 my-5 text-xs text-slate-400">
+              <div className="flex-1 h-px bg-slate-200"></div>
+              <span className="uppercase tracking-wider font-semibold text-[10px]">Secured Access</span>
+              <div className="flex-1 h-px bg-slate-200"></div>
             </div>
 
-            <div className="flex items-center justify-center gap-2 p-3 rounded-xl bg-[#F5C842]/5 border border-[#F5C842]/10 text-[12px] text-[#F0EAD6]/45">
-              <Shield size={14} className="text-[#F5C842]" />
+            <div className="flex items-center justify-center gap-2 p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-500 font-medium">
+              <Shield size={14} className="text-emerald-600" />
               256-bit SSL Encrypted · Fully Secure Access
             </div>
 
             <button 
               onClick={() => alert('📧 পাসওয়ার্ড রিসেট লিংক আপনার ইমেইলে পাঠানো হবে।\nSupport: support@unityearning.com')}
-              className="w-full text-center mt-5 text-[13px] text-[#F0EAD6]/45 hover:text-[#F5C842] transition-colors"
+              className="w-full text-center mt-4 text-xs text-slate-400 hover:text-blue-600 transition-colors"
             >
               পাসওয়ার্ড ভুলে গেছেন?
             </button>
@@ -10048,29 +10799,29 @@ function SiteLock({ correctPassword, onUnlock, onAdminLogin }: { correctPassword
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] bg-bg/95 flex flex-col items-center justify-center gap-5"
+            className="fixed inset-0 z-[100] bg-white/95 backdrop-blur-md flex flex-col items-center justify-center gap-4"
           >
             <motion.div 
               initial={{ scale: 0, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               transition={{ type: 'spring', damping: 12 }}
-              className="w-20 h-20 rounded-full bg-gradient-to-br from-[#F5C842] to-[#C49A00] flex items-center justify-center text-4xl shadow-[0_0_60px_rgba(245,200,66,0.4)]"
+              className="w-20 h-20 rounded-full bg-emerald-500 text-white flex items-center justify-center text-4xl shadow-lg shadow-emerald-500/30"
             >
               ✓
             </motion.div>
             <motion.div 
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 }}
-              className="font-['Syne'] text-2xl font-bold"
+              transition={{ delay: 0.2 }}
+              className="text-2xl font-black text-slate-900"
             >
               লগইন সফল হয়েছে!
             </motion.div>
             <motion.div 
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.5 }}
-              className="text-sm text-[#F0EAD6]/45"
+              transition={{ delay: 0.4 }}
+              className="text-sm text-slate-500 font-medium"
             >
               Unity Earning-এ আপনাকে স্বাগতম 🎉
             </motion.div>

@@ -109,8 +109,7 @@ service cloud.firestore {
     }
 
     function isValidSimpleMember(data) {
-      return data.keys().hasAll(['name', 'createdAt']) &&
-             data.name is string && data.name.size() > 0 && data.name.size() < 100;
+      return data.name is string && data.name.size() > 0 && data.name.size() < 100;
     }
 
     function isValidSimpleAttendance(data) {
