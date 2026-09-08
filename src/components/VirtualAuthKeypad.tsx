@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Delete, ArrowUp, X, Check, Eye, EyeOff, Smartphone, Lock, Space, ChevronDown, Save } from 'lucide-react';
+import { Delete, ArrowUp, X, Check, Eye, EyeOff, Smartphone, Lock, Space, ChevronDown, Save, ClipboardPaste } from 'lucide-react';
 
 interface PhoneKeypadProps {
   value: string;
@@ -25,6 +25,19 @@ export function PhoneKeypad({ value, onChange, onClose, title = "WhatsApp / Phon
 
   const handleClear = () => {
     onChange('');
+  };
+
+  const handlePaste = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      // Remove any non-numeric characters for phone keypad
+      const cleaned = text.replace(/[^0-9+]/g, '');
+      if (cleaned) {
+        onChange((value + cleaned).slice(0, 15));
+      }
+    } catch (err) {
+      console.warn('Failed to read clipboard', err);
+    }
   };
 
   const keypadButtons = [
@@ -93,6 +106,14 @@ export function PhoneKeypad({ value, onChange, onClose, title = "WhatsApp / Phon
               </div>
 
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handlePaste}
+                  className="p-1.5 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 rounded-lg transition-colors cursor-pointer"
+                  title="Paste from clipboard"
+                >
+                  <ClipboardPaste size={16} />
+                </button>
                 {value.length >= 10 && (
                   <button
                     type="button"
@@ -243,6 +264,17 @@ export function PasswordKeyboard({ value, onChange, onClose, title = "Password V
     onChange(value + ' ');
   };
 
+  const handlePaste = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) {
+        onChange(value + text);
+      }
+    } catch (err) {
+      console.warn('Failed to read clipboard', err);
+    }
+  };
+
   const numRow = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
 
   const qwertyLower = [
@@ -355,6 +387,14 @@ export function PasswordKeyboard({ value, onChange, onClose, title = "Password V
               </div>
 
               <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={handlePaste}
+                  className="p-1.5 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 rounded-lg transition-colors cursor-pointer"
+                  title="Paste from clipboard"
+                >
+                  <ClipboardPaste size={16} />
+                </button>
                 {value.length > 0 && (
                   <button
                     type="button"

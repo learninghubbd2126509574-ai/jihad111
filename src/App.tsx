@@ -2727,17 +2727,7 @@ export default function App() {
 
   const [pendingUsers, setPendingUsers] = useState<UserRegistration[]>([]);
   const [approvedUsers, setApprovedUsers] = useState<UserRegistration[]>([]);
-  const [authenticatedUser, setAuthenticatedUser] = useState<UserRegistration | null>(() => {
-    const saved = localStorage.getItem('unity_user');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        return null;
-      }
-    }
-    return null;
-  });
+  const [authenticatedUser, setAuthenticatedUser] = useState<UserRegistration | null>(null);
 
   const [leaderRanking, setLeaderRanking] = useState<RankingMember[]>([]);
   const [trainerRanking, setTrainerRanking] = useState<RankingMember[]>([]);
@@ -2764,9 +2754,7 @@ export default function App() {
   const [showConfirm, setShowConfirm] = useState<{ title: string, onConfirm: () => void } | null>(null);
   const [showCalendarUser, setShowCalendarUser] = useState<{ whatsapp: string, name: string, memberId?: string } | null>(null);
   const [siteAuthenticated, setSiteAuthenticated] = useState(false);
-  const [stlAuthenticated, setStlAuthenticated] = useState(() => {
-    return localStorage.getItem('stlAuth') === 'true';
-  });
+  const [stlAuthenticated, setStlAuthenticated] = useState(false);
   const [showStlLoginModal, setShowStlLoginModal] = useState(false);
   const [showAdminLoginModal, setShowAdminLoginModal] = useState(false);
 
@@ -2775,14 +2763,8 @@ export default function App() {
   const devEmail = "learninghubbd2126509574@gmail.com";
   // Initial password - this will be synced with Firestore if it exists
   const initialAdminPass = "212650";
-  const [isAdmin, setIsAdmin] = useState(() => {
-    return localStorage.getItem('isAdmin') === 'true';
-  });
+  const [isAdmin, setIsAdmin] = useState(false);
   const hasStlAccess = isAdmin || stlAuthenticated;
-
-  useEffect(() => {
-    localStorage.setItem('isAdmin', isAdmin ? 'true' : 'false');
-  }, [isAdmin]);
 
   useEffect(() => {
     // Keep login persistence intact on refresh/load so that the user doesn't have to re-enter their credentials.
