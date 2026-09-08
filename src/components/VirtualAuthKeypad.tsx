@@ -9,9 +9,10 @@ interface PhoneKeypadProps {
   savedAccounts: { whatsapp: string, password: string }[];
   onSaveAccount: () => void;
   onDeleteSavedAccount: (w: string, e: React.MouseEvent) => void;
+  onSelectAccount?: (acc: { whatsapp: string, password: string }) => void;
 }
 
-export function PhoneKeypad({ value, onChange, onClose, title = "WhatsApp / Phone Number", savedAccounts, onSaveAccount, onDeleteSavedAccount }: PhoneKeypadProps) {
+export function PhoneKeypad({ value, onChange, onClose, title = "WhatsApp / Phone Number", savedAccounts, onSaveAccount, onDeleteSavedAccount, onSelectAccount }: PhoneKeypadProps) {
   const handleKeyClick = (key: string) => {
     if (value.length < 15) {
       onChange(value + key);
@@ -120,13 +121,22 @@ export function PhoneKeypad({ value, onChange, onClose, title = "WhatsApp / Phon
                 {savedAccounts.map((acc, idx) => (
                   <div
                     key={idx}
-                    onClick={() => onChange(acc.whatsapp)}
+                    onClick={() => {
+                      if (onSelectAccount) {
+                        onSelectAccount(acc);
+                      } else {
+                        onChange(acc.whatsapp);
+                      }
+                    }}
                     className="flex items-center gap-1.5 bg-slate-800/60 border border-slate-700 hover:border-blue-500 cursor-pointer rounded-lg px-2 py-1 text-[10px] font-bold text-slate-300 shrink-0 transition-all"
                   >
                     <span className="font-mono">{acc.whatsapp}</span>
                     <button
                       type="button"
-                      onClick={(e) => onDeleteSavedAccount(acc.whatsapp, e)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeleteSavedAccount(acc.whatsapp, e);
+                      }}
                       className="text-slate-500 hover:text-rose-400"
                     >
                       <X size={10} />
@@ -209,9 +219,10 @@ interface PasswordKeyboardProps {
   savedAccounts: { whatsapp: string, password: string }[];
   onSaveAccount: () => void;
   onDeleteSavedAccount: (w: string, e: React.MouseEvent) => void;
+  onSelectAccount?: (acc: { whatsapp: string, password: string }) => void;
 }
 
-export function PasswordKeyboard({ value, onChange, onClose, title = "Password Virtual Keyboard", savedAccounts, onSaveAccount, onDeleteSavedAccount }: PasswordKeyboardProps) {
+export function PasswordKeyboard({ value, onChange, onClose, title = "Password Virtual Keyboard", savedAccounts, onSaveAccount, onDeleteSavedAccount, onSelectAccount }: PasswordKeyboardProps) {
   // Default to numeric (123) layout as requested
   const [layoutMode, setLayoutMode] = useState<'num' | 'abc' | 'ABC' | 'sym'>('num');
   const [showPlainPassword, setShowPlainPassword] = useState(true);
@@ -382,13 +393,22 @@ export function PasswordKeyboard({ value, onChange, onClose, title = "Password V
                 {savedAccounts.map((acc, idx) => (
                   <div
                     key={idx}
-                    onClick={() => onChange(acc.password)}
+                    onClick={() => {
+                      if (onSelectAccount) {
+                        onSelectAccount(acc);
+                      } else {
+                        onChange(acc.password);
+                      }
+                    }}
                     className="flex items-center gap-1.5 bg-slate-800/60 border border-slate-700 hover:border-blue-500 cursor-pointer rounded-lg px-2 py-1 text-[10px] font-bold text-slate-300 shrink-0 transition-all"
                   >
                     <span className="font-mono">{acc.whatsapp}</span>
                     <button
                       type="button"
-                      onClick={(e) => onDeleteSavedAccount(acc.whatsapp, e)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeleteSavedAccount(acc.whatsapp, e);
+                      }}
                       className="text-slate-500 hover:text-rose-400"
                     >
                       <X size={10} />

@@ -989,6 +989,10 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: {
           savedAccounts={savedAccounts}
           onSaveAccount={handleSaveAccount}
           onDeleteSavedAccount={handleDeleteSavedAccount}
+          onSelectAccount={(acc) => {
+            setWhatsapp(acc.whatsapp);
+            setPassword(acc.password);
+          }}
         />
       )}
 
@@ -1001,6 +1005,10 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: {
           savedAccounts={savedAccounts}
           onSaveAccount={handleSaveAccount}
           onDeleteSavedAccount={handleDeleteSavedAccount}
+          onSelectAccount={(acc) => {
+            setWhatsapp(acc.whatsapp);
+            setPassword(acc.password);
+          }}
         />
       )}
     </div>
