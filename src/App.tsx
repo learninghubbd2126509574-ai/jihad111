@@ -2743,6 +2743,7 @@ export default function App() {
   const [showPass, setShowPass] = useState(false);
   const [updatingPass, setUpdatingPass] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const [quickLinks, setQuickLinks] = useState<QuickLink[]>([]);
   const [showQuickLinksModal, setShowQuickLinksModal] = useState(false);
@@ -3236,8 +3237,6 @@ export default function App() {
 
   // Timer Logic
   useEffect(() => {
-    let interval: NodeJS.Timeout;
-
     if (config.timerActive && config.timerEndTime) {
       const updateRemaining = () => {
         const now = Date.now();
@@ -3247,7 +3246,7 @@ export default function App() {
 
         // When timer reaches 0, auto turn it off
         if (remaining <= 0) {
-          if (interval) clearInterval(interval);
+          if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
           if (isAdmin) {
             updateDoc(doc(db, 'config', 'global'), {
               timerActive: false,
@@ -3258,13 +3257,15 @@ export default function App() {
       };
 
       updateRemaining();
-      interval = setInterval(updateRemaining, 1000);
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = setInterval(updateRemaining, 1000);
     } else {
       setTimeLeft(0);
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
     }
 
     return () => {
-      if (interval) clearInterval(interval);
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
     };
   }, [config.timerActive, config.timerEndTime, isAdmin]);
 
@@ -3997,6 +3998,7 @@ export default function App() {
 
   const stopTimer = async () => {
     try {
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
       setTimeLeft(0);
       await updateDoc(doc(db, 'config', 'global'), {
         timerActive: false,
@@ -4476,20 +4478,38 @@ export default function App() {
       title: 'Clear ALL submitted results?',
       onConfirm: async () => {
         try {
-          const batch = writeBatch(db);
-          members.forEach(m => {
-            const resultRef = doc(db, 'results', m.id);
-            batch.set(resultRef, {
-              memberId: m.id,
-              lead: 0,
-              convert: 0,
-              personalLead: 0,
-              submitted: false,
-              updatedAt: serverTimestamp()
-            });
-          });
-          await batch.commit();
-          showMsg('All results cleared!');
+          const resultsSnap = await getDocs(collection(db, 'results'));
+          let batch = writeBatch(db);
+          let count = 0;
+          let updateCount = 0;
+
+          // First update all existing result docs
+          for (const resDoc of resultsSnap.docs) {
+            const data = resDoc.data();
+            // Only update if they actually have data to clear
+            if (data.submitted === true || data.lead > 0 || data.convert > 0 || data.personalLead > 0) {
+              batch.set(resDoc.ref, {
+                memberId: resDoc.id,
+                lead: 0,
+                convert: 0,
+                personalLead: 0,
+                submitted: false,
+                updatedAt: serverTimestamp()
+              });
+              count++;
+              updateCount++;
+              if (count >= 490) {
+                await batch.commit();
+                batch = writeBatch(db);
+                count = 0;
+              }
+            }
+          }
+          if (count > 0) {
+            await batch.commit();
+          }
+
+          showMsg(`All results cleared! (${updateCount} records reset)`);
           setShowConfirm(null);
         } catch (err) {
           console.error('Error in clearResults:', err);
