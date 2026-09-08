@@ -1048,26 +1048,26 @@ const MonthlySubmissionSummaryCard = ({
   const statusConfig = {
     Submitted: {
       label: 'Submitted',
-      badgeClass: 'bg-green-accent/15 text-green-accent',
-      dotClass: 'bg-green-accent'
+      badgeClass: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+      dotClass: 'bg-emerald-500'
     },
     Pending: {
       label: 'Pending',
-      badgeClass: 'bg-gold/15 text-gold',
-      dotClass: 'bg-gold'
+      badgeClass: 'bg-amber-50 text-amber-800 border-amber-200',
+      dotClass: 'bg-amber-500'
     },
     Missed: {
       label: 'Missed',
-      badgeClass: 'bg-red-accent/15 text-red-accent',
-      dotClass: 'bg-red-accent'
+      badgeClass: 'bg-rose-50 text-rose-800 border-rose-200',
+      dotClass: 'bg-rose-500'
     }
   };
 
   const currentStatus = statusConfig[userStats.submissionStatus as 'Submitted' | 'Pending' | 'Missed'] || statusConfig.Pending;
 
   return (
-    <div className="neu-card bg-[#dce7f3] border border-blue-200/80 rounded-2xl p-4 sm:p-5 mb-4 relative overflow-hidden shadow-md group">
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 relative z-10">
+    <div className="neu-card bg-white/95 border border-blue-200/60 rounded-2xl p-4 sm:p-5 mb-4 relative overflow-hidden shadow-xs group">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 relative z-10 mb-4">
         <div className="flex items-center gap-3.5">
           <div className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl neu-card-sm border border-blue-200/80 flex items-center justify-center overflow-hidden shadow-sm flex-shrink-0">
             <CartoonAvatar src={profilePic} name={userName} />
@@ -1080,7 +1080,7 @@ const MonthlySubmissionSummaryCard = ({
             <div className="flex items-center gap-2.5 mt-0.5">
               <p className="text-xs text-slate-700 font-bold truncate">{userName}</p>
               <span className="w-1 h-1 bg-slate-400 rounded-full flex-shrink-0" />
-              <div className={`flex items-center gap-1.5 text-[10px] font-bold ${currentStatus.badgeClass} px-1.5 py-0.5 rounded-md flex-shrink-0 neu-inset`}>
+              <div className={`flex items-center gap-1.5 text-[10px] font-bold ${currentStatus.badgeClass} border px-1.5 py-0.5 rounded-md flex-shrink-0 shadow-2xs`}>
                 <div className={`w-1.5 h-1.5 rounded-full ${currentStatus.dotClass}`} />
                 আজ: {currentStatus.label}
               </div>
@@ -1092,7 +1092,7 @@ const MonthlySubmissionSummaryCard = ({
           {onOpenCalendar && (
             <button 
               onClick={onOpenCalendar}
-              className="flex items-center gap-1.5 px-3 py-1.5 neu-btn rounded-xl text-[10px] font-black text-slate-800 hover:text-blue-700 uppercase tracking-wider transition-all active:scale-[0.98] shadow-sm"
+              className="flex items-center gap-1.5 px-3 py-1.5 neu-btn rounded-xl text-[10px] font-black text-slate-800 hover:text-blue-700 uppercase tracking-wider transition-all active:scale-[0.98] shadow-sm bg-slate-50 hover:bg-slate-100 border border-slate-200"
             >
               <Calendar size={13} className="text-blue-600" />
               Calendar
@@ -1101,31 +1101,31 @@ const MonthlySubmissionSummaryCard = ({
         </div>
       </div>
 
-        <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 w-full lg:w-auto lg:min-w-[450px]">
-          <div className="bg-bg/40 border border-white/5 p-2 rounded-xl text-center">
-            <span className="block text-[8px] text-muted-main uppercase font-bold mb-0.5">মোট দিন</span>
-            <span className="text-xs font-black text-white font-serif">{userStats.totalWorkingDays}</span>
-          </div>
-          <div className="bg-bg/40 border border-green-500/10 p-2 rounded-xl text-center">
-            <span className="block text-[8px] text-green-400 uppercase font-bold mb-0.5">জমা</span>
-            <span className="text-xs font-black text-green-400 font-serif">{userStats.submittedDays}</span>
-          </div>
-          <div className="bg-bg/40 border border-red-500/10 p-2 rounded-xl text-center">
-            <span className="block text-[8px] text-red-400 uppercase font-bold mb-0.5">মিসড</span>
-            <span className="text-xs font-black text-red-400 font-serif">{userStats.missedDays}</span>
-          </div>
-          <div className="bg-bg/40 border border-white/5 p-2 rounded-xl text-center">
-            <span className="block text-[8px] text-muted-main uppercase font-bold mb-0.5">বাকি</span>
-            <span className="text-xs font-black text-white font-serif">{userStats.remainingDays}</span>
-          </div>
-          <div className="bg-bg/40 border border-amber-500/20 p-2 rounded-xl text-center">
-            <span className="block text-[8px] text-amber-400 uppercase font-bold mb-0.5">জরিমানা</span>
-            <span className="text-xs font-black text-amber-400 font-serif">
-              {userStats.isFineSystemActive === false ? 'বন্ধ' : `৳${userStats.totalFine}`}
-            </span>
-          </div>
+      <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 w-full lg:w-auto lg:min-w-[450px]">
+        <div className="bg-slate-50 border border-slate-200/80 p-2.5 rounded-xl text-center shadow-2xs">
+          <span className="block text-[8px] text-slate-500 uppercase font-black tracking-wider mb-0.5">মোট দিন</span>
+          <span className="text-xs font-black text-slate-900 font-mono">{userStats.totalWorkingDays} दिन</span>
+        </div>
+        <div className="bg-emerald-50 border border-emerald-200 p-2.5 rounded-xl text-center shadow-2xs">
+          <span className="block text-[8px] text-emerald-700 uppercase font-black tracking-wider mb-0.5">জমা</span>
+          <span className="text-xs font-black text-emerald-800 font-mono">{userStats.submittedDays} দিন</span>
+        </div>
+        <div className="bg-rose-50 border border-rose-200 p-2.5 rounded-xl text-center shadow-2xs">
+          <span className="block text-[8px] text-rose-700 uppercase font-black tracking-wider mb-0.5">মিসড</span>
+          <span className="text-xs font-black text-rose-800 font-mono">{userStats.missedDays} দিন</span>
+        </div>
+        <div className="bg-blue-50 border border-blue-200 p-2.5 rounded-xl text-center shadow-2xs">
+          <span className="block text-[8px] text-blue-700 uppercase font-black tracking-wider mb-0.5">বাকি</span>
+          <span className="text-xs font-black text-blue-800 font-mono">{userStats.remainingDays} দিন</span>
+        </div>
+        <div className="bg-amber-50 border border-amber-200 p-2.5 rounded-xl text-center shadow-2xs">
+          <span className="block text-[8px] text-amber-700 uppercase font-black tracking-wider mb-0.5">জরিমানা</span>
+          <span className="text-xs font-black text-amber-800 font-mono">
+            {userStats.isFineSystemActive === false ? 'বন্ধ' : `৳${userStats.totalFine}`}
+          </span>
         </div>
       </div>
+    </div>
   );
 };
 
@@ -1243,23 +1243,23 @@ const AllMembersSubmissionSheet: React.FC<AllMembersSubmissionSheetProps> = ({
   }, [itemsWithStats, search, filterRole]);
 
   return (
-    <div className="bg-surface/60 border border-border rounded-[28px] p-4 sm:p-5 shadow-2xl space-y-4">
+    <div className="bg-white/95 border border-blue-200/60 rounded-[28px] p-4 sm:p-5 shadow-sm space-y-4">
       {config?.fineSystemActive === false && (
-        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-3">
-          <AlertTriangle size={18} className="flex-shrink-0" />
+        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-800 text-xs flex items-center gap-3">
+          <AlertTriangle size={18} className="flex-shrink-0 text-amber-600" />
           <span>জরিমানা সিস্টেম বর্তমানে অ্যাডমিন দ্বারা বন্ধ রাখা হয়েছে। নতুন কোনো জরিমানা যুক্ত হচ্ছে না।</span>
         </div>
       )}
 
       <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
         <div className="relative flex-1">
-          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-main" />
+          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input 
             type="text" 
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="নাম বা অবস্থান দিয়ে খুঁজুন..."
-            className="w-full bg-bg border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-xs font-bold text-white outline-none focus:border-amber-400 transition-all"
+            className="w-full bg-slate-50 border border-blue-200/50 rounded-xl py-2.5 pl-10 pr-4 text-xs font-bold text-slate-800 placeholder-slate-400 outline-none focus:border-blue-500 transition-all shadow-2xs"
           />
         </div>
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 custom-scrollbar">
@@ -1272,10 +1272,10 @@ const AllMembersSubmissionSheet: React.FC<AllMembersSubmissionSheetProps> = ({
             <button
               key={f.id}
               onClick={() => setFilterRole(f.id as any)}
-              className={`px-3 py-1.5 rounded-xl text-[11px] font-black whitespace-nowrap border transition-all ${
+              className={`px-3 py-1.5 rounded-xl text-[11px] font-black whitespace-nowrap border transition-all shadow-2xs ${
                 filterRole === f.id
-                  ? 'bg-amber-400 text-bg border-amber-400 shadow-lg'
-                  : 'bg-white/5 text-muted-main border-white/10 hover:border-white/20'
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 hover:text-slate-900'
               }`}
             >
               {f.label}
@@ -1286,7 +1286,7 @@ const AllMembersSubmissionSheet: React.FC<AllMembersSubmissionSheetProps> = ({
 
       <div className="space-y-3">
         {filteredItems.length === 0 ? (
-          <div className="text-center py-12 text-xs italic text-muted-main border border-dashed border-white/10 rounded-2xl">
+          <div className="text-center py-12 text-xs italic text-slate-500 border border-dashed border-slate-200 rounded-2xl">
             কোনো মেম্বার পাওয়া যায়নি
           </div>
         ) : (
@@ -1298,35 +1298,35 @@ const AllMembersSubmissionSheet: React.FC<AllMembersSubmissionSheetProps> = ({
             return (
               <div 
                 key={item.key} 
-                className={`p-4 rounded-2xl border transition-all ${
+                className={`p-4 rounded-2xl border transition-all shadow-2xs ${
                   isMe 
-                    ? 'bg-amber-500/10 border-amber-500/40 shadow-lg' 
-                    : 'bg-bg/40 border-white/5 hover:border-white/20'
+                    ? 'bg-blue-50/50 border-blue-200/80' 
+                    : 'bg-slate-50/80 border-slate-100 hover:border-slate-200 hover:bg-slate-100/20'
                 }`}
               >
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-11 h-11 rounded-xl neu-card-sm border border-slate-300/80 overflow-hidden flex items-center justify-center flex-shrink-0">
+                    <div className="w-11 h-11 rounded-xl neu-card-sm border border-slate-200 overflow-hidden flex items-center justify-center flex-shrink-0">
                       <CartoonAvatar src={item.profilePic} name={item.name} />
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <h4 className="font-bold text-white text-base truncate">{item.name}</h4>
+                        <h4 className="font-bold text-slate-900 text-base truncate">{item.name}</h4>
                         {isMe && (
-                          <span className="bg-amber-400 text-bg text-[9px] font-black px-1.5 py-0.5 rounded-md uppercase flex-shrink-0">
+                          <span className="bg-blue-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded-md uppercase flex-shrink-0 shadow-2xs">
                             আপনি
                           </span>
                         )}
                       </div>
                       <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                        <span className="text-[10px] text-muted-main font-semibold">
+                        <span className="text-[10px] text-slate-500 font-extrabold uppercase tracking-wide">
                           {item.position}
                         </span>
-                        <span className="text-white/20">•</span>
+                        <span className="text-slate-300">•</span>
                         <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${
                           isSubmitted 
-                            ? 'bg-green-500/10 text-green-400 border-green-500/20' 
-                            : 'bg-red-500/10 text-red-400 border-red-500/20'
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
+                            : 'bg-rose-50 text-rose-800 border-rose-200'
                         }`}>
                           {isSubmitted ? 'আজকে সাবমিটেড ✓' : 'আজকে সাবমিট করা হয়নি ✗'}
                         </span>
@@ -1334,21 +1334,21 @@ const AllMembersSubmissionSheet: React.FC<AllMembersSubmissionSheetProps> = ({
                     </div>
                   </div>
 
-                  <div className="flex flex-col xl:flex-row xl:items-center gap-3 pt-2 xl:pt-0 border-t xl:border-t-0 border-white/5">
+                  <div className="flex flex-col xl:flex-row xl:items-center gap-3 pt-2 xl:pt-0 border-t xl:border-t-0 border-slate-100">
                     <div className="grid grid-cols-3 gap-2 flex-1">
-                      <div className="bg-surface/80 border border-white/5 px-3 py-2 rounded-xl text-center">
-                        <span className="block text-[8px] text-muted-main uppercase font-bold">সাবমিটকৃত</span>
-                        <span className="text-xs font-black text-green-accent font-serif">{stats.submittedDays || 0} দিন</span>
+                      <div className="bg-emerald-50/40 border border-emerald-150 px-3 py-2 rounded-xl text-center shadow-2xs">
+                        <span className="block text-[8px] text-emerald-700 uppercase font-black tracking-wider">সাবমিটকৃত</span>
+                        <span className="text-xs font-black text-emerald-800 font-mono">{stats.submittedDays || 0} দিন</span>
                       </div>
 
-                      <div className="bg-surface/80 border border-red-500/20 px-3 py-2 rounded-xl text-center">
-                        <span className="block text-[8px] text-red-400 uppercase font-bold">মিসড দিন</span>
-                        <span className="text-xs font-black text-red-400 font-serif">{stats.missedDays || 0} দিন</span>
+                      <div className="bg-rose-50/40 border border-rose-150 px-3 py-2 rounded-xl text-center shadow-2xs">
+                        <span className="block text-[8px] text-rose-700 uppercase font-black tracking-wider">মিসড দিন</span>
+                        <span className="text-xs font-black text-rose-800 font-mono">{stats.missedDays || 0} দিন</span>
                       </div>
 
-                      <div className="bg-surface/80 border border-amber-500/20 px-3 py-2 rounded-xl text-center">
-                        <span className="block text-[8px] text-gold uppercase font-bold">চার্জ/জরিমানা</span>
-                        <span className="text-xs font-black text-gold font-serif">
+                      <div className="bg-amber-50/40 border border-amber-150 px-3 py-2 rounded-xl text-center shadow-2xs">
+                        <span className="block text-[8px] text-amber-700 uppercase font-black tracking-wider">চার্জ/জরিমানা</span>
+                        <span className="text-xs font-black text-amber-800 font-mono">
                           {stats.isFineSystemActive === false ? 'বন্ধ' : `৳${stats.totalFine || 0}`}
                         </span>
                       </div>
@@ -1357,10 +1357,10 @@ const AllMembersSubmissionSheet: React.FC<AllMembersSubmissionSheetProps> = ({
                     {onShowCalendar && (
                       <button 
                         onClick={() => onShowCalendar(item.whatsapp, item.name, item.id)}
-                        className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-amber-400 text-[9px] font-black uppercase tracking-wider transition-all active:scale-95 shadow-lg"
+                        className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 hover:text-blue-600 text-[9px] font-black uppercase tracking-wider transition-all active:scale-95 shadow-2xs"
                       >
-                        <Calendar size={12} />
-                        <span className="xl:hidden">ক্যালেন্ডার</span>
+                        <Calendar size={12} className="text-slate-500" />
+                        <span>ক্যালেন্ডার</span>
                       </button>
                     )}
                   </div>
@@ -5884,13 +5884,13 @@ export default function App() {
         {userTab === 'sheet' && (
           <div className="space-y-6">
             <div className="text-center mb-4">
-              <div className="inline-flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 text-amber-400 px-3 py-1 rounded-full text-[9px] sm:text-[10px] tracking-[2px] uppercase mb-2 font-bold">
-                <FileText size={12} /> রেজাল্ট ও জরিমানা হিসাব শিট
+              <div className="inline-flex items-center gap-2 bg-emerald-100/90 border border-emerald-300 text-emerald-900 px-3 py-1 rounded-full text-[9px] sm:text-[10px] tracking-[2px] uppercase mb-2 font-black shadow-2xs">
+                <FileText size={12} className="text-emerald-700" /> রেজাল্ট ও জরিমানা হিসাব শিট
               </div>
-              <h1 className="font-serif text-2xl sm:text-3xl font-black mb-1 bg-gradient-to-br from-white via-amber-200 to-amber-500 bg-clip-text text-transparent px-2">
+              <h1 className="font-serif text-2xl sm:text-3xl font-black mb-1 text-red-600 dark:text-red-400 px-2">
                 মেম্বারদের সাবমিশন ও ফাইন সামারি
               </h1>
-              <p className="text-muted-main text-[9px] sm:text-xs max-w-md mx-auto opacity-70">
+              <p className="text-slate-800 dark:text-slate-200 text-[10px] sm:text-xs max-w-md mx-auto font-black leading-relaxed">
                 আপনার এবং অন্যান্য মেম্বারদের রেজাল্ট সাবমিট রেকর্ড ও জরিমানা সামারি।
               </p>
             </div>
@@ -5931,20 +5931,20 @@ export default function App() {
         {userTab === 'links' && (
           <div className="space-y-8">
             <div className="text-center mb-8">
-              <div className="inline-flex items-center gap-2 bg-blue-accent/5 border border-blue-accent/20 text-blue-accent px-3 py-1 rounded-full text-[9px] sm:text-[10px] tracking-[2px] uppercase mb-4">
-                <Link size={12} /> প্রজেক্ট লিঙ্ক সমূহ
+              <div className="inline-flex items-center gap-2 bg-blue-100 border border-blue-300 text-blue-900 px-3 py-1 rounded-full text-[9px] sm:text-[10px] tracking-[2px] uppercase mb-4 font-black shadow-2xs">
+                <Link size={12} className="text-blue-700" /> প্রজেক্ট লিঙ্ক সমূহ
               </div>
-              <h1 className="font-serif text-2xl sm:text-4xl font-black mb-2 text-[#0a1128] dark:text-white px-2">
+              <h1 className="font-serif text-2xl sm:text-4xl font-black mb-2 text-red-600 dark:text-red-400 px-2">
                 গুরুত্বপূর্ণ লিংকসমূহ
               </h1>
-              <p className="text-slate-600 dark:text-slate-400 text-[10px] sm:text-sm max-w-md mx-auto font-medium">
+              <p className="text-slate-800 dark:text-slate-200 text-[10px] sm:text-sm max-w-md mx-auto font-black leading-relaxed">
                 প্রয়োজনীয় এবং প্রয়োজনীয় প্রজেক্ট ও ফাইলগুলোর শর্টকাট লিংক।
               </p>
             </div>
 
             <div className="grid grid-cols-1 gap-4">
               {quickLinks.length === 0 ? (
-                <div className="text-center py-16 bg-surface/30 rounded-2xl border border-border italic text-muted-main2">
+                <div className="text-center py-16 bg-slate-50 rounded-2xl border border-slate-200/80 italic text-slate-500">
                   No quick links available yet...
                 </div>
               ) : (
@@ -5954,18 +5954,18 @@ export default function App() {
                     href={link.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="group flex items-center justify-between gap-3 p-4 rounded-2xl bg-surface border border-border hover:border-blue-accent/50 hover:bg-white/[0.04] transition-colors overflow-hidden"
+                    className="group flex items-center justify-between gap-3 p-4 rounded-2xl bg-white/95 border border-slate-200 hover:border-blue-500 hover:bg-white shadow-xs transition-all overflow-hidden"
                   >
                     <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <div className="w-12 h-12 shrink-0 rounded-xl bg-blue-accent/10 flex items-center justify-center text-blue-accent">
+                      <div className="w-12 h-12 shrink-0 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-all">
                         <Link size={20} />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <h4 className="font-bold text-white text-sm sm:text-base group-hover:text-blue-accent transition-colors truncate">{link.name}</h4>
-                        <p className="text-[10px] text-muted-main/60 font-mono mt-0.5 truncate w-full">{link.url}</p>
+                        <h4 className="font-bold text-slate-850 text-sm sm:text-base group-hover:text-blue-600 transition-colors truncate">{link.name}</h4>
+                        <p className="text-[10px] text-slate-500 font-mono mt-0.5 truncate w-full group-hover:text-slate-600 transition-colors">{link.url}</p>
                       </div>
                     </div>
-                    <div className="p-2.5 shrink-0 rounded-xl bg-white/5 text-muted-main group-hover:text-blue-accent group-hover:bg-blue-accent/10 transition-colors">
+                    <div className="p-2.5 shrink-0 rounded-xl bg-slate-50 border border-slate-100 text-slate-500 group-hover:text-blue-600 group-hover:bg-blue-50 group-hover:border-blue-100 transition-all">
                       <ExternalLink size={18} />
                     </div>
                   </a>
