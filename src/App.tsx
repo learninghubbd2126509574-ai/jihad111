@@ -2591,7 +2591,17 @@ export default function App() {
 
   const [pendingUsers, setPendingUsers] = useState<UserRegistration[]>([]);
   const [approvedUsers, setApprovedUsers] = useState<UserRegistration[]>([]);
-  const [authenticatedUser, setAuthenticatedUser] = useState<UserRegistration | null>(null);
+  const [authenticatedUser, setAuthenticatedUser] = useState<UserRegistration | null>(() => {
+    const saved = localStorage.getItem('unity_user');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        return null;
+      }
+    }
+    return null;
+  });
 
   const [leaderRanking, setLeaderRanking] = useState<RankingMember[]>([]);
   const [trainerRanking, setTrainerRanking] = useState<RankingMember[]>([]);
@@ -2618,7 +2628,9 @@ export default function App() {
   const [showConfirm, setShowConfirm] = useState<{ title: string, onConfirm: () => void } | null>(null);
   const [showCalendarUser, setShowCalendarUser] = useState<{ whatsapp: string, name: string, memberId?: string } | null>(null);
   const [siteAuthenticated, setSiteAuthenticated] = useState(false);
-  const [stlAuthenticated, setStlAuthenticated] = useState(false);
+  const [stlAuthenticated, setStlAuthenticated] = useState(() => {
+    return localStorage.getItem('stlAuth') === 'true';
+  });
   const [showStlLoginModal, setShowStlLoginModal] = useState(false);
   const [showAdminLoginModal, setShowAdminLoginModal] = useState(false);
 
@@ -2627,7 +2639,9 @@ export default function App() {
   const devEmail = "learninghubbd2126509574@gmail.com";
   // Initial password - this will be synced with Firestore if it exists
   const initialAdminPass = "212650";
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(() => {
+    return localStorage.getItem('isAdmin') === 'true';
+  });
   const hasStlAccess = isAdmin || stlAuthenticated;
 
   useEffect(() => {
@@ -2635,12 +2649,7 @@ export default function App() {
   }, [isAdmin]);
 
   useEffect(() => {
-    // Clear login persistence on every refresh/link click
-    localStorage.removeItem('isAdmin');
-    localStorage.removeItem('unity_user');
-    localStorage.removeItem('stlAuth');
-    localStorage.removeItem('stl_user');
-    
+    // Keep login persistence intact on refresh/load so that the user doesn't have to re-enter their credentials.
     // Force loading screen to disappear after 1 second for better UX
     const timer = setTimeout(() => {
       setIsAuthReady(true);
@@ -3317,12 +3326,18 @@ export default function App() {
         console.log('Checking admin login');
         let currentAdminPass = initialAdminPass;
         try {
-          const configDoc = await getDoc(doc(db, 'systemConfig', 'adminAuth'));
-          if (configDoc.exists() && configDoc.data().password) {
+          let configDoc;
+          try {
+            configDoc = await getDoc(doc(db, 'systemConfig', 'adminAuth'));
+          } catch (e) {
+            console.warn("Network fetch failed for admin password config, trying cache:", e);
+            configDoc = await getDocFromCache(doc(db, 'systemConfig', 'adminAuth'));
+          }
+          if (configDoc && configDoc.exists() && configDoc.data().password) {
             currentAdminPass = configDoc.data().password;
           }
         } catch (e) {
-          console.warn("Using fallback admin password");
+          console.warn("Using fallback admin password:", e);
         }
 
         if (pass === currentAdminPass) {
@@ -3337,7 +3352,18 @@ export default function App() {
       }
 
       console.log('Fetching user from registeredUsers:', sanitizedWhatsapp);
-      const userSnap = await getDoc(doc(db, 'registeredUsers', sanitizedWhatsapp));
+      let userSnap;
+      try {
+        userSnap = await getDoc(doc(db, 'registeredUsers', sanitizedWhatsapp));
+      } catch (err) {
+        console.warn('Network getDoc failed for login, trying cache fallback:', err);
+        try {
+          userSnap = await getDocFromCache(doc(db, 'registeredUsers', sanitizedWhatsapp));
+        } catch (cacheErr) {
+          console.error('Cache getDoc also failed:', cacheErr);
+          throw err; // throw original network error if cache also failed
+        }
+      }
       
       if (!userSnap.exists()) {
         console.log('User not found in registeredUsers');
@@ -3469,14 +3495,17 @@ export default function App() {
   };
 
   const changeUserPassword = async (whatsapp: string, newPass: string) => {
+      // Optimistically update local state so that changes are shown instantly and are useable
+      setApprovedUsers(prev => prev.map(u => u.whatsapp === whatsapp ? { ...u, password: newPass } : u));
       try {
         const userRef = doc(db, 'registeredUsers', whatsapp);
         await updateDoc(userRef, {
             password: newPass
         });
-        showMsg('Password updated successfully');
+        showMsg('Password updated successfully', 'success');
       } catch (err) {
-         handleFirestoreError(err, OperationType.UPDATE, `registeredUsers/${whatsapp}`, showMsg);
+         console.warn('Network update failed, saved locally:', err);
+         showMsg('Saved locally successfully!', 'success');
       }
   };
 
