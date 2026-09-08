@@ -22,6 +22,8 @@ import {
   startAfter,
   getDoc,
   getDocFromServer,
+  getDocsFromCache,
+  getDocFromCache,
   increment
 } from 'firebase/firestore';
 import { 
@@ -405,9 +407,9 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   const message = err?.message || String(error);
   const code = err?.code || '';
   
-  // If code is 'unavailable' or connection retry, log warning rather than treating as fatal error
-  if (code === 'unavailable' || message.includes('unavailable') || message.includes('offline') || message.includes('Could not reach Cloud Firestore')) {
-    console.warn('Firestore is reconnecting or operating in offline cache mode:', message);
+  // If code is 'unavailable', 'resource-exhausted', offline or quota exceeded, log warning rather than treating as fatal error
+  if (code === 'unavailable' || code === 'resource-exhausted' || message.includes('unavailable') || message.includes('offline') || message.includes('Quota exceeded') || message.includes('Could not reach Cloud Firestore')) {
+    console.warn('Firestore is reconnecting, quota exceeded, or operating in offline cache mode:', message);
     return;
   }
 
@@ -895,6 +897,8 @@ const UserManagementSection = ({
   onUpdatePass: (w: string, p: string) => void
 }) => {
   const [activeTab, setActiveTab] = useState<'pending' | 'list'>('pending');
+  const [editingWhatsapp, setEditingWhatsapp] = useState<string | null>(null);
+  const [newPasswordVal, setNewPasswordVal] = useState<string>('');
 
   return (
     <div className="p-4 sm:p-6 bg-surface/50 border border-border2 rounded-[1.5rem] sm:rounded-[2rem] shadow-2xl relative overflow-hidden">
@@ -976,54 +980,98 @@ const UserManagementSection = ({
           )
         ) : (
           approved.map(u => (
-            <div key={u.whatsapp} className="p-4 sm:p-5 bg-bg/40 border border-white/5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 group hover:border-gold/30 transition-all">
-              <div className="flex items-center gap-4">
-                <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center font-black text-lg sm:text-xl shrink-0 ${u.status === 'blocked' ? 'bg-red-accent/10 text-red-accent' : 'bg-white/5 text-gold'}`}>
-                  {u.fullName[0]}
+            <div key={u.whatsapp} className={`p-4 sm:p-5 bg-bg/40 border rounded-2xl flex flex-col gap-4 group transition-all ${editingWhatsapp === u.whatsapp ? 'border-gold/50 bg-gold/5' : 'border-white/5 hover:border-gold/30'}`}>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center font-black text-lg sm:text-xl shrink-0 ${u.status === 'blocked' ? 'bg-red-accent/10 text-red-accent' : 'bg-white/5 text-gold'}`}>
+                    {u.fullName[0]}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-bold text-white truncate">{u.fullName}</h4>
+                      {u.status === 'blocked' && <span className="bg-red-accent/20 text-red-accent text-[8px] px-1.5 py-0.5 rounded uppercase font-black">Blocked</span>}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-[9px] sm:text-[10px] text-muted-main uppercase font-bold tracking-widest">
+                       <span className="flex items-center gap-1"><Phone size={10} /> {u.whatsapp}</span>
+                       <span className="hidden sm:block w-1 h-1 rounded-full bg-white/20" />
+                       <span className="flex items-center gap-1 text-gold"><Briefcase size={10} /> {u.position}</span>
+                       <span className="hidden sm:block w-1 h-1 rounded-full bg-white/20" />
+                       <PasswordDisplay password={u.password} />
+                    </div>
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h4 className="font-bold text-white truncate">{u.fullName}</h4>
-                    {u.status === 'blocked' && <span className="bg-red-accent/20 text-red-accent text-[8px] px-1.5 py-0.5 rounded uppercase font-black">Blocked</span>}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-[9px] sm:text-[10px] text-muted-main uppercase font-bold tracking-widest">
-                     <span className="flex items-center gap-1"><Phone size={10} /> {u.whatsapp}</span>
-                     <span className="hidden sm:block w-1 h-1 rounded-full bg-white/20" />
-                     <span className="flex items-center gap-1 text-gold"><Briefcase size={10} /> {u.position}</span>
-                     <span className="hidden sm:block w-1 h-1 rounded-full bg-white/20" />
-                     <PasswordDisplay password={u.password} />
-                  </div>
+                <div className="flex items-center gap-2 sm:ml-auto w-full sm:w-auto">
+                   {editingWhatsapp === u.whatsapp ? (
+                     <>
+                       <button 
+                          onClick={() => {
+                            setEditingWhatsapp(null);
+                            setNewPasswordVal('');
+                          }}
+                          className="flex-1 sm:flex-none px-3 h-11 sm:h-10 rounded-xl bg-white/5 text-muted-main hover:bg-white/10 transition-all flex items-center justify-center text-[11px] font-black uppercase border border-white/10"
+                       >
+                         Cancel
+                       </button>
+                       <button 
+                          onClick={() => {
+                            if (newPasswordVal.trim()) {
+                              onUpdatePass(u.whatsapp, newPasswordVal.trim());
+                              setEditingWhatsapp(null);
+                              setNewPasswordVal('');
+                            }
+                          }}
+                          className="flex-1 sm:flex-none px-4 h-11 sm:h-10 rounded-xl bg-gold text-bg hover:bg-gold-dark transition-all flex items-center justify-center text-[11px] font-black uppercase shadow-lg shadow-gold/20"
+                       >
+                         Save
+                       </button>
+                     </>
+                   ) : (
+                     <>
+                       <button 
+                          onClick={() => {
+                            setEditingWhatsapp(u.whatsapp);
+                            setNewPasswordVal(u.password);
+                          }}
+                          className="flex-1 sm:flex-none h-11 sm:h-10 rounded-xl bg-blue-accent/15 text-blue-accent hover:bg-blue-accent hover:text-bg transition-all flex items-center justify-center border border-blue-accent/20"
+                          title="Change Password"
+                       >
+                         <Lock size={16} />
+                         <span className="sm:hidden ml-2 text-[9px] font-black uppercase">Pass</span>
+                       </button>
+                       <button 
+                          onClick={() => onToggleBlock(u)}
+                          className={`flex-1 sm:flex-none h-11 sm:h-10 rounded-xl transition-all flex items-center justify-center border ${u.status === 'blocked' ? 'bg-green-accent/15 text-green-accent hover:bg-green-accent hover:text-bg border-green-accent/20' : 'bg-orange-500/15 text-orange-500 hover:bg-orange-500 hover:text-bg border-orange-500/20'}`}
+                          title={u.status === 'blocked' ? 'Unblock' : 'Block'}
+                       >
+                         {u.status === 'blocked' ? <CheckCircle2 size={16} /> : <Shield size={16} />}
+                         <span className="sm:hidden ml-2 text-[9px] font-black uppercase">{u.status === 'blocked' ? 'Unblock' : 'Block'}</span>
+                       </button>
+                       <button 
+                          onClick={() => onDelete(u.whatsapp)}
+                          className="flex-1 sm:flex-none h-11 sm:h-10 rounded-xl bg-red-accent/15 text-red-accent hover:bg-red-accent hover:text-white transition-all flex items-center justify-center border border-red-accent/20"
+                          title="Delete User"
+                       >
+                         <Trash2 size={16} />
+                         <span className="sm:hidden ml-2 text-[9px] font-black uppercase">Del</span>
+                       </button>
+                     </>
+                   )}
                 </div>
               </div>
-              <div className="flex items-center gap-2 sm:ml-auto w-full sm:w-auto">
-                 <button 
-                    onClick={() => {
-                      const newPass = prompt('Enter new password:', u.password);
-                      if (newPass) onUpdatePass(u.whatsapp, newPass);
-                    }}
-                    className="flex-1 sm:flex-none h-11 sm:h-10 rounded-xl bg-blue-accent/15 text-blue-accent hover:bg-blue-accent hover:text-bg transition-all flex items-center justify-center border border-blue-accent/20"
-                    title="Change Password"
-                 >
-                   <Lock size={16} />
-                   <span className="sm:hidden ml-2 text-[9px] font-black uppercase">Pass</span>
-                 </button>
-                 <button 
-                    onClick={() => onToggleBlock(u)}
-                    className={`flex-1 sm:flex-none h-11 sm:h-10 rounded-xl transition-all flex items-center justify-center border ${u.status === 'blocked' ? 'bg-green-accent/15 text-green-accent hover:bg-green-accent hover:text-bg border-green-accent/20' : 'bg-orange-500/15 text-orange-500 hover:bg-orange-500 hover:text-bg border-orange-500/20'}`}
-                    title={u.status === 'blocked' ? 'Unblock' : 'Block'}
-                 >
-                   {u.status === 'blocked' ? <CheckCircle2 size={16} /> : <Shield size={16} />}
-                   <span className="sm:hidden ml-2 text-[9px] font-black uppercase">{u.status === 'blocked' ? 'Unblock' : 'Block'}</span>
-                 </button>
-                 <button 
-                    onClick={() => onDelete(u.whatsapp)}
-                    className="flex-1 sm:flex-none h-11 sm:h-10 rounded-xl bg-red-accent/15 text-red-accent hover:bg-red-accent hover:text-white transition-all flex items-center justify-center border border-red-accent/20"
-                    title="Delete User"
-                 >
-                   <Trash2 size={16} />
-                   <span className="sm:hidden ml-2 text-[9px] font-black uppercase">Del</span>
-                 </button>
-              </div>
+
+              {editingWhatsapp === u.whatsapp && (
+                <div className="p-3 bg-bg/80 border border-white/5 rounded-xl flex items-center gap-3 animate-fade-in">
+                  <Lock size={14} className="text-gold shrink-0" />
+                  <input 
+                    type="text" 
+                    value={newPasswordVal}
+                    onChange={(e) => setNewPasswordVal(e.target.value)}
+                    placeholder="Enter new password..."
+                    className="bg-transparent text-xs text-white placeholder-muted-main2 outline-none w-full border-none focus:ring-0 p-0"
+                    autoFocus
+                  />
+                </div>
+              )}
             </div>
           ))
         )}
@@ -2665,8 +2713,17 @@ export default function App() {
         });
       }
       setIsConfigReady(true);
-    }, (err) => {
-      console.error('Config Listener Error:', err);
+    }, async (err) => {
+      console.warn('Config Listener Error, attempting cache fallback:', err);
+      try {
+        const cacheSnap = await getDocFromCache(doc(db, 'config', 'global'));
+        if (cacheSnap.exists()) {
+          const newConfig = cacheSnap.data() as Config;
+          setConfig(newConfig);
+        }
+      } catch (cacheErr) {
+        console.warn('Failed to fetch config from cache:', cacheErr);
+      }
       setIsConfigReady(true); // Fallback to let app load even if config fails
       handleFirestoreError(err, OperationType.GET, 'config/global', showMsg);
     });
@@ -2676,7 +2733,18 @@ export default function App() {
       const mList: Member[] = [];
       snapshot.forEach(d => mList.push({ id: d.id, ...d.data() } as Member));
       setMembers(mList);
-    }, (err) => handleFirestoreError(err, OperationType.GET, 'members', showMsg));
+    }, async (err) => {
+      console.warn('Members Listener Error, attempting cache fallback:', err);
+      try {
+        const cacheSnap = await getDocsFromCache(query(collection(db, 'members'), orderBy('createdAt', 'desc')));
+        const mList: Member[] = [];
+        cacheSnap.forEach(d => mList.push({ id: d.id, ...d.data() } as Member));
+        setMembers(mList);
+      } catch (cacheErr) {
+        console.warn('Failed to fetch members from cache:', cacheErr);
+      }
+      handleFirestoreError(err, OperationType.GET, 'members', showMsg);
+    });
 
     // Listen to Results
     const unsubResults = onSnapshot(collection(db, 'results'), (snapshot) => {
@@ -2686,55 +2754,146 @@ export default function App() {
         rMap[data.memberId] = { id: d.id, ...data };
       });
       setResults(rMap);
-    }, (err) => handleFirestoreError(err, OperationType.GET, 'results', showMsg));
+    }, async (err) => {
+      console.warn('Results Listener Error, attempting cache fallback:', err);
+      try {
+        const cacheSnap = await getDocsFromCache(collection(db, 'results'));
+        const rMap: Record<string, Result> = {};
+        cacheSnap.forEach(d => {
+          const data = d.data() as Result;
+          rMap[data.memberId] = { id: d.id, ...data };
+        });
+        setResults(rMap);
+      } catch (cacheErr) {
+        console.warn('Failed to fetch results from cache:', cacheErr);
+      }
+      handleFirestoreError(err, OperationType.GET, 'results', showMsg);
+    });
 
     // Listen to Picking Schedule
     const unsubPicking = onSnapshot(query(collection(db, 'pickingSchedule'), orderBy('createdAt', 'asc')), (snapshot) => {
       const pList: PickingItem[] = [];
       snapshot.forEach(d => pList.push({ id: d.id, ...d.data() } as PickingItem));
       setPickingSchedule(pList);
-    }, (err) => handleFirestoreError(err, OperationType.GET, 'pickingSchedule', showMsg));
+    }, async (err) => {
+      console.warn('Picking Listener Error, attempting cache fallback:', err);
+      try {
+        const cacheSnap = await getDocsFromCache(query(collection(db, 'pickingSchedule'), orderBy('createdAt', 'asc')));
+        const pList: PickingItem[] = [];
+        cacheSnap.forEach(d => pList.push({ id: d.id, ...d.data() } as PickingItem));
+        setPickingSchedule(pList);
+      } catch (cacheErr) {
+        console.warn('Failed to fetch picking schedule from cache:', cacheErr);
+      }
+      handleFirestoreError(err, OperationType.GET, 'pickingSchedule', showMsg);
+    });
 
     // Listen to Rankings
     const unsubLeaderRanking = onSnapshot(query(collection(db, 'leaderRanking'), orderBy('score', 'desc')), (snapshot) => {
       const list: RankingMember[] = [];
       snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as RankingMember));
       setLeaderRanking(list);
-    }, (err) => handleFirestoreError(err, OperationType.GET, 'leaderRanking', showMsg));
+    }, async (err) => {
+      console.warn('LeaderRanking Listener Error, attempting cache fallback:', err);
+      try {
+        const cacheSnap = await getDocsFromCache(query(collection(db, 'leaderRanking'), orderBy('score', 'desc')));
+        const list: RankingMember[] = [];
+        cacheSnap.forEach(d => list.push({ id: d.id, ...d.data() } as RankingMember));
+        setLeaderRanking(list);
+      } catch (cacheErr) {
+        console.warn('Failed to fetch leader ranking from cache:', cacheErr);
+      }
+      handleFirestoreError(err, OperationType.GET, 'leaderRanking', showMsg);
+    });
 
     const unsubTrainerRanking = onSnapshot(query(collection(db, 'trainerRanking'), orderBy('score', 'desc')), (snapshot) => {
       const list: RankingMember[] = [];
       snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as RankingMember));
       setTrainerRanking(list);
-    }, (err) => handleFirestoreError(err, OperationType.GET, 'trainerRanking', showMsg));
+    }, async (err) => {
+      console.warn('TrainerRanking Listener Error, attempting cache fallback:', err);
+      try {
+        const cacheSnap = await getDocsFromCache(query(collection(db, 'trainerRanking'), orderBy('score', 'desc')));
+        const list: RankingMember[] = [];
+        cacheSnap.forEach(d => list.push({ id: d.id, ...d.data() } as RankingMember));
+        setTrainerRanking(list);
+      } catch (cacheErr) {
+        console.warn('Failed to fetch trainer ranking from cache:', cacheErr);
+      }
+      handleFirestoreError(err, OperationType.GET, 'trainerRanking', showMsg);
+    });
 
     // Listen to Teachers
     const unsubTeachers = onSnapshot(query(collection(db, 'teachers'), orderBy('createdAt', 'asc')), (snapshot) => {
       const tList: Teacher[] = [];
       snapshot.forEach(d => tList.push({ id: d.id, ...d.data() } as Teacher));
       setTeachers(tList);
-    }, (err) => handleFirestoreError(err, OperationType.GET, 'teachers', showMsg));
+    }, async (err) => {
+      console.warn('Teachers Listener Error, attempting cache fallback:', err);
+      try {
+        const cacheSnap = await getDocsFromCache(query(collection(db, 'teachers'), orderBy('createdAt', 'asc')));
+        const tList: Teacher[] = [];
+        cacheSnap.forEach(d => tList.push({ id: d.id, ...d.data() } as Teacher));
+        setTeachers(tList);
+      } catch (cacheErr) {
+        console.warn('Failed to fetch teachers from cache:', cacheErr);
+      }
+      handleFirestoreError(err, OperationType.GET, 'teachers', showMsg);
+    });
 
     // Listen to STL Members
     const unsubStlMembers = onSnapshot(query(collection(db, 'stlMembers'), orderBy('createdAt', 'asc')), (snapshot) => {
       const list: STLMember[] = [];
       snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as STLMember));
       setStlMembers(list);
-    }, (err) => handleFirestoreError(err, OperationType.GET, 'stlMembers', showMsg));
+    }, async (err) => {
+      console.warn('StlMembers Listener Error, attempting cache fallback:', err);
+      try {
+        const cacheSnap = await getDocsFromCache(query(collection(db, 'stlMembers'), orderBy('createdAt', 'asc')));
+        const list: STLMember[] = [];
+        cacheSnap.forEach(d => list.push({ id: d.id, ...d.data() } as STLMember));
+        setStlMembers(list);
+      } catch (cacheErr) {
+        console.warn('Failed to fetch stl members from cache:', cacheErr);
+      }
+      handleFirestoreError(err, OperationType.GET, 'stlMembers', showMsg);
+    });
 
     // Listen to Demo Members
     const unsubDemoMembers = onSnapshot(query(collection(db, 'demoMembers'), orderBy('createdAt', 'asc')), (snapshot) => {
       const list: DemoMember[] = [];
       snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as DemoMember));
       setDemoMembers(list);
-    }, (err) => handleFirestoreError(err, OperationType.GET, 'demoMembers', showMsg));
+    }, async (err) => {
+      console.warn('DemoMembers Listener Error, attempting cache fallback:', err);
+      try {
+        const cacheSnap = await getDocsFromCache(query(collection(db, 'demoMembers'), orderBy('createdAt', 'asc')));
+        const list: DemoMember[] = [];
+        cacheSnap.forEach(d => list.push({ id: d.id, ...d.data() } as DemoMember));
+        setDemoMembers(list);
+      } catch (cacheErr) {
+        console.warn('Failed to fetch demo members from cache:', cacheErr);
+      }
+      handleFirestoreError(err, OperationType.GET, 'demoMembers', showMsg);
+    });
 
     // Listen to Quick Links
     const unsubQuickLinks = onSnapshot(query(collection(db, 'quickLinks'), orderBy('createdAt', 'desc')), (snapshot) => {
       const list: QuickLink[] = [];
       snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as QuickLink));
       setQuickLinks(list);
-    }, (err) => handleFirestoreError(err, OperationType.GET, 'quickLinks', showMsg));
+    }, async (err) => {
+      console.warn('QuickLinks Listener Error, attempting cache fallback:', err);
+      try {
+        const cacheSnap = await getDocsFromCache(query(collection(db, 'quickLinks'), orderBy('createdAt', 'desc')));
+        const list: QuickLink[] = [];
+        cacheSnap.forEach(d => list.push({ id: d.id, ...d.data() } as QuickLink));
+        setQuickLinks(list);
+      } catch (cacheErr) {
+        console.warn('Failed to fetch quick links from cache:', cacheErr);
+      }
+      handleFirestoreError(err, OperationType.GET, 'quickLinks', showMsg);
+    });
 
     // ---------------------------------------------------------
     // AUTH DEPENDENT LISTENERS (Admin / Authed only)
@@ -2757,15 +2916,48 @@ export default function App() {
           bMap[d.id] = { id: d.id, ...d.data() } as UserBalance;
         });
         setUserBalances(bMap);
-      }, (err) => handleFirestoreError(err, OperationType.GET, 'userBalances', showMsg));
+      }, async (err) => {
+        console.warn('Balances Listener Error, attempting cache fallback:', err);
+        try {
+          const cacheSnap = await getDocsFromCache(collection(db, 'userBalances'));
+          const bMap: Record<string, UserBalance> = {};
+          cacheSnap.forEach(d => {
+            bMap[d.id] = { id: d.id, ...d.data() } as UserBalance;
+          });
+          setUserBalances(bMap);
+        } catch (cacheErr) {
+          console.warn('Failed to fetch balances from cache:', cacheErr);
+        }
+        handleFirestoreError(err, OperationType.GET, 'userBalances', showMsg);
+      });
 
-      unsubSubmissionLogs = onSnapshot(collection(db, 'submissionLogs'), (snapshot) => {
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth();
+      const safeYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+      const safeMonth = currentMonth === 0 ? 12 : currentMonth; // previous month (1-indexed)
+      const startOfPrevMonthStr = `${safeYear}-${String(safeMonth).padStart(2, '0')}-01`;
+
+      unsubSubmissionLogs = onSnapshot(query(collection(db, 'submissionLogs'), where('date', '>=', startOfPrevMonthStr)), (snapshot) => {
         const logs: SubmissionLog[] = [];
         snapshot.forEach(d => {
           logs.push({ id: d.id, ...d.data() } as SubmissionLog);
         });
         setSubmissionLogs(logs);
-      }, (err) => handleFirestoreError(err, OperationType.GET, 'submissionLogs', showMsg));
+      }, async (err) => {
+        console.warn('SubmissionLogs Listener Error, attempting cache fallback:', err);
+        try {
+          const cacheSnap = await getDocsFromCache(query(collection(db, 'submissionLogs'), where('date', '>=', startOfPrevMonthStr)));
+          const logs: SubmissionLog[] = [];
+          cacheSnap.forEach(d => {
+            logs.push({ id: d.id, ...d.data() } as SubmissionLog);
+          });
+          setSubmissionLogs(logs);
+        } catch (cacheErr) {
+          console.warn('Failed to fetch submission logs from cache:', cacheErr);
+        }
+        handleFirestoreError(err, OperationType.GET, 'submissionLogs', showMsg);
+      });
 
       const isActuallyAdmin = user.email === adminEmail || user.email === devEmail || user.isAnonymous || isAdmin;
       
@@ -2778,44 +2970,117 @@ export default function App() {
             logs.push({ id: d.id, ...d.data() } as AuditLog);
           });
           setAuditLogs(logs);
-        }, (err) => handleFirestoreError(err, OperationType.GET, 'auditLogs', showMsg));
+        }, async (err) => {
+          console.warn('AuditLogs Listener Error, attempting cache fallback:', err);
+          try {
+            const cacheSnap = await getDocsFromCache(query(collection(db, 'auditLogs'), orderBy('createdAt', 'desc'), limit(100)));
+            const logs: AuditLog[] = [];
+            cacheSnap.forEach(d => {
+              logs.push({ id: d.id, ...d.data() } as AuditLog);
+            });
+            setAuditLogs(logs);
+          } catch (cacheErr) {
+            console.warn('Failed to fetch audit logs from cache:', cacheErr);
+          }
+          handleFirestoreError(err, OperationType.GET, 'auditLogs', showMsg);
+        });
 
-        unsubApps = onSnapshot(query(collection(db, 'applications'), orderBy('createdAt', 'desc')), (snapshot) => {
+        unsubApps = onSnapshot(query(collection(db, 'applications'), orderBy('createdAt', 'desc'), limit(200)), (snapshot) => {
           const aList: Application[] = [];
           snapshot.forEach(d => aList.push({ id: d.id, ...d.data() } as Application));
           setApplications(aList);
-        }, (err) => console.warn('Sync Applications: permission pending'));
+        }, async (err) => {
+          console.warn('Sync Applications error, attempting cache fallback:', err);
+          try {
+            const cacheSnap = await getDocsFromCache(query(collection(db, 'applications'), orderBy('createdAt', 'desc'), limit(200)));
+            const aList: Application[] = [];
+            cacheSnap.forEach(d => aList.push({ id: d.id, ...d.data() } as Application));
+            setApplications(aList);
+          } catch (cacheErr) {
+            console.warn('Failed to fetch applications from cache:', cacheErr);
+          }
+        });
 
         unsubAttendance = onSnapshot(query(collection(db, 'teacherAttendance'), orderBy('submittedAt', 'desc'), limit(100)), (snapshot) => {
           const rList: AttendanceRecord[] = [];
           snapshot.forEach(d => rList.push({ id: d.id, ...d.data() } as AttendanceRecord));
           setAttendanceRecords(rList);
-        }, (err) => console.warn('Sync Attendance: permission pending'));
+        }, async (err) => {
+          console.warn('Sync Attendance error, attempting cache fallback:', err);
+          try {
+            const cacheSnap = await getDocsFromCache(query(collection(db, 'teacherAttendance'), orderBy('submittedAt', 'desc'), limit(100)));
+            const rList: AttendanceRecord[] = [];
+            cacheSnap.forEach(d => rList.push({ id: d.id, ...d.data() } as AttendanceRecord));
+            setAttendanceRecords(rList);
+          } catch (cacheErr) {
+            console.warn('Failed to fetch attendance from cache:', cacheErr);
+          }
+        });
 
         unsubStlAttendance = onSnapshot(query(collection(db, 'stlAttendance'), orderBy('submittedAt', 'desc'), limit(50)), (snapshot) => {
           const list: STLAttendance[] = [];
           snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as STLAttendance));
           setStlAttendance(list);
-        }, (err) => console.warn('Sync STL: permission pending'));
+        }, async (err) => {
+          console.warn('Sync STL attendance error, attempting cache fallback:', err);
+          try {
+            const cacheSnap = await getDocsFromCache(query(collection(db, 'stlAttendance'), orderBy('submittedAt', 'desc'), limit(50)));
+            const list: STLAttendance[] = [];
+            cacheSnap.forEach(d => list.push({ id: d.id, ...d.data() } as STLAttendance));
+            setStlAttendance(list);
+          } catch (cacheErr) {
+            console.warn('Failed to fetch STL attendance from cache:', cacheErr);
+          }
+        });
 
         unsubDemoAttendance = onSnapshot(query(collection(db, 'demoAttendance'), orderBy('submittedAt', 'desc'), limit(50)), (snapshot) => {
           const list: DemoAttendance[] = [];
           snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as DemoAttendance));
           setDemoAttendance(list);
-        }, (err) => console.warn('Sync Demo: permission pending'));
+        }, async (err) => {
+          console.warn('Sync Demo attendance error, attempting cache fallback:', err);
+          try {
+            const cacheSnap = await getDocsFromCache(query(collection(db, 'demoAttendance'), orderBy('submittedAt', 'desc'), limit(50)));
+            const list: DemoAttendance[] = [];
+            cacheSnap.forEach(d => list.push({ id: d.id, ...d.data() } as DemoAttendance));
+            setDemoAttendance(list);
+          } catch (cacheErr) {
+            console.warn('Failed to fetch Demo attendance from cache:', cacheErr);
+          }
+        });
 
         // Listen to User Registrations (Admin only)
         unsubPending = onSnapshot(query(collection(db, 'pendingRegistrations'), orderBy('createdAt', 'desc')), (snapshot) => {
           const list: UserRegistration[] = [];
           snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as UserRegistration));
           setPendingUsers(list);
-        }, (err) => console.warn('Sync Pending: permission pending'));
+        }, async (err) => {
+          console.warn('Sync Pending error, attempting cache fallback:', err);
+          try {
+            const cacheSnap = await getDocsFromCache(query(collection(db, 'pendingRegistrations'), orderBy('createdAt', 'desc')));
+            const list: UserRegistration[] = [];
+            cacheSnap.forEach(d => list.push({ id: d.id, ...d.data() } as UserRegistration));
+            setPendingUsers(list);
+          } catch (cacheErr) {
+            console.warn('Failed to fetch pending users from cache:', cacheErr);
+          }
+        });
 
         unsubApproved = onSnapshot(collection(db, 'registeredUsers'), (snapshot) => {
           const list: UserRegistration[] = [];
           snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as UserRegistration));
           setApprovedUsers(list);
-        }, (err) => console.warn('Sync Approved: permission pending'));
+        }, async (err) => {
+          console.warn('Sync Approved error, attempting cache fallback:', err);
+          try {
+            const cacheSnap = await getDocsFromCache(collection(db, 'registeredUsers'));
+            const list: UserRegistration[] = [];
+            cacheSnap.forEach(d => list.push({ id: d.id, ...d.data() } as UserRegistration));
+            setApprovedUsers(list);
+          } catch (cacheErr) {
+            console.warn('Failed to fetch approved users from cache:', cacheErr);
+          }
+        });
       }
     }
 
