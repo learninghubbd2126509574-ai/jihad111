@@ -1,14 +1,17 @@
 import React, { useState } from 'react';
-import { Delete, ArrowUp, X, Check, Eye, EyeOff, Smartphone, Lock, Space, ChevronDown } from 'lucide-react';
+import { Delete, ArrowUp, X, Check, Eye, EyeOff, Smartphone, Lock, Space, ChevronDown, Save } from 'lucide-react';
 
 interface PhoneKeypadProps {
   value: string;
   onChange: (val: string) => void;
   onClose: () => void;
   title?: string;
+  savedAccounts: { whatsapp: string, password: string }[];
+  onSaveAccount: () => void;
+  onDeleteSavedAccount: (w: string, e: React.MouseEvent) => void;
 }
 
-export function PhoneKeypad({ value, onChange, onClose, title = "WhatsApp / Phone Number" }: PhoneKeypadProps) {
+export function PhoneKeypad({ value, onChange, onClose, title = "WhatsApp / Phone Number", savedAccounts, onSaveAccount, onDeleteSavedAccount }: PhoneKeypadProps) {
   const handleKeyClick = (key: string) => {
     if (value.length < 15) {
       onChange(value + key);
@@ -88,16 +91,50 @@ export function PhoneKeypad({ value, onChange, onClose, title = "WhatsApp / Phon
                 <span className="inline-block w-0.5 h-6 bg-blue-400 animate-pulse" />
               </div>
 
-              {value && (
-                <button
-                  type="button"
-                  onClick={handleClear}
-                  className="px-2 py-1 bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 text-[10px] font-bold rounded-lg transition-colors cursor-pointer"
-                >
-                  Clear
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                {value.length >= 10 && (
+                  <button
+                    type="button"
+                    onClick={onSaveAccount}
+                    className="p-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 rounded-lg transition-colors cursor-pointer"
+                    title="Save Account"
+                  >
+                    <Save size={16} />
+                  </button>
+                )}
+                {value && (
+                  <button
+                    type="button"
+                    onClick={handleClear}
+                    className="px-2 py-1 bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 text-[10px] font-bold rounded-lg transition-colors cursor-pointer"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
             </div>
+
+            {/* Saved Accounts Row */}
+            {savedAccounts.length > 0 && (
+              <div className="mt-2 flex gap-1.5 overflow-x-auto custom-scrollbar pb-1">
+                {savedAccounts.map((acc, idx) => (
+                  <div
+                    key={idx}
+                    onClick={() => onChange(acc.whatsapp)}
+                    className="flex items-center gap-1.5 bg-slate-800/60 border border-slate-700 hover:border-blue-500 cursor-pointer rounded-lg px-2 py-1 text-[10px] font-bold text-slate-300 shrink-0 transition-all"
+                  >
+                    <span className="font-mono">{acc.whatsapp}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => onDeleteSavedAccount(acc.whatsapp, e)}
+                      className="text-slate-500 hover:text-rose-400"
+                    >
+                      <X size={10} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Keypad Grid Layout */}
@@ -169,9 +206,12 @@ interface PasswordKeyboardProps {
   onChange: (val: string) => void;
   onClose: () => void;
   title?: string;
+  savedAccounts: { whatsapp: string, password: string }[];
+  onSaveAccount: () => void;
+  onDeleteSavedAccount: (w: string, e: React.MouseEvent) => void;
 }
 
-export function PasswordKeyboard({ value, onChange, onClose, title = "Password Virtual Keyboard" }: PasswordKeyboardProps) {
+export function PasswordKeyboard({ value, onChange, onClose, title = "Password Virtual Keyboard", savedAccounts, onSaveAccount, onDeleteSavedAccount }: PasswordKeyboardProps) {
   // Default to numeric (123) layout as requested
   const [layoutMode, setLayoutMode] = useState<'num' | 'abc' | 'ABC' | 'sym'>('num');
   const [showPlainPassword, setShowPlainPassword] = useState(true);
@@ -304,6 +344,16 @@ export function PasswordKeyboard({ value, onChange, onClose, title = "Password V
               </div>
 
               <div className="flex items-center gap-1.5 shrink-0">
+                {value.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={onSaveAccount}
+                    className="p-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 rounded-lg transition-colors cursor-pointer"
+                    title="Save Account"
+                  >
+                    <Save size={16} />
+                  </button>
+                )}
                 {value && (
                   <button
                     type="button"
@@ -312,9 +362,6 @@ export function PasswordKeyboard({ value, onChange, onClose, title = "Password V
                     title={showPlainPassword ? "Hide password" : "Show password"}
                   >
                     {showPlainPassword ? <EyeOff size={14} className="text-amber-400" /> : <Eye size={14} className="text-blue-400" />}
-                    <span className="text-[10px] font-bold hidden sm:inline">
-                      {showPlainPassword ? 'Hide' : 'Show'}
-                    </span>
                   </button>
                 )}
 
@@ -328,6 +375,28 @@ export function PasswordKeyboard({ value, onChange, onClose, title = "Password V
                 </button>
               </div>
             </div>
+            
+            {/* Saved Accounts Row */}
+            {savedAccounts.length > 0 && (
+              <div className="mt-2 flex gap-1.5 overflow-x-auto custom-scrollbar pb-1">
+                {savedAccounts.map((acc, idx) => (
+                  <div
+                    key={idx}
+                    onClick={() => onChange(acc.password)}
+                    className="flex items-center gap-1.5 bg-slate-800/60 border border-slate-700 hover:border-blue-500 cursor-pointer rounded-lg px-2 py-1 text-[10px] font-bold text-slate-300 shrink-0 transition-all"
+                  >
+                    <span className="font-mono">{acc.whatsapp}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => onDeleteSavedAccount(acc.whatsapp, e)}
+                      className="text-slate-500 hover:text-rose-400"
+                    >
+                      <X size={10} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* DEFAULT NUMERIC 123 LAYOUT */}

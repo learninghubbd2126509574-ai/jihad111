@@ -112,7 +112,9 @@ import {
   Copy,
   CheckCheck,
   Share2,
-  Target
+  Target,
+  Save,
+  KeyRound
 } from 'lucide-react';
 
 import { 
@@ -547,13 +549,66 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: {
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [activeKeypad, setActiveKeypad] = useState<'phone' | 'password' | 'admin' | null>(null);
+  const [rememberMe, setRememberMe] = useState(true);
+
+  const [savedAccounts, setSavedAccounts] = useState<{ whatsapp: string, password: string }[]>(() => {
+    try {
+      const data = localStorage.getItem('unity_saved_accounts');
+      return data ? JSON.parse(data) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+
+  const handleSaveAccount = () => {
+    if (!whatsapp || whatsapp.length < 10) {
+      alert("অনুগ্রহ করে প্রথমে একটি সঠিক হোয়াটসঅ্যাপ নম্বর টাইপ করুন।");
+      return;
+    }
+    if (!password) {
+      alert("অনুগ্রহ করে পাসওয়ার্ড টাইপ করুন।");
+      return;
+    }
+    
+    const exists = savedAccounts.some(acc => acc.whatsapp === whatsapp);
+    let updated = [...savedAccounts];
+    if (exists) {
+      updated = updated.map(acc => acc.whatsapp === whatsapp ? { whatsapp, password } : acc);
+    } else {
+      updated.push({ whatsapp, password });
+    }
+    
+    setSavedAccounts(updated);
+    localStorage.setItem('unity_saved_accounts', JSON.stringify(updated));
+    alert("পাসওয়ার্ড ও নম্বরটি সফলভাবে সেভ করা হয়েছে! পরবর্তীতে এখানে ক্লিক করলেই অটোমেটিক বসে যাবে।");
+  };
+
+  const handleDeleteSavedAccount = (w: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const updated = savedAccounts.filter(acc => acc.whatsapp !== w);
+    setSavedAccounts(updated);
+    localStorage.setItem('unity_saved_accounts', JSON.stringify(updated));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
       if (mode === 'login') {
-         await onLogin(whatsapp, password);
+         const success = await onLogin(whatsapp, password);
+         if (success && rememberMe) {
+           setSavedAccounts(prev => {
+             const exists = prev.some(acc => acc.whatsapp === whatsapp);
+             let updated = [...prev];
+             if (exists) {
+               updated = updated.map(acc => acc.whatsapp === whatsapp ? { whatsapp, password } : acc);
+             } else {
+               updated.push({ whatsapp, password });
+             }
+             localStorage.setItem('unity_saved_accounts', JSON.stringify(updated));
+             return updated;
+           });
+         }
       } else if (mode === 'register') {
          console.log('Sending data:', { fullName, whatsapp, position, password });
          const success = await onRegister({ fullName, whatsapp, position, password });
@@ -695,6 +750,42 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: {
             </form>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-3.5">
+              {/* Saved accounts row */}
+              {mode === 'login' && savedAccounts.length > 0 && (
+                <div className="bg-slate-800 border border-slate-700 rounded-2xl p-2.5 mb-2 shadow-xs">
+                  <div className="flex items-center justify-between mb-1.5 px-0.5">
+                    <span className="text-[10px] font-black text-slate-300 uppercase tracking-wider flex items-center gap-1">
+                      <KeyRound size={11} className="text-blue-400" />
+                      সংরক্ষিত পাসওয়ার্ড (Saved Accounts)
+                    </span>
+                    <span className="text-[9px] font-bold text-slate-500">লগইন করতে ক্লিক করুন</span>
+                  </div>
+                  <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-thin max-h-16">
+                    {savedAccounts.map((acc, idx) => (
+                      <div
+                        key={idx}
+                        onClick={() => {
+                          setWhatsapp(acc.whatsapp);
+                          setPassword(acc.password);
+                        }}
+                        className="flex items-center gap-1.5 bg-slate-700 border border-slate-600 hover:border-blue-500 hover:bg-slate-600 cursor-pointer rounded-xl px-2.5 py-1 text-xs font-bold text-white shrink-0 transition-all shadow-xs"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        <span className="font-mono">{acc.whatsapp}</span>
+                        <button
+                          type="button"
+                          onClick={(e) => handleDeleteSavedAccount(acc.whatsapp, e)}
+                          className="ml-1 text-slate-400 hover:text-rose-500 transition-colors p-0.5 rounded-full hover:bg-rose-50"
+                          title="মুছে ফেলুন"
+                        >
+                          <X size={10} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {mode === 'register' && (
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 pl-1">
@@ -717,10 +808,23 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: {
 
               {/* Phone Number Input */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 pl-1">
-                  <Smartphone size={12} className="text-blue-600" />
-                  {mode === 'login' ? 'WHATSAPP NUMBER' : 'PERSONAL NUMBER'}
-                </label>
+                <div className="flex items-center justify-between pl-1">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                    <Smartphone size={12} className="text-blue-600" />
+                    {mode === 'login' ? 'WHATSAPP NUMBER' : 'PERSONAL NUMBER'}
+                  </label>
+                  {mode === 'login' && whatsapp.length >= 1 && password.length >= 1 && (
+                    <button
+                      type="button"
+                      onClick={handleSaveAccount}
+                      className="text-[9px] bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white font-extrabold px-2 py-0.5 rounded-md flex items-center gap-1 transition-all shadow-xs"
+                      title="এই অ্যাকাউন্টটি সেভ করুন"
+                    >
+                      <Save size={10} />
+                      সেভ করুন (Save)
+                    </button>
+                  )}
+                </div>
                 <div className="relative">
                   <Smartphone className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                   <input 
@@ -770,10 +874,23 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: {
 
               {/* Password Input */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5 pl-1">
-                  <Lock size={12} className="text-blue-600" />
-                  {mode === 'login' ? 'ACCESS PASSWORD' : 'CREATE PASSWORD'}
-                </label>
+                <div className="flex items-center justify-between pl-1">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                    <Lock size={12} className="text-blue-600" />
+                    {mode === 'login' ? 'ACCESS PASSWORD' : 'CREATE PASSWORD'}
+                  </label>
+                  {mode === 'login' && whatsapp.length >= 1 && password.length >= 1 && (
+                    <button
+                      type="button"
+                      onClick={handleSaveAccount}
+                      className="text-[9px] bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white font-extrabold px-2 py-0.5 rounded-md flex items-center gap-1 transition-all shadow-xs"
+                      title="এই অ্যাকাউন্টটি সেভ করুন"
+                    >
+                      <Save size={10} />
+                      সেভ করুন (Save)
+                    </button>
+                  )}
+                </div>
                 <div className="relative">
                   <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                   <input 
@@ -808,7 +925,12 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: {
               {mode === 'login' && (
                 <div className="flex items-center justify-between text-xs pt-0.5">
                   <label className="flex items-center gap-2 cursor-pointer text-slate-600 hover:text-slate-900 transition-colors">
-                    <input type="checkbox" className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5" />
+                    <input 
+                      type="checkbox" 
+                      checked={rememberMe}
+                      onChange={e => setRememberMe(e.target.checked)}
+                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-3.5 h-3.5" 
+                    />
                     <span>Remember me</span>
                   </label>
                   <button type="button" onClick={() => alert("Please contact your administrator for password reset.")} className="text-blue-600 hover:underline font-semibold">
@@ -864,6 +986,9 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: {
           onChange={setWhatsapp} 
           onClose={() => setActiveKeypad(null)} 
           title={mode === 'login' ? "WhatsApp Number" : "Personal Phone Number"}
+          savedAccounts={savedAccounts}
+          onSaveAccount={handleSaveAccount}
+          onDeleteSavedAccount={handleDeleteSavedAccount}
         />
       )}
 
@@ -873,6 +998,9 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: {
           onChange={setPassword} 
           onClose={() => setActiveKeypad(null)} 
           title={activeKeypad === 'admin' ? "Admin Access Password" : (mode === 'login' ? "Account Password" : "Create New Password")}
+          savedAccounts={savedAccounts}
+          onSaveAccount={handleSaveAccount}
+          onDeleteSavedAccount={handleDeleteSavedAccount}
         />
       )}
     </div>
@@ -3360,7 +3488,7 @@ export default function App() {
         try {
           userSnap = await getDocFromCache(doc(db, 'registeredUsers', sanitizedWhatsapp));
         } catch (cacheErr) {
-          console.error('Cache getDoc also failed:', cacheErr);
+          console.warn('Cache getDoc also failed (likely expected):', cacheErr);
           throw err; // throw original network error if cache also failed
         }
       }
