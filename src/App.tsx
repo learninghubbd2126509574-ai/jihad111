@@ -2841,11 +2841,15 @@ export default function App() {
 
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       setUser(u);
-      if (!u) {
+      // Auto-restore anonymous auth for both admins and regular users who are logged in
+      const isUserLoggedIn = localStorage.getItem('unity_user') !== null;
+      const isAdminLoggedIn = localStorage.getItem('isAdmin') === 'true';
+
+      if ((isAdminLoggedIn || isUserLoggedIn) && !u) {
         try {
           await signInAnonymously(auth);
         } catch (err) {
-          console.warn("Failed to automatically sign in anonymously:", err);
+          console.warn("Failed to automatically restore anonymous auth:", err);
         }
       }
       setIsAuthReady(true);
@@ -3055,7 +3059,7 @@ export default function App() {
     });
 
     // ---------------------------------------------------------
-    // AUTH & ADMIN DEPENDENT LISTENERS
+    // AUTH DEPENDENT LISTENERS (Admin / Authed only)
     // ---------------------------------------------------------
     let unsubApps = () => {};
     let unsubAttendance = () => {};
@@ -3067,175 +3071,180 @@ export default function App() {
     let unsubSubmissionLogs = () => {};
     let unsubAuditLogs = () => {};
 
-    // Balances Listener for all active clients
-    unsubBalances = onSnapshot(collection(db, 'userBalances'), (snapshot) => {
-      const bMap: Record<string, UserBalance> = {};
-      snapshot.forEach(d => {
-        bMap[d.id] = { id: d.id, ...d.data() } as UserBalance;
-      });
-      setUserBalances(bMap);
-    }, async (err) => {
-      console.warn('Balances Listener Error, attempting cache fallback:', err);
-      try {
-        const cacheSnap = await getDocsFromCache(collection(db, 'userBalances'));
+    if (isAuthReady && user) {
+      // Authenticated Users Listeners
+      unsubBalances = onSnapshot(collection(db, 'userBalances'), (snapshot) => {
         const bMap: Record<string, UserBalance> = {};
-        cacheSnap.forEach(d => {
+        snapshot.forEach(d => {
           bMap[d.id] = { id: d.id, ...d.data() } as UserBalance;
         });
         setUserBalances(bMap);
-      } catch (cacheErr) {
-        console.warn('Failed to fetch balances from cache:', cacheErr);
-      }
-    });
-
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth();
-    const safeYear = currentMonth === 0 ? currentYear - 1 : currentYear;
-    const safeMonth = currentMonth === 0 ? 12 : currentMonth; // previous month (1-indexed)
-    const startOfPrevMonthStr = `${safeYear}-${String(safeMonth).padStart(2, '0')}-01`;
-
-    unsubSubmissionLogs = onSnapshot(query(collection(db, 'submissionLogs'), where('date', '>=', startOfPrevMonthStr)), (snapshot) => {
-      const logs: SubmissionLog[] = [];
-      snapshot.forEach(d => {
-        logs.push({ id: d.id, ...d.data() } as SubmissionLog);
+      }, async (err) => {
+        console.warn('Balances Listener Error, attempting cache fallback:', err);
+        try {
+          const cacheSnap = await getDocsFromCache(collection(db, 'userBalances'));
+          const bMap: Record<string, UserBalance> = {};
+          cacheSnap.forEach(d => {
+            bMap[d.id] = { id: d.id, ...d.data() } as UserBalance;
+          });
+          setUserBalances(bMap);
+        } catch (cacheErr) {
+          console.warn('Failed to fetch balances from cache:', cacheErr);
+        }
+        handleFirestoreError(err, OperationType.GET, 'userBalances', showMsg);
       });
-      setSubmissionLogs(logs);
-    }, async (err) => {
-      console.warn('SubmissionLogs Listener Error, attempting cache fallback:', err);
-      try {
-        const cacheSnap = await getDocsFromCache(query(collection(db, 'submissionLogs'), where('date', '>=', startOfPrevMonthStr)));
+
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth();
+      const safeYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+      const safeMonth = currentMonth === 0 ? 12 : currentMonth; // previous month (1-indexed)
+      const startOfPrevMonthStr = `${safeYear}-${String(safeMonth).padStart(2, '0')}-01`;
+
+      unsubSubmissionLogs = onSnapshot(query(collection(db, 'submissionLogs'), where('date', '>=', startOfPrevMonthStr)), (snapshot) => {
         const logs: SubmissionLog[] = [];
-        cacheSnap.forEach(d => {
+        snapshot.forEach(d => {
           logs.push({ id: d.id, ...d.data() } as SubmissionLog);
         });
         setSubmissionLogs(logs);
-      } catch (cacheErr) {
-        console.warn('Failed to fetch submission logs from cache:', cacheErr);
-      }
-    });
-
-    const isActuallyAdmin = isAdmin || (user && (user.email === adminEmail || user.email === devEmail || user.isAnonymous));
-    
-    // If logged in as admin
-    if (isActuallyAdmin) {
-      // Admin Only Listeners
-      unsubAuditLogs = onSnapshot(query(collection(db, 'auditLogs'), orderBy('createdAt', 'desc'), limit(100)), (snapshot) => {
-        const logs: AuditLog[] = [];
-        snapshot.forEach(d => {
-          logs.push({ id: d.id, ...d.data() } as AuditLog);
-        });
-        setAuditLogs(logs);
       }, async (err) => {
-        console.warn('AuditLogs Listener Error, attempting cache fallback:', err);
+        console.warn('SubmissionLogs Listener Error, attempting cache fallback:', err);
         try {
-          const cacheSnap = await getDocsFromCache(query(collection(db, 'auditLogs'), orderBy('createdAt', 'desc'), limit(100)));
-          const logs: AuditLog[] = [];
+          const cacheSnap = await getDocsFromCache(query(collection(db, 'submissionLogs'), where('date', '>=', startOfPrevMonthStr)));
+          const logs: SubmissionLog[] = [];
           cacheSnap.forEach(d => {
+            logs.push({ id: d.id, ...d.data() } as SubmissionLog);
+          });
+          setSubmissionLogs(logs);
+        } catch (cacheErr) {
+          console.warn('Failed to fetch submission logs from cache:', cacheErr);
+        }
+        handleFirestoreError(err, OperationType.GET, 'submissionLogs', showMsg);
+      });
+
+      const isActuallyAdmin = user.email === adminEmail || user.email === devEmail || user.isAnonymous || isAdmin;
+      
+      // If signed in via Firebase Auth with admin email
+      if (isActuallyAdmin) {
+        // Admin Only Listeners
+        unsubAuditLogs = onSnapshot(query(collection(db, 'auditLogs'), orderBy('createdAt', 'desc'), limit(100)), (snapshot) => {
+          const logs: AuditLog[] = [];
+          snapshot.forEach(d => {
             logs.push({ id: d.id, ...d.data() } as AuditLog);
           });
           setAuditLogs(logs);
-        } catch (cacheErr) {
-          console.warn('Failed to fetch audit logs from cache:', cacheErr);
-        }
-      });
+        }, async (err) => {
+          console.warn('AuditLogs Listener Error, attempting cache fallback:', err);
+          try {
+            const cacheSnap = await getDocsFromCache(query(collection(db, 'auditLogs'), orderBy('createdAt', 'desc'), limit(100)));
+            const logs: AuditLog[] = [];
+            cacheSnap.forEach(d => {
+              logs.push({ id: d.id, ...d.data() } as AuditLog);
+            });
+            setAuditLogs(logs);
+          } catch (cacheErr) {
+            console.warn('Failed to fetch audit logs from cache:', cacheErr);
+          }
+          handleFirestoreError(err, OperationType.GET, 'auditLogs', showMsg);
+        });
 
-      unsubApps = onSnapshot(query(collection(db, 'applications'), orderBy('createdAt', 'desc'), limit(200)), (snapshot) => {
-        const aList: Application[] = [];
-        snapshot.forEach(d => aList.push({ id: d.id, ...d.data() } as Application));
-        setApplications(aList);
-      }, async (err) => {
-        console.warn('Sync Applications error, attempting cache fallback:', err);
-        try {
-          const cacheSnap = await getDocsFromCache(query(collection(db, 'applications'), orderBy('createdAt', 'desc'), limit(200)));
+        unsubApps = onSnapshot(query(collection(db, 'applications'), orderBy('createdAt', 'desc'), limit(200)), (snapshot) => {
           const aList: Application[] = [];
-          cacheSnap.forEach(d => aList.push({ id: d.id, ...d.data() } as Application));
+          snapshot.forEach(d => aList.push({ id: d.id, ...d.data() } as Application));
           setApplications(aList);
-        } catch (cacheErr) {
-          console.warn('Failed to fetch applications from cache:', cacheErr);
-        }
-      });
+        }, async (err) => {
+          console.warn('Sync Applications error, attempting cache fallback:', err);
+          try {
+            const cacheSnap = await getDocsFromCache(query(collection(db, 'applications'), orderBy('createdAt', 'desc'), limit(200)));
+            const aList: Application[] = [];
+            cacheSnap.forEach(d => aList.push({ id: d.id, ...d.data() } as Application));
+            setApplications(aList);
+          } catch (cacheErr) {
+            console.warn('Failed to fetch applications from cache:', cacheErr);
+          }
+        });
 
-      unsubAttendance = onSnapshot(query(collection(db, 'teacherAttendance'), orderBy('submittedAt', 'desc'), limit(100)), (snapshot) => {
-        const rList: AttendanceRecord[] = [];
-        snapshot.forEach(d => rList.push({ id: d.id, ...d.data() } as AttendanceRecord));
-        setAttendanceRecords(rList);
-      }, async (err) => {
-        console.warn('Sync Attendance error, attempting cache fallback:', err);
-        try {
-          const cacheSnap = await getDocsFromCache(query(collection(db, 'teacherAttendance'), orderBy('submittedAt', 'desc'), limit(100)));
+        unsubAttendance = onSnapshot(query(collection(db, 'teacherAttendance'), orderBy('submittedAt', 'desc'), limit(100)), (snapshot) => {
           const rList: AttendanceRecord[] = [];
-          cacheSnap.forEach(d => rList.push({ id: d.id, ...d.data() } as AttendanceRecord));
+          snapshot.forEach(d => rList.push({ id: d.id, ...d.data() } as AttendanceRecord));
           setAttendanceRecords(rList);
-        } catch (cacheErr) {
-          console.warn('Failed to fetch attendance from cache:', cacheErr);
-        }
-      });
+        }, async (err) => {
+          console.warn('Sync Attendance error, attempting cache fallback:', err);
+          try {
+            const cacheSnap = await getDocsFromCache(query(collection(db, 'teacherAttendance'), orderBy('submittedAt', 'desc'), limit(100)));
+            const rList: AttendanceRecord[] = [];
+            cacheSnap.forEach(d => rList.push({ id: d.id, ...d.data() } as AttendanceRecord));
+            setAttendanceRecords(rList);
+          } catch (cacheErr) {
+            console.warn('Failed to fetch attendance from cache:', cacheErr);
+          }
+        });
 
-      unsubStlAttendance = onSnapshot(query(collection(db, 'stlAttendance'), orderBy('submittedAt', 'desc'), limit(50)), (snapshot) => {
-        const list: STLAttendance[] = [];
-        snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as STLAttendance));
-        setStlAttendance(list);
-      }, async (err) => {
-        console.warn('Sync STL attendance error, attempting cache fallback:', err);
-        try {
-          const cacheSnap = await getDocsFromCache(query(collection(db, 'stlAttendance'), orderBy('submittedAt', 'desc'), limit(50)));
+        unsubStlAttendance = onSnapshot(query(collection(db, 'stlAttendance'), orderBy('submittedAt', 'desc'), limit(50)), (snapshot) => {
           const list: STLAttendance[] = [];
-          cacheSnap.forEach(d => list.push({ id: d.id, ...d.data() } as STLAttendance));
+          snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as STLAttendance));
           setStlAttendance(list);
-        } catch (cacheErr) {
-          console.warn('Failed to fetch STL attendance from cache:', cacheErr);
-        }
-      });
+        }, async (err) => {
+          console.warn('Sync STL attendance error, attempting cache fallback:', err);
+          try {
+            const cacheSnap = await getDocsFromCache(query(collection(db, 'stlAttendance'), orderBy('submittedAt', 'desc'), limit(50)));
+            const list: STLAttendance[] = [];
+            cacheSnap.forEach(d => list.push({ id: d.id, ...d.data() } as STLAttendance));
+            setStlAttendance(list);
+          } catch (cacheErr) {
+            console.warn('Failed to fetch STL attendance from cache:', cacheErr);
+          }
+        });
 
-      unsubDemoAttendance = onSnapshot(query(collection(db, 'demoAttendance'), orderBy('submittedAt', 'desc'), limit(50)), (snapshot) => {
-        const list: DemoAttendance[] = [];
-        snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as DemoAttendance));
-        setDemoAttendance(list);
-      }, async (err) => {
-        console.warn('Sync Demo attendance error, attempting cache fallback:', err);
-        try {
-          const cacheSnap = await getDocsFromCache(query(collection(db, 'demoAttendance'), orderBy('submittedAt', 'desc'), limit(50)));
+        unsubDemoAttendance = onSnapshot(query(collection(db, 'demoAttendance'), orderBy('submittedAt', 'desc'), limit(50)), (snapshot) => {
           const list: DemoAttendance[] = [];
-          cacheSnap.forEach(d => list.push({ id: d.id, ...d.data() } as DemoAttendance));
+          snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as DemoAttendance));
           setDemoAttendance(list);
-        } catch (cacheErr) {
-          console.warn('Failed to fetch Demo attendance from cache:', cacheErr);
-        }
-      });
+        }, async (err) => {
+          console.warn('Sync Demo attendance error, attempting cache fallback:', err);
+          try {
+            const cacheSnap = await getDocsFromCache(query(collection(db, 'demoAttendance'), orderBy('submittedAt', 'desc'), limit(50)));
+            const list: DemoAttendance[] = [];
+            cacheSnap.forEach(d => list.push({ id: d.id, ...d.data() } as DemoAttendance));
+            setDemoAttendance(list);
+          } catch (cacheErr) {
+            console.warn('Failed to fetch Demo attendance from cache:', cacheErr);
+          }
+        });
 
-      // Listen to User Registrations (Admin only)
-      unsubPending = onSnapshot(query(collection(db, 'pendingRegistrations'), orderBy('createdAt', 'desc')), (snapshot) => {
-        const list: UserRegistration[] = [];
-        snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as UserRegistration));
-        setPendingUsers(list);
-      }, async (err) => {
-        console.warn('Sync Pending error, attempting cache fallback:', err);
-        try {
-          const cacheSnap = await getDocsFromCache(query(collection(db, 'pendingRegistrations'), orderBy('createdAt', 'desc')));
+        // Listen to User Registrations (Admin only)
+        unsubPending = onSnapshot(query(collection(db, 'pendingRegistrations'), orderBy('createdAt', 'desc')), (snapshot) => {
           const list: UserRegistration[] = [];
-          cacheSnap.forEach(d => list.push({ id: d.id, ...d.data() } as UserRegistration));
+          snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as UserRegistration));
           setPendingUsers(list);
-        } catch (cacheErr) {
-          console.warn('Failed to fetch pending users from cache:', cacheErr);
-        }
-      });
+        }, async (err) => {
+          console.warn('Sync Pending error, attempting cache fallback:', err);
+          try {
+            const cacheSnap = await getDocsFromCache(query(collection(db, 'pendingRegistrations'), orderBy('createdAt', 'desc')));
+            const list: UserRegistration[] = [];
+            cacheSnap.forEach(d => list.push({ id: d.id, ...d.data() } as UserRegistration));
+            setPendingUsers(list);
+          } catch (cacheErr) {
+            console.warn('Failed to fetch pending users from cache:', cacheErr);
+          }
+        });
 
-      unsubApproved = onSnapshot(collection(db, 'registeredUsers'), (snapshot) => {
-        const list: UserRegistration[] = [];
-        snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as UserRegistration));
-        setApprovedUsers(list);
-      }, async (err) => {
-        console.warn('Sync Approved error, attempting cache fallback:', err);
-        try {
-          const cacheSnap = await getDocsFromCache(collection(db, 'registeredUsers'));
+        unsubApproved = onSnapshot(collection(db, 'registeredUsers'), (snapshot) => {
           const list: UserRegistration[] = [];
-          cacheSnap.forEach(d => list.push({ id: d.id, ...d.data() } as UserRegistration));
+          snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as UserRegistration));
           setApprovedUsers(list);
-        } catch (cacheErr) {
-          console.warn('Failed to fetch approved users from cache:', cacheErr);
-        }
-      });
+        }, async (err) => {
+          console.warn('Sync Approved error, attempting cache fallback:', err);
+          try {
+            const cacheSnap = await getDocsFromCache(collection(db, 'registeredUsers'));
+            const list: UserRegistration[] = [];
+            cacheSnap.forEach(d => list.push({ id: d.id, ...d.data() } as UserRegistration));
+            setApprovedUsers(list);
+          } catch (cacheErr) {
+            console.warn('Failed to fetch approved users from cache:', cacheErr);
+          }
+        });
+      }
     }
 
     return () => {
@@ -7007,20 +7016,19 @@ export default function App() {
                                       <AdminAccordion title="Push Notifications & Broadcasts" icon={<Bell size={16} />} colorClass="text-blue-400">
                          <div className="bg-surface/40 border border-white/5 p-4 sm:p-6 rounded-2xl sm:rounded-3xl relative overflow-hidden group mb-4">
                            <h4 className="text-[9px] sm:text-xs font-black text-white uppercase tracking-widest mb-4">Send Broadcast</h4>
-                           <form onSubmit={async (e: React.FormEvent<HTMLFormElement>) => {
+                           <form onSubmit={async (e) => {
                              e.preventDefault();
-                             const form = e.currentTarget;
-                             const fd = new FormData(form);
+                             const fd = new FormData(e.target);
                              const title = fd.get('title');
                              const body = fd.get('body');
                              const audience = fd.get('audience');
                              if(title && body) {
                                try {
                                  await sendNotification(title.toString(), body.toString(), audience.toString(), 'admin');
-                                 showMsg('ব্রডকাস্ট নোটিফিকেশন সকল ইউজারের কাছে পাঠানো হয়েছে! 🚀', 'success');
-                                 form.reset();
+                                 alert('Broadcast sent!');
+                                 e.target.reset();
                                } catch(err) {
-                                 showMsg('Error sending broadcast', 'error');
+                                 alert('Error sending broadcast');
                                }
                              }
                            }} className="space-y-3">
