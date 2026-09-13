@@ -1,8 +1,9 @@
-const CACHE_NAME = 'unity-earning-v2';
+const CACHE_NAME = 'unity-earning-v3';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
-  '/manifest.webmanifest'
+  '/manifest.webmanifest',
+  '/icon.jpg'
 ];
 
 self.addEventListener('install', (event) => {
@@ -15,7 +16,16 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(clients.claim());
+  event.waitUntil(
+    Promise.all([
+      self.clients.claim(),
+      caches.keys().then((keys) => {
+        return Promise.all(
+          keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))
+        );
+      })
+    ])
+  );
 });
 
 self.addEventListener('notificationclick', (event) => {
@@ -37,7 +47,19 @@ self.addEventListener('notificationclick', (event) => {
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SHOW_NOTIFICATION') {
     const { title, options } = event.data;
-    self.registration.showNotification(title || 'Unity Notification', options || {});
+    const finalOptions = {
+      body: options?.body || '',
+      icon: options?.icon || '/icon.jpg',
+      badge: options?.badge || '/icon.jpg',
+      vibrate: options?.vibrate || [300, 100, 300, 100, 300],
+      tag: options?.tag || `unity-${Date.now()}`,
+      renotify: true,
+      requireInteraction: true,
+      data: options?.data || { url: '/' }
+    };
+    event.waitUntil(
+      self.registration.showNotification(title || 'Unity Earning Notification', finalOptions)
+    );
   }
 });
 
@@ -49,13 +71,24 @@ self.addEventListener('push', (event) => {
         body: data.body || '',
         icon: data.icon || '/icon.jpg',
         badge: data.badge || '/icon.jpg',
-        vibrate: [200, 100, 200],
+        vibrate: [300, 100, 300, 100, 300],
         tag: data.tag || `unity-${Date.now()}`,
+        renotify: true,
+        requireInteraction: true,
         data: data
       };
-      event.waitUntil(self.registration.showNotification(data.title || 'Unity Notification', options));
+      event.waitUntil(
+        self.registration.showNotification(data.title || 'Unity Earning', options)
+      );
     } catch (e) {
-      event.waitUntil(self.registration.showNotification('Notification', { body: event.data.text() }));
+      event.waitUntil(
+        self.registration.showNotification('Unity Earning', {
+          body: event.data.text(),
+          icon: '/icon.jpg',
+          badge: '/icon.jpg',
+          vibrate: [300, 100, 300]
+        })
+      );
     }
   }
 });
