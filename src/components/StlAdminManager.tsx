@@ -13,12 +13,13 @@ import {
   Info
 } from 'lucide-react';
 import CartoonAvatar from './CartoonAvatar';
-import { STLMember, Member, Result, formatStlDisplayName } from './StlWiseResultSection';
+import { STLMember, Member, Result, RankingMember, formatStlDisplayName, resolveTLConvertData } from './StlWiseResultSection';
 
 interface StlAdminManagerProps {
   stlMembers: STLMember[];
   registeredUsers: Array<{ fullName: string; whatsapp: string; position: string; profilePic?: string }>;
   teamLeaders: Member[];
+  leaderRanking?: RankingMember[];
   results: Record<string, Result>;
   onAddSTL: (name: string, target?: number) => Promise<void>;
   onDeleteSTL: (id: string) => Promise<void>;
@@ -31,6 +32,7 @@ export default function StlAdminManager({
   stlMembers,
   registeredUsers,
   teamLeaders,
+  leaderRanking = [],
   results,
   onAddSTL,
   onDeleteSTL,
@@ -176,17 +178,10 @@ export default function StlAdminManager({
               }
             });
 
-            // Calculate converts of assigned TLs
+            // Calculate converts of assigned TLs authoritatively
             const totalConverts = assignedTLMembers.reduce((sum, tl) => {
-              const res = results[tl.id];
-              if (res && res.convert != null) {
-                return sum + (Number(res.convert) || 0);
-              }
-              const found = Object.values(results).find(r => 
-                r.memberId === tl.id || 
-                ((r as any).name && (r as any).name.trim().toLowerCase() === tl.name.trim().toLowerCase())
-              );
-              return sum + (Number(found?.convert) || 0);
+              const data = resolveTLConvertData(tl.id, teamLeaders, leaderRanking, results, tl);
+              return sum + data.convert;
             }, 0);
 
             const formattedName = formatStlDisplayName(stl.name);

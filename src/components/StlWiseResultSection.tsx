@@ -59,15 +59,103 @@ export function formatStlDisplayName(name: string): string {
   return `STL ${trimmed}`;
 }
 
-// Utility to normalize names by removing TL/STL prefixes, punctuation, and extra whitespace
-function normalizeName(name: string): string {
+// Map for unicode small-caps characters to standard latin letters
+const smallCapsMap: Record<string, string> = {
+  'ᴀ': 'a', 'ʙ': 'b', 'ᴄ': 'c', 'ᴅ': 'd', 'ᴇ': 'e', 'ғ': 'f', 'ɢ': 'g', 'ʜ': 'h',
+  'ɪ': 'i', 'ᴊ': 'j', 'ᴋ': 'k', 'ʟ': 'l', 'ᴍ': 'm', 'ɴ': 'n', 'ᴏ': 'o', 'ᴘ': 'p',
+  'ǫ': 'q', 'ʀ': 'r', 's': 's', 'ᴛ': 't', 'ᴜ': 'u', 'ᴠ': 'v', 'ᴡ': 'w', 'x': 'x',
+  'ʏ': 'y', 'ᴢ': 'z'
+};
+
+// Utility to normalize names by converting small-caps/unicode styling, removing TL/STL prefixes, punctuation, and extra whitespace
+export function normalizeName(name: string): string {
   if (!name) return '';
-  return name
-    .toLowerCase()
+  let s = name.toLowerCase();
+  s = s.split('').map(c => smallCapsMap[c] || c).join('');
+  return s
     .replace(/^(tl|stl|team leader|team trainer|trainer|senior tl|sr\.?\s*tl)\s+/i, '')
-    .replace(/[^a-z0-9\u0980-\u09FF\s]/gi, '')
+    .replace(/[^\p{L}\p{N}\s]/gu, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+export interface TLConvertData {
+  id: string;
+  name: string;
+  convert: number;
+  submitted: boolean;
+}
+
+/**
+ * Authoritatively resolves a Team Leader's current convert count.
+ * Priority:
+ * 1. leaderRanking (the primary convert score managed and updated by Admin in Leader Ranking Management)
+ * 2. results (daily live submission from results collection)
+ *
+ * This guarantees:
+ * - Ibrahim shows his exact 20 converts (not inflated to 34)
+ * - When an Admin decreases or modifies a TL's convert from the Admin ID, the TL count immediately
+ *   decreases, and the STL sum decreases in real time.
+ */
+export function resolveTLConvertData(
+  idOrName: string,
+  teamLeaders: Member[],
+  leaderRanking: RankingMember[] = [],
+  results: Record<string, Result> = {},
+  knownMember?: Member
+): TLConvertData {
+  const rawTarget = (knownMember?.name || idOrName || '').trim();
+  const cleanTarget = normalizeName(rawTarget);
+  const targetId = knownMember?.id || idOrName;
+
+  const member = knownMember || teamLeaders.find(m => 
+    m.id === targetId || (cleanTarget && normalizeName(m.name) === cleanTarget)
+  );
+  let resolvedName = member?.name || knownMember?.name || idOrName;
+
+  // 1. Check leaderRanking (primary source of truth for Team Leader convert)
+  let rankingScore: number | null = null;
+  const rankItem = leaderRanking.find(r => {
+    if (r.id === targetId || (member && r.id === member.id)) return true;
+    const rClean = normalizeName(r.name);
+    return Boolean(cleanTarget && rClean && rClean === cleanTarget);
+  });
+  if (rankItem && rankItem.score !== undefined && rankItem.score !== null) {
+    rankingScore = Number(rankItem.score) || 0;
+    if (rankItem.name) resolvedName = rankItem.name;
+  }
+
+  // 2. Check direct results by memberId or doc ID
+  let resultConvert: number | null = null;
+  let submitted = false;
+  const directResult = results[targetId] || (member ? results[member.id] : undefined);
+  if (directResult && directResult.convert !== undefined && directResult.convert !== null) {
+    resultConvert = Number(directResult.convert) || 0;
+    submitted = Boolean(directResult.submitted);
+    if (directResult.name) resolvedName = directResult.name;
+  } else {
+    const foundInResults = Object.values(results).find(r => {
+      if (r.memberId === targetId || (member && r.memberId === member.id)) return true;
+      const rClean = normalizeName((r as any).name || '');
+      return Boolean(cleanTarget && rClean && rClean === cleanTarget);
+    });
+    if (foundInResults && foundInResults.convert !== undefined && foundInResults.convert !== null) {
+      resultConvert = Number(foundInResults.convert) || 0;
+      submitted = Boolean(foundInResults.submitted);
+      if ((foundInResults as any).name) resolvedName = (foundInResults as any).name;
+    }
+  }
+
+  // If leaderRanking entry exists, its score is authoritative.
+  // Otherwise, fall back to results collection.
+  const finalConvert = rankingScore !== null ? rankingScore : (resultConvert !== null ? resultConvert : 0);
+
+  return {
+    id: member?.id || targetId,
+    name: resolvedName,
+    convert: finalConvert,
+    submitted: submitted || finalConvert > 0
+  };
 }
 
 export default function StlWiseResultSection({
@@ -110,83 +198,6 @@ export default function StlWiseResultSection({
     return Array.from(map.values());
   }, [stlMembers, registeredUsers]);
 
-  // Comprehensive map of TL convert scores combining results, leaderRanking, registeredUsers & members
-  const findTLConvertData = useMemo(() => {
-    return (idOrName: string, knownMember?: Member) => {
-      const rawTarget = (knownMember?.name || idOrName || '').trim();
-      const cleanTarget = normalizeName(rawTarget);
-      const targetId = knownMember?.id || idOrName;
-
-      let convert = 0;
-      let submitted = false;
-      let resolvedName = knownMember?.name || idOrName;
-
-      // 1. Check direct results by memberId or doc ID
-      if (results[targetId] && results[targetId].convert != null) {
-        convert = Number(results[targetId].convert) || 0;
-        submitted = Boolean(results[targetId].submitted);
-        if (results[targetId].name) resolvedName = results[targetId].name!;
-      } else {
-        // Search results by name match
-        const foundInResults = Object.values(results).find(r => {
-          if (r.memberId === targetId) return true;
-          const rClean = normalizeName((r as any).name || '');
-          return rClean && (rClean === cleanTarget || rClean.includes(cleanTarget) || cleanTarget.includes(rClean));
-        });
-        if (foundInResults && foundInResults.convert != null) {
-          convert = Number(foundInResults.convert) || 0;
-          submitted = Boolean(foundInResults.submitted);
-          if ((foundInResults as any).name) resolvedName = (foundInResults as any).name;
-        }
-      }
-
-      // 2. Check published score from leaderRanking
-      let rankingScore = 0;
-      const rankItem = leaderRanking.find(r => {
-        if (r.id === targetId) return true;
-        const rClean = normalizeName(r.name);
-        return rClean && (rClean === cleanTarget || rClean.includes(cleanTarget) || cleanTarget.includes(rClean));
-      });
-      if (rankItem) {
-        rankingScore = Number(rankItem.score) || 0;
-        if (!resolvedName || resolvedName === idOrName) resolvedName = rankItem.name;
-      }
-
-      // 3. Check registeredUsers scores
-      let userScore = 0;
-      const userItem = registeredUsers.find(u => {
-        const uClean = normalizeName(u.fullName);
-        return uClean && (uClean === cleanTarget || uClean.includes(cleanTarget) || cleanTarget.includes(uClean));
-      });
-      if (userItem && userItem.score != null) {
-        userScore = Number(userItem.score) || 0;
-        if (!resolvedName || resolvedName === idOrName) resolvedName = userItem.fullName;
-      }
-
-      // 4. Check manual roster member score
-      let memberScore = knownMember?.score || 0;
-      if (!memberScore) {
-        const mItem = teamLeaders.find(m => {
-          if (m.id === targetId) return true;
-          const mClean = normalizeName(m.name);
-          return mClean && (mClean === cleanTarget || mClean.includes(cleanTarget) || cleanTarget.includes(mClean));
-        });
-        if (mItem?.score) {
-          memberScore = Number(mItem.score) || 0;
-          if (!resolvedName || resolvedName === idOrName) resolvedName = mItem.name;
-        }
-      }
-
-      const finalConvert = Math.max(convert, rankingScore, userScore, memberScore);
-
-      return {
-        name: resolvedName,
-        convert: finalConvert,
-        submitted: submitted || finalConvert > 0
-      };
-    };
-  }, [results, leaderRanking, registeredUsers, teamLeaders]);
-
   // Compute stats for each STL: total converts sum from assigned TLs with detailed breakdown
   const stlStatsList = useMemo(() => {
     return allStls.map(stl => {
@@ -202,7 +213,7 @@ export default function StlWiseResultSection({
           m => m.id === idOrName || normalizeName(m.name) === cleanIdOrName
         );
 
-        const data = findTLConvertData(idOrName, member);
+        const data = resolveTLConvertData(idOrName, teamLeaders, leaderRanking, results, member);
         const nameKey = normalizeName(data.name || idOrName);
 
         if (!seenTLNames.has(nameKey)) {
@@ -227,7 +238,7 @@ export default function StlWiseResultSection({
         tlDetails
       };
     });
-  }, [allStls, teamLeaders, findTLConvertData]);
+  }, [allStls, teamLeaders, leaderRanking, results]);
 
   // Sort STLs descending by totalConvert
   const sortedStlStats = useMemo(() => {

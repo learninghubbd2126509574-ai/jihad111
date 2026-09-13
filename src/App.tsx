@@ -133,7 +133,7 @@ import {
 } from 'date-fns';
 import { bn } from 'date-fns/locale';
 import CartoonAvatar, { CARTOON_AVATAR_LIST } from './components/CartoonAvatar';
-import StlWiseResultSection from './components/StlWiseResultSection';
+import StlWiseResultSection, { normalizeName } from './components/StlWiseResultSection';
 import StlAssignmentModal from './components/StlAssignmentModal';
 import StlAdminManager from './components/StlAdminManager';
 import UserQuickSubmitCard from './components/UserQuickSubmitCard';
@@ -4570,8 +4570,11 @@ export default function App() {
         // Update individual ranking score if names match
         if (member) {
           const rankingList = member.type === 'leader' ? leaderRanking : trainerRanking;
+          const cleanMemberName = normalizeName(member.name);
           const rankingEntry = rankingList.find(r => 
-            r.name.trim().toLowerCase() === member.name.trim().toLowerCase()
+            r.id === member.id ||
+            r.name.trim().toLowerCase() === member.name.trim().toLowerCase() ||
+            (cleanMemberName && normalizeName(r.name) === cleanMemberName)
           );
           
           const coll = member.type === 'leader' ? 'leaderRanking' : 'trainerRanking';
@@ -7088,6 +7091,7 @@ export default function App() {
                         stlMembers={stlMembers}
                         registeredUsers={approvedUsers}
                         teamLeaders={members.filter(m => m.type === 'leader')}
+                        leaderRanking={leaderRanking}
                         results={results}
                         onAddSTL={addSTLMember}
                         onDeleteSTL={deleteSTLMember}
@@ -7249,6 +7253,7 @@ export default function App() {
         stl={selectedStlForAssign}
         allStls={stlMembers}
         teamLeaders={members.filter(m => m.type === 'leader')}
+        leaderRanking={leaderRanking}
         results={results}
         onSave={saveStlAssignments}
       />

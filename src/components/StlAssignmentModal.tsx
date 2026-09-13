@@ -12,7 +12,7 @@ import {
   UserCheck
 } from 'lucide-react';
 import CartoonAvatar from './CartoonAvatar';
-import { STLMember, Member, Result, formatStlDisplayName } from './StlWiseResultSection';
+import { STLMember, Member, Result, RankingMember, formatStlDisplayName, resolveTLConvertData } from './StlWiseResultSection';
 
 interface StlAssignmentModalProps {
   isOpen: boolean;
@@ -20,6 +20,7 @@ interface StlAssignmentModalProps {
   stl: STLMember | null;
   allStls: STLMember[];
   teamLeaders: Member[];
+  leaderRanking?: RankingMember[];
   results: Record<string, Result>;
   onSave: (stlId: string, assignedTlIds: string[]) => Promise<void>;
 }
@@ -30,6 +31,7 @@ export default function StlAssignmentModal({
   stl,
   allStls,
   teamLeaders,
+  leaderRanking = [],
   results,
   onSave
 }: StlAssignmentModalProps) {
@@ -68,24 +70,10 @@ export default function StlAssignmentModal({
   // Total converts of currently selected TLs
   const currentTotalConvert = useMemo(() => {
     return selectedTlIds.reduce((sum, tlId) => {
-      const res = results[tlId];
-      if (res && res.convert != null) {
-        return sum + (Number(res.convert) || 0);
-      }
-      // Fallback matching by name
-      const tl = teamLeaders.find(t => t.id === tlId);
-      if (tl) {
-        const found = Object.values(results).find(r => 
-          r.memberId === tl.id || 
-          ((r as any).name && (r as any).name.trim().toLowerCase() === tl.name.trim().toLowerCase())
-        );
-        if (found && found.convert != null) {
-          return sum + (Number(found.convert) || 0);
-        }
-      }
-      return sum;
+      const data = resolveTLConvertData(tlId, teamLeaders, leaderRanking, results);
+      return sum + data.convert;
     }, 0);
-  }, [selectedTlIds, results, teamLeaders]);
+  }, [selectedTlIds, results, teamLeaders, leaderRanking]);
 
   const toggleTL = (tlId: string) => {
     setSelectedTlIds(prev => {
@@ -230,8 +218,8 @@ export default function StlAssignmentModal({
               const isSelected = selectedTlIds.includes(tl.id);
               const otherStl = tlToStlMap.get(tl.id);
               const isUnderAnotherStl = otherStl && otherStl.stlId !== stl.id;
-              const res = results[tl.id];
-              const converts = res?.convert || 0;
+              const tlData = resolveTLConvertData(tl.id, teamLeaders, leaderRanking, results, tl);
+              const converts = tlData.convert;
 
               return (
                 <div
