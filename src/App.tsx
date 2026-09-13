@@ -2749,6 +2749,7 @@ export default function App() {
   const timerStartedNotifiedRef = useRef<number | null>(null);
   const fiveMinWarningTriggeredRef = useRef<boolean>(false);
   const timerEndedTriggeredRef = useRef<boolean>(false);
+  const lastTimerActiveRef = useRef<boolean>(false);
   const rankingDataRef = useRef<{ sortedLeaders: any[], sortedTrainers: any[], stats: any }>({ sortedLeaders: [], sortedTrainers: [], stats: {} });
 
   const generateTimerPerformanceSummary = () => {
@@ -3276,6 +3277,20 @@ export default function App() {
         timerStartedNotifiedRef.current = config.timerStartedAt || Date.now();
         fiveMinWarningTriggeredRef.current = false;
         timerEndedTriggeredRef.current = false;
+
+        // Trigger start notification on EVERY user's device when timer starts
+        if (config.timerNotificationsActive !== false) {
+          const startedAt = config.timerStartedAt || (config.timerEndTime - 1800000);
+          const timeSinceStart = Date.now() - startedAt;
+          // If started recently (within 90 seconds)
+          if (timeSinceStart < 90000) {
+            const durationMin = Math.max(1, Math.round(((config.timerEndTime - startedAt) / 1000) / 60));
+            const notifTitle = 'Unity Earning ⏳ টাইমার শুরু হয়েছে!';
+            const notifBody = `${durationMin} মিনিটের জন্য টাইমার চালু হয়েছে! সবাই দ্রুত রেজাল্ট সাবমিট করুন। 🚀✨`;
+            triggerNativeNotification(notifTitle, notifBody);
+            new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3').play().catch(e => console.log('Audio error:', e));
+          }
+        }
       }
 
       const updateRemaining = () => {
@@ -3284,16 +3299,13 @@ export default function App() {
         const remaining = Math.max(0, Math.floor(diff / 1000));
         setTimeLeft(remaining);
 
-        // 5 Minutes Left Notification (Trigger once per timer session)
+        // 5 Minutes Left Notification (Trigger once per timer session on all devices)
         if (config.timerNotificationsActive !== false && remaining <= 300 && remaining > 0 && !fiveMinWarningTriggeredRef.current) {
           fiveMinWarningTriggeredRef.current = true;
           const warningTitle = 'Unity Earning ⏰ টাইমার শেষ হতে ৫ মিনিট বাকি!';
           const warningBody = 'আর মাত্র ৫ মিনিট বাকি আছে! সবাই দ্রুত আজকের কনভার্ট ও রেজাল্ট সাবমিট করে ফেলেন। 🏃💨';
           triggerNativeNotification(warningTitle, warningBody);
-          new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3').play().catch(e => console.error(e));
-          if (isAdmin) {
-            sendNotification(warningTitle, warningBody, 'all', 'system');
-          }
+          new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3').play().catch(e => console.log('Audio error:', e));
         }
 
         // When timer reaches 0, auto turn it off & send performance summary notification
@@ -3304,9 +3316,6 @@ export default function App() {
             if (config.timerNotificationsActive !== false) {
               const { title, body } = generateTimerPerformanceSummary();
               triggerNativeNotification(title, body);
-              if (isAdmin) {
-                sendNotification(title, body, 'all', 'system');
-              }
             }
           }
           if (isAdmin) {
@@ -3324,7 +3333,18 @@ export default function App() {
     } else {
       setTimeLeft(0);
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+
+      // Trigger notification when timer is manually stopped by admin across all devices
+      if (lastTimerActiveRef.current === true && !timerEndedTriggeredRef.current) {
+        timerEndedTriggeredRef.current = true;
+        if (config.timerNotificationsActive !== false) {
+          const { title, body } = generateTimerPerformanceSummary();
+          triggerNativeNotification(title, body);
+        }
+      }
     }
+
+    lastTimerActiveRef.current = Boolean(config.timerActive);
 
     return () => {
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);

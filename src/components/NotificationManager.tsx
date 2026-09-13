@@ -162,25 +162,25 @@ export const NotificationManager = ({
 
       const now = Date.now();
 
-      if (isFirstLoadRef.current) {
-        notifs.forEach(n => {
-          if (n.id) seenIdsRef.current.add(n.id);
-        });
-        isFirstLoadRef.current = false;
-      } else {
-        notifs.forEach(n => {
-          if (n.id && !seenIdsRef.current.has(n.id)) {
-            seenIdsRef.current.add(n.id);
-            const timeDiff = now - getNotificationMillis(n.createdAt);
-            // If created within last 2 minutes
-            if (timeDiff < 120000) {
-              if (audioRef.current) {
-                audioRef.current.play().catch(e => console.log('Audio play error:', e));
-              }
-              triggerNativeNotification(n.title, n.body);
+      notifs.forEach(n => {
+        if (n.id && !seenIdsRef.current.has(n.id)) {
+          seenIdsRef.current.add(n.id);
+          const notifTime = getNotificationMillis(n.createdAt);
+          const timeDiff = now - notifTime;
+          
+          // Only trigger if notification is relatively recent (within last 2.5 minutes)
+          // or if it was received live after component mount
+          if (timeDiff < 150000 && !isFirstLoadRef.current) {
+            if (audioRef.current) {
+              audioRef.current.play().catch(e => console.log('Audio play error:', e));
             }
+            triggerNativeNotification(n.title, n.body);
           }
-        });
+        }
+      });
+
+      if (isFirstLoadRef.current) {
+        isFirstLoadRef.current = false;
       }
     }, (error) => {
       console.warn('Notifications listener error:', error);
