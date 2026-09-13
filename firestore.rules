@@ -1,280 +1,97 @@
 rules_version = '2';
-// Last Updated: 2026-04-17
+// Last Updated: 2026-09-13
 service cloud.firestore {
   match /databases/{database}/documents {
-    // ===============================================================
-    // Assumed Data Model
-    // ===============================================================
-    // 
-    // Collection: members
-    // Fields:
-    //   - name: string (required)
-    //   - type: string (required, 'leader' or 'trainer')
-    //   - createdAt: timestamp
-    //
-    // Collection: results
-    // Fields:
-    //   - memberId: string (required)
-    //   - lead: number (required)
-    //   - convert: number (required)
-    //   - submitted: bool (required)
-    //   - updatedAt: timestamp
-    //
-    // Collection: config
-    // Document: global
-    // Fields:
-    //   - timerActive: bool
-    //   - timerEndTime: number (timestamp)
-    //   - timerDuration: number
-    //
-    // Collection: teachers
-    // Fields:
-    //   - name: string (required)
-    //   - createdAt: timestamp
-    //
-    // Collection: teacherAttendance
-    // Fields:
-    //   - teacherId: string (required)
-    //   - teacherName: string (required)
-    //   - course: string (required)
-    //   - date: string (required, YYYY-MM-DD)
-    //   - submittedAt: timestamp
-    // ===============================================================
-
-    // Helper Functions
-    function isAuthenticated() {
-      return request.auth != null;
+    // Global Config & Timer
+    match /config/{id} {
+      allow read, write: if true;
     }
 
-    function isAdmin() {
-      return isAuthenticated() && 
-        (request.auth.token.email == "learninghubbd2126509574@gmail.com" || 
-         request.auth.token.email == "admin@gmail.com" ||
-         request.auth.uid == "PgnolGg4KObuRNc4Vpf6dhJ5JoE2" ||
-         request.auth.token.firebase.sign_in_provider == "anonymous");
-    }
-
-    function isValidId(id) { 
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-\\+]+$'); 
-    }
-
-    function isValidUserRegistration(data) {
-      return data.keys().hasAll(['fullName', 'whatsapp', 'position', 'password', 'status', 'createdAt']) &&
-             data.keys().hasOnly(['fullName', 'whatsapp', 'position', 'password', 'status', 'createdAt', 'id', 'profilePic']) &&
-             data.fullName is string && data.fullName.size() > 0 && data.fullName.size() < 100 &&
-             data.whatsapp is string && data.whatsapp.size() > 0 && data.whatsapp.size() < 20 &&
-             data.position in ["Team Leader", "Team Trainer", "STL", "Teacher", "Counsellor"] &&
-             data.password is string && data.password.size() > 0 && data.password.size() < 100 &&
-             data.status in ["pending", "active", "blocked"] &&
-             (!('profilePic' in data) || (data.profilePic is string && data.profilePic.size() < 1000000));
-    }
-
-    function isValidUserUpdate(data) {
-      return (data.keys().hasOnly(['password']) && data.password is string && data.password.size() > 0 && data.password.size() < 100) ||
-             (data.keys().hasOnly(['profilePic']) && data.profilePic is string && data.profilePic.size() < 1000000) ||
-             isValidUserRegistration(data);
-    }
-
-    function isValidMember(data) {
-      return data.keys().hasAll(['name', 'type', 'createdAt']) &&
-             data.keys().hasOnly(['name', 'type', 'createdAt', 'profilePic', 'whatsapp']) &&
-             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
-             data.type in ['leader', 'trainer'] &&
-             (!('profilePic' in data) || (data.profilePic is string && data.profilePic.size() < 1000000));
-    }
-
-    function isValidResult(data) {
-      return data.keys().hasAll(['memberId', 'lead', 'convert', 'submitted', 'updatedAt']) &&
-             data.keys().hasOnly(['memberId', 'lead', 'convert', 'submitted', 'updatedAt', 'personalLead']) &&
-             data.memberId is string && data.memberId.size() < 100 &&
-             data.lead is number && data.lead >= 0 && data.lead < 10000 &&
-             data.convert is number && data.convert >= 0 && data.convert < 10000 &&
-             (!('personalLead' in data) || (data.personalLead is number && data.personalLead >= 0 && data.personalLead < 10000)) &&
-             data.submitted is bool;
-    }
-
-    function isValidTeacher(data) {
-      return data.keys().hasAll(['name', 'createdAt']) &&
-             data.keys().hasOnly(['name', 'createdAt']) &&
-             data.name is string && data.name.size() > 0 && data.name.size() < 100;
-    }
-
-    function isValidAttendance(data) {
-      return data.keys().hasAll(['teacherId', 'teacherName', 'course', 'date', 'submittedAt']) &&
-             data.keys().hasOnly(['teacherId', 'teacherName', 'course', 'date', 'submittedAt']) &&
-             data.teacherId is string && data.teacherId.size() < 100 &&
-             data.teacherName is string && data.teacherName.size() < 100 &&
-             data.course is string && data.course.size() < 100 &&
-             data.date is string && data.date.matches("^\\d{4}-\\d{2}-\\d{2}$");
-    }
-
-    function isValidSimpleMember(data) {
-      return data.name is string && data.name.size() > 0 && data.name.size() < 100;
-    }
-
-    function isValidSimpleAttendance(data) {
-      return data.keys().hasAll(['memberId', 'memberName', 'submittedAt']) &&
-             data.memberId is string && data.memberId.size() < 100 &&
-             data.memberName is string && data.memberName.size() < 100;
-    }
-
-    function isValidRankingMember(data) {
-      return data.keys().hasAll(['name', 'score', 'createdAt']) &&
-             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
-             data.score is number;
-    }
-
-    function isValidQuickLink(data) {
-      return data.keys().hasAll(['name', 'url', 'createdAt']) &&
-             data.keys().hasOnly(['name', 'url', 'createdAt']) &&
-             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
-             data.url is string && data.url.size() > 0 && data.url.size() < 500;
-    }
-
-    // Rules
+    // Registrations & Users
     match /pendingRegistrations/{id} {
-      allow create: if isValidUserRegistration(request.resource.data) && request.resource.data.status == 'pending' && isValidId(id);
-      allow get: if true; 
-      allow list, delete: if isAdmin();
+      allow read, write: if true;
     }
 
-    match /registeredUsers/{whatsapp} {
-      allow get: if true;
-      allow list: if isAdmin();
-      allow create: if isAdmin() && isValidUserRegistration(request.resource.data) && isValidId(whatsapp);
-      allow update: if isAdmin() || (
-        isValidUserUpdate(request.resource.data) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['profilePic'])
-      );
-      allow delete: if isAdmin();
+    match /registeredUsers/{id} {
+      allow read, write: if true;
     }
 
-    match /members/{memberId} {
-      allow read: if true;
-      allow create: if isAdmin() && isValidMember(request.resource.data) && isValidId(memberId);
-      allow update: if isAdmin() || (
-        isValidMember(request.resource.data) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['profilePic'])
-      );
-      allow delete: if isAdmin();
+    // Members & Results
+    match /members/{id} {
+      allow read, write: if true;
     }
 
-    match /results/{resultId} {
-      allow read: if true;
-      allow create, update: if isAdmin() || (isValidResult(request.resource.data) && isValidId(resultId));
-      allow delete: if isAdmin();
+    match /results/{id} {
+      allow read, write: if true;
     }
 
-    match /config/global {
-      allow read: if true;
-      allow update: if isAdmin() || (
-        (resource.data.timerActive == true && 
-         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['totalConverts'])) ||
-        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['timerActive']) &&
-         request.resource.data.timerActive == false &&
-         request.time.toMillis() >= resource.data.timerEndTime)
-      );
-      allow create, delete: if isAdmin();
-    }
-
-    match /pickingSchedule/{itemId} {
-      allow read: if true;
-      allow create, update, delete: if isAdmin() && isValidId(itemId);
-    }
-
-    match /applications/{applicationId} {
-      allow get, list, delete: if isAdmin();
-      allow create: if true && isValidId(applicationId);
-    }
-
-    match /teachers/{teacherId} {
-      allow read: if true;
-      allow create, update: if isAdmin() && isValidTeacher(request.resource.data) && isValidId(teacherId);
-      allow delete: if isAdmin();
-    }
-
-    match /teacherAttendance/{recordId} {
-      allow get, list, delete: if isAdmin();
-      allow create: if isValidAttendance(request.resource.data) && isValidId(recordId);
-    }
-
-    match /stlMembers/{id} {
-      allow read: if true;
-      allow create, update: if isAdmin() && isValidSimpleMember(request.resource.data) && isValidId(id);
-      allow delete: if isAdmin();
-    }
-
-    match /stlAttendance/{id} {
-      allow get, list, delete: if isAdmin();
-      allow create: if isValidSimpleAttendance(request.resource.data) && isValidId(id);
-    }
-
-    match /demoMembers/{id} {
-      allow read: if true;
-      allow create, update: if isAdmin() && isValidSimpleMember(request.resource.data) && isValidId(id);
-      allow delete: if isAdmin();
-    }
-
-    match /demoAttendance/{id} {
-      allow get, list, delete: if isAdmin();
-      allow create: if isValidSimpleAttendance(request.resource.data) && isValidId(id);
-    }
-
+    // Rankings
     match /leaderRanking/{id} {
-      allow read: if true;
-      allow update: if isAdmin() || (
-        get(/databases/$(database)/documents/config/global).data.timerActive == true &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['score', 'leads'])
-      );
-      allow create: if isAdmin() && isValidRankingMember(request.resource.data) && isValidId(id);
-      allow delete: if isAdmin();
+      allow read, write: if true;
     }
 
     match /trainerRanking/{id} {
-      allow read: if true;
-      allow update: if isAdmin() || (
-        get(/databases/$(database)/documents/config/global).data.timerActive == true &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['score', 'leads'])
-      );
-      allow create: if isAdmin() && isValidRankingMember(request.resource.data) && isValidId(id);
-      allow delete: if isAdmin();
+      allow read, write: if true;
     }
 
+    // Logs & Balances
+    match /userBalances/{id} {
+      allow read, write: if true;
+    }
+
+    match /submissionLogs/{id} {
+      allow read, write: if true;
+    }
+
+    match /auditLogs/{id} {
+      allow read, write: if true;
+    }
+
+    // Quick Links & Notifications
     match /quickLinks/{id} {
-      allow read: if true;
-      allow create, update: if isAdmin() && isValidQuickLink(request.resource.data) && isValidId(id);
-      allow delete: if isAdmin();
-    }
-
-    
-    function isValidNotification(data) {
-      return data.keys().hasAll(['title', 'body', 'recipient', 'sender', 'createdAt']) &&
-             data.title is string && data.body is string;
+      allow read, write: if true;
     }
 
     match /notifications/{id} {
-      allow read: if true;
-      allow create: if true; // allow system or admin
-      allow update: if true; // allow readBy updates
-      allow delete: if isAdmin();
+      allow read, write: if true;
     }
 
-    match /userBalances/{whatsapp} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && (request.auth.uid == whatsapp || isAdmin());
+    // Applications & Attendance
+    match /applications/{id} {
+      allow read, write: if true;
     }
 
-    match /submissionLogs/{logId} {
-      allow read, create: if isAuthenticated();
-      allow update, delete: if isAdmin();
+    match /teachers/{id} {
+      allow read, write: if true;
     }
 
-    match /auditLogs/{logId} {
-      allow read, write: if isAdmin();
+    match /teacherAttendance/{id} {
+      allow read, write: if true;
+    }
+
+    match /stlMembers/{id} {
+      allow read, write: if true;
+    }
+
+    match /stlAttendance/{id} {
+      allow read, write: if true;
+    }
+
+    match /demoMembers/{id} {
+      allow read, write: if true;
+    }
+
+    match /demoAttendance/{id} {
+      allow read, write: if true;
     }
 
     match /systemConfig/{id} {
-      allow read, write: if isAdmin();
+      allow read, write: if true;
+    }
+
+    // Catch-all for any additional collections
+    match /{document=**} {
+      allow read, write: if true;
     }
   }
 }
