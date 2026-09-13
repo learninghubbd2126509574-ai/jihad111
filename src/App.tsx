@@ -7016,19 +7016,20 @@ export default function App() {
                                       <AdminAccordion title="Push Notifications & Broadcasts" icon={<Bell size={16} />} colorClass="text-blue-400">
                          <div className="bg-surface/40 border border-white/5 p-4 sm:p-6 rounded-2xl sm:rounded-3xl relative overflow-hidden group mb-4">
                            <h4 className="text-[9px] sm:text-xs font-black text-white uppercase tracking-widest mb-4">Send Broadcast</h4>
-                           <form onSubmit={async (e) => {
+                           <form onSubmit={async (e: React.FormEvent<HTMLFormElement>) => {
                              e.preventDefault();
-                             const fd = new FormData(e.target);
+                             const form = e.currentTarget;
+                             const fd = new FormData(form);
                              const title = fd.get('title');
                              const body = fd.get('body');
                              const audience = fd.get('audience');
                              if(title && body) {
                                try {
                                  await sendNotification(title.toString(), body.toString(), audience.toString(), 'admin');
-                                 alert('Broadcast sent!');
-                                 e.target.reset();
+                                 showMsg('ব্রডকাস্ট নোটিফিকেশন সকল ইউজারের কাছে পাঠানো হয়েছে! 🚀', 'success');
+                                 form.reset();
                                } catch(err) {
-                                 alert('Error sending broadcast');
+                                 showMsg('Error sending broadcast', 'error');
                                }
                              }
                            }} className="space-y-3">
