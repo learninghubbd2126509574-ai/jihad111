@@ -3317,12 +3317,13 @@ export default function App() {
               const { title, body } = generateTimerPerformanceSummary();
               triggerNativeNotification(title, body);
             }
-          }
-          if (isAdmin) {
-            updateDoc(doc(db, 'config', 'global'), {
-              timerActive: false,
-              timerEndTime: 0
-            }).catch(console.error);
+            // Only update doc if still active to prevent multi-tab write loops
+            if (isAdmin && config.timerActive) {
+              updateDoc(doc(db, 'config', 'global'), {
+                timerActive: false,
+                timerEndTime: 0
+              }).catch(console.error);
+            }
           }
         }
       };
@@ -7204,10 +7205,17 @@ export default function App() {
                       <div className="flex gap-3 sm:gap-4 items-center mb-4 sm:mb-6">
                         <input 
                           type="number"
-                          value={config.totalConverts || 0}
-                          onChange={(e) => {
+                          defaultValue={config.totalConverts || 0}
+                          onBlur={async (e) => {
                             const val = parseInt(e.target.value) || 0;
-                            updateDoc(doc(db, 'config', 'global'), { totalConverts: val });
+                            if (val !== config.totalConverts) {
+                              try {
+                                await updateDoc(doc(db, 'config', 'global'), { totalConverts: val });
+                                showMsg('Total converts updated');
+                              } catch (err) {
+                                handleFirestoreError(err, OperationType.WRITE, 'config/global', showMsg);
+                              }
+                            }
                           }}
                           className="flex-1 bg-bg border border-white/10 rounded-xl sm:rounded-2xl px-4 sm:px-6 py-3 sm:py-4 text-xl sm:text-2xl text-gold font-serif font-black outline-none focus:border-gold"
                         />
