@@ -192,14 +192,25 @@ export const NotificationManager = ({
 
   // Listen to incoming notifications in Firestore
   useEffect(() => {
+    // Read cached seen IDs from sessionStorage to avoid duplicate alerts on reload
+    try {
+      const stored = sessionStorage.getItem('unity_seen_notif_ids');
+      if (stored) {
+        JSON.parse(stored).forEach((id: string) => seenIdsRef.current.add(id));
+      }
+    } catch {
+      // ignore
+    }
+
+    // Direct collection query with limit - guaranteed to work across all devices without index requirements
     const q = query(
       collection(db, 'notifications'),
-      orderBy('createdMillis', 'desc'),
-      limit(10)
+      limit(25)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const notifs: AppNotification[] = [];
+      const notifs: (AppNotification & { parsedTime: number })[] = [];
+      
       snapshot.forEach(docSnap => {
         const data = docSnap.data() as AppNotification;
         const recipient = data.recipient;
@@ -208,20 +219,29 @@ export const NotificationManager = ({
           (user && (recipient === user.uid || recipient === user.whatsapp)) ||
           (position && recipient === position)
         ) {
-          notifs.push({ id: docSnap.id, ...data });
+          const parsedTime = (data as any).createdMillis || getNotificationMillis(data.createdAt);
+          notifs.push({ id: docSnap.id, ...data, parsedTime });
         }
       });
+
+      // Sort newest first
+      notifs.sort((a, b) => b.parsedTime - a.parsedTime);
 
       const now = Date.now();
 
       notifs.forEach(n => {
         if (n.id && !seenIdsRef.current.has(n.id)) {
           seenIdsRef.current.add(n.id);
-          const notifTime = (n as any).createdMillis || getNotificationMillis(n.createdAt);
-          const timeDiff = now - notifTime;
+          try {
+            sessionStorage.setItem('unity_seen_notif_ids', JSON.stringify(Array.from(seenIdsRef.current).slice(-50)));
+          } catch {
+            // ignore
+          }
+
+          const timeDiff = now - n.parsedTime;
           
-          // Trigger if notification is recent (within last 3 minutes) or incoming live
-          if (timeDiff < 180000 && !isFirstLoadRef.current) {
+          // If created within last 90 seconds (either live or recently broadcasted), trigger alert
+          if (timeDiff >= 0 && timeDiff < 90000) {
             if (audioRef.current) {
               audioRef.current.play().catch(e => console.log('Audio play error:', e));
             }
@@ -229,31 +249,8 @@ export const NotificationManager = ({
           }
         }
       });
-
-      if (isFirstLoadRef.current) {
-        isFirstLoadRef.current = false;
-      }
     }, (error) => {
-      // Fallback query if createdMillis index is pending
-      console.warn('Notifications createdMillis query notice, using default order:', error);
-      const fallbackQ = query(
-        collection(db, 'notifications'),
-        orderBy('createdAt', 'desc'),
-        limit(10)
-      );
-      return onSnapshot(fallbackQ, (snapshot) => {
-        const now = Date.now();
-        snapshot.forEach(docSnap => {
-          const n = { id: docSnap.id, ...docSnap.data() } as AppNotification;
-          if (n.id && !seenIdsRef.current.has(n.id)) {
-            seenIdsRef.current.add(n.id);
-            const notifTime = getNotificationMillis(n.createdAt);
-            if (now - notifTime < 180000 && !isFirstLoadRef.current) {
-              triggerNativeNotification(n.title, n.body);
-            }
-          }
-        });
-      });
+      console.warn('Notifications listener error:', error);
     });
 
     return () => unsubscribe();
