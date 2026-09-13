@@ -138,6 +138,7 @@ import StlAssignmentModal from './components/StlAssignmentModal';
 import StlAdminManager from './components/StlAdminManager';
 import UserQuickSubmitCard from './components/UserQuickSubmitCard';
 import { PhoneKeypad, PasswordKeyboard } from './components/VirtualAuthKeypad';
+import { NotificationManager, sendNotification, triggerNativeNotification } from './components/NotificationManager';
 
 // --- Types ---
 interface Member {
@@ -361,6 +362,7 @@ interface Config {
   counsellingSchedules?: CounsellingSchedule[];
   paymentMethods?: PaymentMethods;
   autoTimerEnabled?: boolean;
+  timerNotificationsActive?: boolean;
   autoTimerTime?: string;
   lastAutoStartTime?: string;
   totalConverts?: number;
@@ -2744,6 +2746,38 @@ export default function App() {
   const [updatingPass, setUpdatingPass] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const timerStartedNotifiedRef = useRef<number | null>(null);
+  const fiveMinWarningTriggeredRef = useRef<boolean>(false);
+  const timerEndedTriggeredRef = useRef<boolean>(false);
+  const rankingDataRef = useRef<{ sortedLeaders: any[], sortedTrainers: any[], stats: any }>({ sortedLeaders: [], sortedTrainers: [], stats: {} });
+
+  const generateTimerPerformanceSummary = () => {
+    const currentData = rankingDataRef.current;
+    const topL = (currentData?.sortedLeaders || []).filter((l: any) => (l.result?.convert || 0) > 0)[0] || null;
+    const topT = (currentData?.sortedTrainers || []).filter((t: any) => (t.result?.convert || 0) > 0)[0] || null;
+    const totalConverts = currentData?.stats?.todayConverts ?? currentData?.stats?.converts ?? 0;
+
+    const lines: string[] = ['টাইমার অফ হয়ে গিয়েছে! আজকের ফলাফল: 📊'];
+    
+    if (topL) {
+      lines.push(`👑 টপ টিম লিডার: 🥇 ${topL.name} (${topL.result?.convert || 0} টি কনভার্ট)`);
+    }
+
+    if (topT) {
+      lines.push(`🌟 টপ ট্রেনার: 🥇 ${topT.name} (${topT.result?.convert || 0} টি কনভার্ট)`);
+    }
+
+    if (!topL && !topT) {
+      lines.push(`আজকের মোট সাবমিট হওয়া কনভার্ট: ${totalConverts} টি। 🎯`);
+    } else {
+      lines.push(`🎯 মোট কনভার্ট: ${totalConverts} টি | অভিনন্দন ও ধন্যবাদ! 🎉✨`);
+    }
+
+    return {
+      title: 'Unity Earning 🏁 টাইমার সমাপ্ত & সেরা পারফরম্যান্স!',
+      body: lines.join('\n')
+    };
+  };
 
   const [quickLinks, setQuickLinks] = useState<QuickLink[]>([]);
   const [showQuickLinksModal, setShowQuickLinksModal] = useState(false);
@@ -3238,15 +3272,43 @@ export default function App() {
   // Timer Logic
   useEffect(() => {
     if (config.timerActive && config.timerEndTime) {
+      if (timerStartedNotifiedRef.current !== config.timerStartedAt) {
+        timerStartedNotifiedRef.current = config.timerStartedAt || Date.now();
+        fiveMinWarningTriggeredRef.current = false;
+        timerEndedTriggeredRef.current = false;
+      }
+
       const updateRemaining = () => {
         const now = Date.now();
         const diff = config.timerEndTime - now;
         const remaining = Math.max(0, Math.floor(diff / 1000));
         setTimeLeft(remaining);
 
-        // When timer reaches 0, auto turn it off
+        // 5 Minutes Left Notification (Trigger once per timer session)
+        if (config.timerNotificationsActive !== false && remaining <= 300 && remaining > 0 && !fiveMinWarningTriggeredRef.current) {
+          fiveMinWarningTriggeredRef.current = true;
+          const warningTitle = 'Unity Earning ⏰ টাইমার শেষ হতে ৫ মিনিট বাকি!';
+          const warningBody = 'আর মাত্র ৫ মিনিট বাকি আছে! সবাই দ্রুত আজকের কনভার্ট ও রেজাল্ট সাবমিট করে ফেলেন। 🏃💨';
+          triggerNativeNotification(warningTitle, warningBody);
+          new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3').play().catch(e => console.error(e));
+          if (isAdmin) {
+            sendNotification(warningTitle, warningBody, 'all', 'system');
+          }
+        }
+
+        // When timer reaches 0, auto turn it off & send performance summary notification
         if (remaining <= 0) {
           if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+          if (!timerEndedTriggeredRef.current) {
+            timerEndedTriggeredRef.current = true;
+            if (config.timerNotificationsActive !== false) {
+              const { title, body } = generateTimerPerformanceSummary();
+              triggerNativeNotification(title, body);
+              if (isAdmin) {
+                sendNotification(title, body, 'all', 'system');
+              }
+            }
+          }
           if (isAdmin) {
             updateDoc(doc(db, 'config', 'global'), {
               timerActive: false,
@@ -3267,7 +3329,7 @@ export default function App() {
     return () => {
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
     };
-  }, [config.timerActive, config.timerEndTime, isAdmin]);
+  }, [config.timerActive, config.timerEndTime, config.timerStartedAt, config.timerNotificationsActive, isAdmin]);
 
   // Auto-timer Logic
   const configRef = useRef(config);
@@ -3984,6 +4046,10 @@ export default function App() {
       const now = Date.now();
       const endTime = now + duration * 1000;
       setTimeLeft(duration);
+      timerStartedNotifiedRef.current = now;
+      fiveMinWarningTriggeredRef.current = false;
+      timerEndedTriggeredRef.current = false;
+
       await updateDoc(doc(db, 'config', 'global'), {
         timerActive: true,
         timerStartedAt: now,
@@ -3991,6 +4057,12 @@ export default function App() {
         timerDuration: duration
       });
       showMsg(`Timer started for ${Math.round(duration / 60)} minutes!`, 'success');
+      if (config.timerNotificationsActive !== false) {
+        const notifTitle = 'Unity Earning ⏳ টাইমার শুরু হয়েছে!';
+        const notifBody = `${Math.round(duration / 60)} মিনিটের জন্য টাইমার চালু হয়েছে! সবাই দ্রুত রেজাল্ট সাবমিট করুন। 🚀✨`;
+        sendNotification(notifTitle, notifBody, 'all', 'system');
+        triggerNativeNotification(notifTitle, notifBody);
+      }
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'config/global', showMsg);
     }
@@ -4000,10 +4072,17 @@ export default function App() {
     try {
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
       setTimeLeft(0);
+      const wasActive = config.timerActive;
       await updateDoc(doc(db, 'config', 'global'), {
         timerActive: false,
         timerEndTime: 0
       });
+      if (wasActive && !timerEndedTriggeredRef.current && config.timerNotificationsActive !== false) {
+        timerEndedTriggeredRef.current = true;
+        const { title, body } = generateTimerPerformanceSummary();
+        sendNotification(title, body, 'all', 'system');
+        triggerNativeNotification(title, body);
+      }
       showMsg('Timer stopped', 'error');
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'config/global', showMsg);
@@ -5420,6 +5499,14 @@ export default function App() {
     };
   }, [members, results, leaderRanking, trainerRanking]);
 
+  useEffect(() => {
+    rankingDataRef.current = {
+      sortedLeaders,
+      sortedTrainers,
+      stats
+    };
+  }, [sortedLeaders, sortedTrainers, stats]);
+
   const currentAuthUser = useMemo(() => {
     return approvedUsers.find(u => u.whatsapp === authenticatedUser?.whatsapp) || authenticatedUser;
   }, [approvedUsers, authenticatedUser]);
@@ -5492,6 +5579,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen pb-20">
+      <NotificationManager user={currentAuthUser || user} position={currentAuthUser?.position} />
       {/* Global Announcement */}
       <AnimatePresence>
         {config.announcementActive && config.announcement && !announcementDismissed && (
@@ -6905,7 +6993,95 @@ export default function App() {
               <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 custom-scrollbar space-y-4">
                 
                 {/* 1. Website Branding & Logo */}
-                <AdminAccordion title="Website Logo & Branding (লোগো পরিবর্তন)" icon={<Upload size={16} />} colorClass="text-blue-accent" defaultOpen={false}>
+                                      <AdminAccordion title="Push Notifications & Broadcasts" icon={<Bell size={16} />} colorClass="text-blue-400">
+                         <div className="bg-surface/40 border border-white/5 p-4 sm:p-6 rounded-2xl sm:rounded-3xl relative overflow-hidden group mb-4">
+                           <h4 className="text-[9px] sm:text-xs font-black text-white uppercase tracking-widest mb-4">Send Broadcast</h4>
+                           <form onSubmit={async (e) => {
+                             e.preventDefault();
+                             const fd = new FormData(e.target);
+                             const title = fd.get('title');
+                             const body = fd.get('body');
+                             const audience = fd.get('audience');
+                             if(title && body) {
+                               try {
+                                 await sendNotification(title.toString(), body.toString(), audience.toString(), 'admin');
+                                 alert('Broadcast sent!');
+                                 e.target.reset();
+                               } catch(err) {
+                                 alert('Error sending broadcast');
+                               }
+                             }
+                           }} className="space-y-3">
+                             <input required name="title" placeholder="Notification Title..." className="w-full bg-bg/50 border border-white/10 rounded-xl p-3 text-sm text-white" />
+                             <textarea required name="body" placeholder="Notification Message..." rows="3" className="w-full bg-bg/50 border border-white/10 rounded-xl p-3 text-sm text-white resize-y custom-scrollbar" />
+                             <select name="audience" className="w-full bg-bg/50 border border-white/10 rounded-xl p-3 text-sm text-white">
+                               <option value="all">Everyone (All Users)</option>
+                               <option value="Counsellor">All Counsellors</option>
+                               <option value="Team Leader">All Team Leaders</option>
+                               <option value="STL">All STLs</option>
+                             </select>
+                             <button type="submit" className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-sm transition-all shadow-lg flex items-center justify-center gap-2">
+                               <Send size={16} /> Send Broadcast
+                             </button>
+                           </form>
+                         </div>
+                         <div className="bg-surface/40 border border-white/5 p-4 sm:p-6 rounded-2xl sm:rounded-3xl">
+                           <h4 className="text-[9px] sm:text-xs font-black text-white uppercase tracking-widest mb-4">Timer Notifications (System Push)</h4>
+                           <div className="flex items-center justify-between bg-bg p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-white/5 mb-3 sm:mb-4">
+                              <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-widest ${config.timerNotificationsActive !== false ? 'text-green-accent' : 'text-muted-main'}`}>
+                                 {config.timerNotificationsActive !== false ? 'Timer Push Active (চালু আছে)' : 'Timer Push Off (বন্ধ)'}
+                              </span>
+                              <div
+                                onClick={async () => {
+                                  try {
+                                    const currentVal = config.timerNotificationsActive !== false;
+                                    await updateDoc(doc(db, 'config', 'global'), { timerNotificationsActive: !currentVal });
+                                  } catch (e) {
+                                    console.error(e);
+                                  }
+                                }}
+                                className={`w-10 h-5 sm:w-12 sm:h-6 rounded-full relative cursor-pointer transition-all ${config.timerNotificationsActive !== false ? 'bg-green-accent' : 'bg-muted-main2'}`}
+                              >
+                                <div className={`absolute top-0.5 sm:top-1 w-4 h-4 rounded-full bg-bg transition-all ${config.timerNotificationsActive !== false ? 'left-5.5 sm:left-7' : 'left-0.5 sm:left-1'}`} />
+                              </div>
+                           </div>
+                           <p className="text-xs text-muted-main mb-4">When enabled, starting the timer sends a notification to everyone. A 5-minute warning notification is also automatically triggered.</p>
+                           
+                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                             <button
+                               type="button"
+                               onClick={async () => {
+                                 try {
+                                   await triggerNativeNotification('Unity Earning 🔔 টেস্ট নোটিফিকেশন', 'আপনার ফোনে ক্রোম পুশ নোটিফিকেশন সফলভাবে কাজ করছে! 🚀✨');
+                                   showMsg('Test notification triggered!', 'success');
+                                 } catch (err) {
+                                   showMsg('Failed to trigger notification', 'error');
+                                 }
+                               }}
+                               className="w-full py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-semibold rounded-xl text-xs flex items-center justify-center gap-2 transition-all"
+                             >
+                               <Bell size={14} /> Send Test Push
+                             </button>
+
+                             <button
+                               type="button"
+                               onClick={async () => {
+                                 try {
+                                   const { title, body } = generateTimerPerformanceSummary();
+                                   await triggerNativeNotification(title, body);
+                                   showMsg('Performance summary preview triggered!', 'success');
+                                 } catch (err) {
+                                   showMsg('Failed to trigger preview', 'error');
+                                 }
+                               }}
+                               className="w-full py-2.5 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-400 font-semibold rounded-xl text-xs flex items-center justify-center gap-2 transition-all"
+                             >
+                               <Trophy size={14} /> Preview Summary
+                             </button>
+                           </div>
+                         </div>
+                      </AdminAccordion>
+                      <AdminAccordion title="Website Logo & Branding (লোগো পরিবর্তন)" icon={<Upload size={16} />} colorClass="text-blue-accent" defaultOpen={false}>
                    <BrandLogoManager 
                      config={config} 
                      onUpdateLogo={updateWebsiteLogo} 

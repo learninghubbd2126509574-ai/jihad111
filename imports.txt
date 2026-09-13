@@ -1,0 +1,150 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { 
+  collection, 
+  doc, 
+  onSnapshot, 
+  setDoc, 
+  addDoc, 
+  updateDoc,
+  deleteDoc, 
+  getDocs,
+  writeBatch,
+  query, 
+  where,
+  orderBy, 
+  limit,
+  serverTimestamp,
+  startAfter,
+  getDoc,
+  getDocFromServer,
+  getDocsFromCache,
+  getDocFromCache,
+  increment
+} from 'firebase/firestore';
+import { 
+  signInWithPopup, 
+  signInWithRedirect,
+  getRedirectResult,
+  GoogleAuthProvider, 
+  onAuthStateChanged, 
+  signOut,
+  signInAnonymously,
+  type User as FirebaseUser
+} from 'firebase/auth';
+import { db, auth, storage } from './firebase';
+import { ref, uploadBytes, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
+import { motion, AnimatePresence } from 'motion/react';
+import { 
+  User,
+  Shield, 
+  LogOut, 
+  LogIn,
+  Trophy, 
+  GraduationCap, 
+  Clock, 
+  Plus, 
+  Trash2, 
+  Send, 
+  CheckCircle2,
+  CheckCircle,
+  Sparkles,
+  AlertCircle,
+  Star,
+  UserCircle,
+  X,
+  Pencil,
+  Play,
+  Calendar,
+  Check,
+  Megaphone,
+  Bell,
+  Menu,
+  ChevronRight,
+  ArrowRight,
+  Briefcase,
+  Search,
+  FileText,
+  MapPin,
+  Lock,
+  Smartphone,
+  Download,
+  Heart,
+  Baby,
+  Flag,
+  Phone,
+  Wallet,
+  Mail,
+  GraduationCap as School,
+  History,
+  Info,
+  ChevronLeft,
+  Users,
+  Presentation,
+  Award,
+  Medal,
+  Crown,
+  Coins,
+  Globe,
+  Facebook,
+  Youtube,
+  RefreshCw,
+  AlertTriangle,
+  MessageCircle,
+  Music,
+  Home,
+  ExternalLink,
+  Link,
+  UserPlus,
+  Eye,
+  EyeOff,
+  Power,
+  Camera,
+  Upload,
+  CheckSquare,
+  RotateCcw, Gift,
+  Ticket,
+  CreditCard,
+  Copy,
+  CheckCheck,
+  Share2,
+  Target,
+  Save,
+  KeyRound
+} from 'lucide-react';
+
+import { 
+  format, 
+  startOfMonth, 
+  endOfMonth, 
+  startOfWeek, 
+  endOfWeek, 
+  differenceInCalendarDays,
+  eachDayOfInterval, 
+  isSameMonth, 
+  isSameDay, 
+  addMonths, 
+  subMonths,
+  parseISO
+} from 'date-fns';
+import { bn } from 'date-fns/locale';
+import CartoonAvatar, { CARTOON_AVATAR_LIST } from './components/CartoonAvatar';
+import StlWiseResultSection, { normalizeName } from './components/StlWiseResultSection';
+import StlAssignmentModal from './components/StlAssignmentModal';
+import StlAdminManager from './components/StlAdminManager';
+import UserQuickSubmitCard from './components/UserQuickSubmitCard';
+import { PhoneKeypad, PasswordKeyboard } from './components/VirtualAuthKeypad';
+
+// --- Types ---
+interface Member {
+  id: string;
+  name: string;
+  type: 'leader' | 'trainer';
+  target?: number;
+  whatsapp?: string;
+  createdAt: any;
+}
