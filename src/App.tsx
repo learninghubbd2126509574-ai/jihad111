@@ -538,10 +538,11 @@ const QuickLinksModal = ({ links, onClose }: { links: QuickLink[], onClose: () =
   );
 };
 
-const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: { 
+const AuthContainer = ({ onLogin, onRegister, onAdminLogin, customLogo }: { 
   onLogin: (w: string, p: string) => Promise<boolean>, 
   onRegister: (d: any) => Promise<boolean>,
-  onAdminLogin: (pass: string) => void 
+  onAdminLogin: (pass: string) => void,
+  customLogo?: string
 }) => {
   const [mode, setMode] = useState<'login' | 'admin' | 'register'>('login');
   const [whatsapp, setWhatsapp] = useState('');
@@ -644,12 +645,16 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: {
         <div className="flex flex-col items-center text-center mb-5 pt-1">
           {/* Circular Blue Emblem Logo */}
           <div className="relative mb-2.5">
-            <div className="w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/25">
-              <svg viewBox="0 0 40 40" className="w-8 h-8 sm:w-9 sm:h-9">
-                <circle cx="20" cy="20" r="18" stroke="rgba(255,255,255,0.4)" strokeWidth="1.5" fill="none" />
-                <path d="M13 11V22C13 25.866 16.134 29 20 29C23.866 29 27 25.866 27 22V11" stroke="#ffffff" strokeWidth="3.5" strokeLinecap="round" fill="none" />
-                <circle cx="20" cy="8" r="2.5" fill="#ffffff" />
-              </svg>
+            <div className="w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/25 overflow-hidden p-1">
+              {customLogo ? (
+                <img src={customLogo} alt="Logo" className="w-full h-full object-contain rounded-xl" />
+              ) : (
+                <svg viewBox="0 0 40 40" className="w-8 h-8 sm:w-9 sm:h-9">
+                  <circle cx="20" cy="20" r="18" stroke="rgba(255,255,255,0.4)" strokeWidth="1.5" fill="none" />
+                  <path d="M13 11V22C13 25.866 16.134 29 20 29C23.866 29 27 25.866 27 22V11" stroke="#ffffff" strokeWidth="3.5" strokeLinecap="round" fill="none" />
+                  <circle cx="20" cy="8" r="2.5" fill="#ffffff" />
+                </svg>
+              )}
             </div>
           </div>
           
@@ -5591,6 +5596,7 @@ export default function App() {
         onLogin={loginUser}
         onRegister={registerUser}
         onAdminLogin={(pass) => login(false, pass)}
+        customLogo={config.customLogo}
       />
     );
   }
