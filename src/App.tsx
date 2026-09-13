@@ -2868,6 +2868,12 @@ export default function App() {
       console.log('Config Snapshot received');
       if (snapshot.exists()) {
         const newConfig = snapshot.data() as Config;
+        if (newConfig.timerActive && newConfig.timerEndTime) {
+          const diff = Math.max(0, Math.floor((newConfig.timerEndTime - Date.now()) / 1000));
+          setTimeLeft(diff);
+        } else {
+          setTimeLeft(0);
+        }
         setConfig(prev => {
           if (newConfig.announcement !== prev.announcement || (newConfig.announcementActive && !prev.announcementActive)) {
             setAnnouncementDismissed(false);
@@ -2882,6 +2888,9 @@ export default function App() {
         const cacheSnap = await getDocFromCache(doc(db, 'config', 'global'));
         if (cacheSnap.exists()) {
           const newConfig = cacheSnap.data() as Config;
+          if (newConfig.timerActive && newConfig.timerEndTime) {
+            setTimeLeft(Math.max(0, Math.floor((newConfig.timerEndTime - Date.now()) / 1000)));
+          }
           setConfig(newConfig);
         }
       } catch (cacheErr) {
@@ -5595,7 +5604,7 @@ export default function App() {
     );
   }
 
-  const isTimerActive = Boolean(config.timerActive && (config.timerEndTime ? (timeLeft > 0 || config.timerEndTime > Date.now()) : true));
+  const isTimerActive = Boolean(config.timerActive);
 
   return (
     <div className="min-h-screen pb-20">
