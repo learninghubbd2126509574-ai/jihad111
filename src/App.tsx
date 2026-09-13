@@ -2841,15 +2841,11 @@ export default function App() {
 
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       setUser(u);
-      // Auto-restore anonymous auth for both admins and regular users who are logged in
-      const isUserLoggedIn = localStorage.getItem('unity_user') !== null;
-      const isAdminLoggedIn = localStorage.getItem('isAdmin') === 'true';
-
-      if ((isAdminLoggedIn || isUserLoggedIn) && !u) {
+      if (!u) {
         try {
           await signInAnonymously(auth);
         } catch (err) {
-          console.warn("Failed to automatically restore anonymous auth:", err);
+          console.warn("Failed to automatically sign in anonymously:", err);
         }
       }
       setIsAuthReady(true);
