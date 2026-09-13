@@ -49,7 +49,7 @@ export const formatNotificationTitle = (rawTitle: string): string => {
 };
 
 export const triggerNativeNotification = async (title: string, body: string, iconUrl: string = '/icon.jpg') => {
-  if (!('Notification' in window)) return;
+  if (typeof window === 'undefined' || !('Notification' in window)) return;
 
   if (Notification.permission !== 'granted') {
     return;
@@ -57,29 +57,40 @@ export const triggerNativeNotification = async (title: string, body: string, ico
 
   const finalTitle = formatNotificationTitle(title);
 
-  // Try vibration for haptic feedback
-  if ('vibrate' in navigator) {
+  // Vibration for mobile devices
+  if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
     try {
-      navigator.vibrate([300, 100, 300]);
+      navigator.vibrate([300, 100, 300, 100, 300]);
     } catch {
       // ignore
     }
   }
 
-  const notifOptions: NotificationOptions = {
+  const notifOptions: any = {
     body,
     icon: iconUrl,
     badge: iconUrl,
     tag: `unity-${Date.now()}`,
-    requireInteraction: true
+    renotify: true,
+    requireInteraction: true,
+    vibrate: [300, 100, 300, 100, 300],
+    data: {
+      url: window.location.href,
+      time: Date.now()
+    }
   };
 
-  // 1. Try Service Worker showNotification (Best for Android Chrome system tray)
+  // 1. Service Worker Notification (Bypasses tab minimization & shows in Android system tray)
   if ('serviceWorker' in navigator) {
     try {
-      const reg = await navigator.serviceWorker.ready;
+      const reg = await navigator.serviceWorker.getRegistration();
       if (reg && reg.showNotification) {
         await reg.showNotification(finalTitle, notifOptions);
+        return;
+      }
+      const readyReg = await navigator.serviceWorker.ready;
+      if (readyReg && readyReg.showNotification) {
+        await readyReg.showNotification(finalTitle, notifOptions);
         return;
       }
     } catch (e) {
@@ -102,7 +113,11 @@ export const triggerNativeNotification = async (title: string, body: string, ico
 
   // 2. Fallback to standard Window Notification
   try {
-    new Notification(finalTitle, notifOptions);
+    const notif = new Notification(finalTitle, notifOptions);
+    notif.onclick = () => {
+      window.focus();
+      notif.close();
+    };
   } catch (e) {
     console.warn('Window Notification fallback error:', e);
   }
@@ -131,18 +146,55 @@ export const NotificationManager = ({
     audioRef.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
   }, []);
 
-  // Update permission status on focus/interaction
+  // Inter-tab / local broadcast channel for instant 0ms communication
   useEffect(() => {
-    if ('Notification' in window) {
-      setPermission(Notification.permission);
+    if (typeof BroadcastChannel === 'undefined') return;
+    try {
+      const bc = new BroadcastChannel('unity_instant_notifs');
+      bc.onmessage = (event) => {
+        const data = event.data;
+        if (!data || !data.title) return;
+        const recipient = data.recipient;
+        if (
+          recipient === 'all' || 
+          (user && (recipient === user.uid || recipient === user.whatsapp)) ||
+          (position && recipient === position)
+        ) {
+          if (audioRef.current) {
+            audioRef.current.play().catch(e => console.log('Audio error:', e));
+          }
+          triggerNativeNotification(data.title, data.body);
+        }
+      };
+      return () => {
+        bc.close();
+      };
+    } catch {
+      // ignore
     }
+  }, [user?.uid, user?.whatsapp, position]);
+
+  // Update permission status on focus/visibility change
+  useEffect(() => {
+    const updatePerm = () => {
+      if ('Notification' in window) {
+        setPermission(Notification.permission);
+      }
+    };
+    updatePerm();
+    window.addEventListener('focus', updatePerm);
+    document.addEventListener('visibilitychange', updatePerm);
+    return () => {
+      window.removeEventListener('focus', updatePerm);
+      document.removeEventListener('visibilitychange', updatePerm);
+    };
   }, []);
 
   // Listen to incoming notifications in Firestore
   useEffect(() => {
     const q = query(
       collection(db, 'notifications'),
-      orderBy('createdAt', 'desc'),
+      orderBy('createdMillis', 'desc'),
       limit(10)
     );
 
@@ -165,12 +217,11 @@ export const NotificationManager = ({
       notifs.forEach(n => {
         if (n.id && !seenIdsRef.current.has(n.id)) {
           seenIdsRef.current.add(n.id);
-          const notifTime = getNotificationMillis(n.createdAt);
+          const notifTime = (n as any).createdMillis || getNotificationMillis(n.createdAt);
           const timeDiff = now - notifTime;
           
-          // Only trigger if notification is relatively recent (within last 2.5 minutes)
-          // or if it was received live after component mount
-          if (timeDiff < 150000 && !isFirstLoadRef.current) {
+          // Trigger if notification is recent (within last 3 minutes) or incoming live
+          if (timeDiff < 180000 && !isFirstLoadRef.current) {
             if (audioRef.current) {
               audioRef.current.play().catch(e => console.log('Audio play error:', e));
             }
@@ -183,7 +234,26 @@ export const NotificationManager = ({
         isFirstLoadRef.current = false;
       }
     }, (error) => {
-      console.warn('Notifications listener error:', error);
+      // Fallback query if createdMillis index is pending
+      console.warn('Notifications createdMillis query notice, using default order:', error);
+      const fallbackQ = query(
+        collection(db, 'notifications'),
+        orderBy('createdAt', 'desc'),
+        limit(10)
+      );
+      return onSnapshot(fallbackQ, (snapshot) => {
+        const now = Date.now();
+        snapshot.forEach(docSnap => {
+          const n = { id: docSnap.id, ...docSnap.data() } as AppNotification;
+          if (n.id && !seenIdsRef.current.has(n.id)) {
+            seenIdsRef.current.add(n.id);
+            const notifTime = getNotificationMillis(n.createdAt);
+            if (now - notifTime < 180000 && !isFirstLoadRef.current) {
+              triggerNativeNotification(n.title, n.body);
+            }
+          }
+        });
+      });
     });
 
     return () => unsubscribe();
@@ -267,15 +337,30 @@ export const NotificationManager = ({
 export const sendNotification = async (title: string, body: string, recipient: string = 'all', sender: string = 'system') => {
   try {
     const formattedTitle = formatNotificationTitle(title);
-    await addDoc(collection(db, 'notifications'), {
+    const now = Date.now();
+
+    // Instant local BroadcastChannel delivery
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        const bc = new BroadcastChannel('unity_instant_notifs');
+        bc.postMessage({ title: formattedTitle, body, recipient, sender, createdMillis: now });
+        bc.close();
+      } catch {
+        // ignore
+      }
+    }
+
+    // Instant Firestore write with concrete timestamp for 0ms query ordering
+    addDoc(collection(db, 'notifications'), {
       title: formattedTitle,
       body,
       recipient,
       sender,
+      createdMillis: now,
       createdAt: serverTimestamp(),
       readBy: [],
       isSystem: sender === 'system'
-    });
+    }).catch(e => console.error('Error writing notification doc:', e));
   } catch (error) {
     console.error('Failed to send notification:', error);
   }
