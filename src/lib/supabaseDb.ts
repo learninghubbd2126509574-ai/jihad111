@@ -11,6 +11,12 @@ const memoryStore: Record<string, Map<string, any>> = {};
 let isBackupLoaded = false;
 let isBackupLoading = false;
 
+interface ActiveListener {
+  target: any;
+  onNext: (snap: any) => void;
+}
+const activeListeners = new Set<ActiveListener>();
+
 // Async initialize memory store from public backup file if available
 async function initMemoryStore() {
   if (isBackupLoaded || isBackupLoading) return;
@@ -39,6 +45,27 @@ async function initMemoryStore() {
   } finally {
     isBackupLoaded = true;
     isBackupLoading = false;
+
+    // Notify all active listeners of the newly loaded backup data
+    for (const listener of activeListeners) {
+      try {
+        const t = listener.target;
+        if (t.type === 'doc') {
+          const colName = t.collection;
+          const docId = t.id;
+          const map = memoryStore[colName] || (memoryStore[colName] = new Map());
+          const localDoc = map.get(docId);
+          listener.onNext(createDocSnapshot(docId, localDoc));
+        } else {
+          const colName = t.type === 'query' ? t.collection : t.name;
+          const constraints = t.type === 'query' ? t.constraints : [];
+          const map = memoryStore[colName] || (memoryStore[colName] = new Map());
+          listener.onNext(createQuerySnapshot(map, constraints));
+        }
+      } catch (e) {
+        console.warn('Error notifying listener on backup load:', e);
+      }
+    }
   }
 }
 
@@ -220,6 +247,8 @@ export function onSnapshot(
 ): () => void {
   initMemoryStore();
   const supabase = getSupabase();
+  const listener = { target, onNext };
+  activeListeners.add(listener);
 
   if (target.type === 'doc') {
     const colName = target.collection;
@@ -274,6 +303,7 @@ export function onSnapshot(
 
     return () => {
       active = false;
+      activeListeners.delete(listener);
       if (channel && supabase) {
         supabase.removeChannel(channel);
       }
@@ -339,6 +369,7 @@ export function onSnapshot(
 
   return () => {
     active = false;
+    activeListeners.delete(listener);
     if (channel && supabase) {
       supabase.removeChannel(channel);
     }
