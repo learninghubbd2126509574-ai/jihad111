@@ -4655,31 +4655,25 @@ export default function App() {
       title: 'Clear ALL submitted results?',
       onConfirm: async () => {
         try {
+          // Reset global converts counter in config
+          await updateDoc(doc(db, 'config', 'global'), {
+            totalConverts: 0
+          });
+
           const resultsSnap = await getDocs(collection(db, 'results'));
           let batch = writeBatch(db);
           let count = 0;
           let updateCount = 0;
 
-          // First update all existing result docs
+          // Unconditionally delete all results from the database for absolute reliability
           for (const resDoc of resultsSnap.docs) {
-            const data = resDoc.data();
-            // Only update if they actually have data to clear
-            if (data.submitted === true || data.lead > 0 || data.convert > 0 || data.personalLead > 0) {
-              batch.set(resDoc.ref, {
-                memberId: resDoc.id,
-                lead: 0,
-                convert: 0,
-                personalLead: 0,
-                submitted: false,
-                updatedAt: serverTimestamp()
-              });
-              count++;
-              updateCount++;
-              if (count >= 490) {
-                await batch.commit();
-                batch = writeBatch(db);
-                count = 0;
-              }
+            batch.delete(resDoc.ref);
+            count++;
+            updateCount++;
+            if (count >= 490) {
+              await batch.commit();
+              batch = writeBatch(db);
+              count = 0;
             }
           }
           if (count > 0) {
