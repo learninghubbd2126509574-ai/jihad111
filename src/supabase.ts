@@ -18,8 +18,8 @@ export function getSupabaseConfig(): { url: string; anonKey: string } {
   }
 
   return {
-    url: storedUrl || envUrl || '',
-    anonKey: storedKey || envKey || ''
+    url: envUrl || storedUrl || '',
+    anonKey: envKey || storedKey || ''
   };
 }
 
