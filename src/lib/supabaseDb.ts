@@ -123,12 +123,98 @@ export function generateDocId(): string {
   return autoId;
 }
 
+const camelCaseMap: Record<string, string> = {
+  memberid: 'memberId',
+  personallead: 'personalLead',
+  updatedat: 'updatedAt',
+  profilepic: 'profilePic',
+  membername: 'memberName',
+  timeractive: 'timerActive',
+  timerendtime: 'timerEndTime',
+  timerduration: 'timerDuration',
+  timerstartedat: 'timerStartedAt',
+  timernotificationsactive: 'timerNotificationsActive',
+  announcementactive: 'announcementActive',
+  islocked: 'isLocked',
+  securitypassword: 'securityPassword',
+  stlpassword: 'stlPassword',
+  autotimerenabled: 'autoTimerEnabled',
+  autotimertime: 'autoTimerTime',
+  finesystemactive: 'fineSystemActive',
+  fineamount: 'fineAmount',
+  finestartdate: 'fineStartDate',
+  finesresetat: 'finesResetAt',
+  giftboxactive: 'giftBoxActive',
+  giftboxtitle: 'giftBoxTitle',
+  giftboxcontent: 'giftBoxContent',
+  paymentmethods: 'paymentMethods',
+  sociallinks: 'socialLinks',
+  noticetext: 'noticeText',
+  customlogo: 'customLogo',
+  apptheme: 'appTheme',
+  totalconverts: 'totalConverts',
+  leaderrankingactive: 'leaderRankingActive',
+  trainerrankingactive: 'trainerRankingActive',
+  stlactive: 'stlActive',
+  demoactive: 'demoActive',
+  stlloginactive: 'stlLoginActive',
+  counsellingschedules: 'counsellingSchedules',
+  lastautostarttime: 'lastAutoStartTime',
+  fullname: 'fullName',
+  mobilenumber: 'mobileNumber',
+  createdat: 'createdAt',
+  submittedat: 'submittedAt',
+  assignedtls: 'assignedTLs',
+  username: 'userName',
+  waivedfines: 'waivedFines',
+  manualadjustments: 'manualAdjustments',
+  performedby: 'performedBy',
+  createdmillis: 'createdMillis',
+  readby: 'readBy',
+  issystem: 'isSystem',
+  isselected: 'isSelected'
+};
+
 // Normalizes row returned from Supabase
 function unpackSupabaseRow(row: any): any {
   if (!row) return null;
   const dataObj = row.data && typeof row.data === 'object' ? row.data : {};
   const { data, ...columns } = row;
-  return { ...dataObj, ...columns };
+  
+  const normalizedColumns: any = {};
+  for (const [key, val] of Object.entries(columns)) {
+    const lowerKey = key.toLowerCase();
+    if (camelCaseMap[lowerKey]) {
+      normalizedColumns[camelCaseMap[lowerKey]] = val;
+    } else {
+      normalizedColumns[key] = val;
+    }
+  }
+  
+  return { ...dataObj, ...normalizedColumns };
+}
+
+function notifyListeners(colName: string, docId?: string) {
+  for (const listener of activeListeners) {
+    try {
+      const t = listener.target;
+      if (t.type === 'doc') {
+        if (t.collection === colName && (!docId || t.id === docId)) {
+          const map = memoryStore[colName] || (memoryStore[colName] = new Map());
+          listener.onNext(createDocSnapshot(t.id, map.get(t.id) || null));
+        }
+      } else {
+        const targetCol = t.type === 'query' ? t.collection : t.name;
+        if (targetCol === colName) {
+          const map = memoryStore[colName] || (memoryStore[colName] = new Map());
+          const constraints = t.type === 'query' ? t.constraints : [];
+          listener.onNext(createQuerySnapshot(map, constraints));
+        }
+      }
+    } catch (e) {
+      console.warn(`Error notifying listener on write to ${colName}:`, e);
+    }
+  }
 }
 
 // Prepares object for Supabase upsert/insert
@@ -482,6 +568,9 @@ export async function setDoc(docRef: DocRef, data: any, options?: { merge?: bool
   const merged = options?.merge ? { ...existing, ...processedData, id: docId } : { ...processedData, id: docId };
   map.set(docId, merged);
 
+  // Instantly trigger local onSnapshot listeners for optimistic UI updates
+  notifyListeners(colName, docId);
+
   const supabase = getSupabase();
   if (supabase && isSupabaseConfigured()) {
     const row = packSupabaseRow(colName, docId, merged);
@@ -512,6 +601,9 @@ export async function updateDoc(docRef: DocRef, data: any): Promise<void> {
   const updated = { ...existing, ...processedData, id: docId };
   map.set(docId, updated);
 
+  // Instantly trigger local onSnapshot listeners for optimistic UI updates
+  notifyListeners(colName, docId);
+
   const supabase = getSupabase();
   if (supabase && isSupabaseConfigured()) {
     const row = packSupabaseRow(colName, docId, updated);
@@ -529,6 +621,9 @@ export async function deleteDoc(docRef: DocRef): Promise<void> {
   const docId = String(docRef.id);
   const map = memoryStore[colName];
   if (map) map.delete(docId);
+
+  // Instantly trigger local onSnapshot listeners for optimistic UI updates
+  notifyListeners(colName, docId);
 
   const supabase = getSupabase();
   if (supabase && isSupabaseConfigured()) {

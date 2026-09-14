@@ -5557,8 +5557,17 @@ export default function App() {
       return a.name.localeCompare(b.name);
     };
 
-    // 3. Calculate Global Stats
+    // 3. Calculate Global Stats (Team Leaders + Team Trainers)
     allLeaders.forEach(m => {
+      if (m.result.submitted) {
+        totalLeads += m.result.lead;
+        todayConverts += m.result.convert;
+        todayLeads += m.result.lead;
+        totalSubmittedConverts += m.result.convert || 0;
+      }
+    });
+
+    allTrainers.forEach(m => {
       if (m.result.submitted) {
         totalLeads += m.result.lead;
         todayConverts += m.result.convert;
