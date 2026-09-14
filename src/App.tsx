@@ -182,6 +182,8 @@ interface Result {
   personalLead: number;
   submitted: boolean;
   updatedAt: any;
+  name?: string;
+  memberName?: string;
 }
 
 interface PickingItem {
@@ -3146,7 +3148,12 @@ export default function App() {
       const rMap: Record<string, Result> = {};
       snapshot.forEach(d => {
         const data = d.data() as Result;
-        rMap[data.memberId] = { id: d.id, ...data };
+        // Use document ID as the primary key for stable lookup
+        rMap[d.id] = { ...data, id: d.id };
+        // Also map by memberId field if it exists and is different, for backward compatibility
+        if (data.memberId && data.memberId !== d.id) {
+          rMap[data.memberId] = { ...data, id: d.id };
+        }
       });
       setResults(rMap);
     }, async (err) => {
@@ -3156,7 +3163,10 @@ export default function App() {
         const rMap: Record<string, Result> = {};
         cacheSnap.forEach(d => {
           const data = d.data() as Result;
-          rMap[data.memberId] = { id: d.id, ...data };
+          rMap[d.id] = { ...data, id: d.id };
+          if (data.memberId && data.memberId !== d.id) {
+            rMap[data.memberId] = { ...data, id: d.id };
+          }
         });
         setResults(rMap);
       } catch (cacheErr) {
@@ -4942,8 +4952,8 @@ export default function App() {
             updatedAt: serverTimestamp()
           });
         } else {
-          // Auto-create if missing
-          await addDoc(collection(db, coll), {
+          // Auto-create if missing - Use targetId for a stable, deterministic document ID
+          await setDoc(doc(db, coll, targetId), {
             name: targetName,
             whatsapp: targetWhatsapp,
             score: convert,
@@ -5897,21 +5907,25 @@ export default function App() {
     
     // Helper to resolve result for any member/user by ID, whatsapp, or name
     const getResultForMember = (m: { id: string; name: string; whatsapp?: string }) => {
+      // 1. Direct ID match (Best)
       if (results[m.id]) return results[m.id];
+      
+      // 2. Whatsapp match
       const cleanWa = m.whatsapp ? m.whatsapp.replace(/\s+/g, '') : '';
       if (cleanWa && results[cleanWa]) return results[cleanWa];
       if (cleanWa && results[`user-${cleanWa}`]) return results[`user-${cleanWa}`];
       
+      // 3. Name match (Fuzzy)
       const cleanMName = normalizeName(m.name);
-      const foundEntry = Object.values(results).find(r => {
-        const resObj = r as any;
-        if (resObj.memberId === m.id) return true;
-        if (cleanWa && resObj.memberId && resObj.memberId.replace(/\s+/g, '') === cleanWa) return true;
-        const rName = resObj.name || resObj.memberName;
-        if (cleanMName && rName && normalizeName(rName) === cleanMName) return true;
-        return false;
-      });
-      return foundEntry || { lead: 0, convert: 0, personalLead: 0, submitted: false };
+      if (cleanMName) {
+        const foundByName = Object.values(results).find((r: any) => {
+          const rName = r.name || r.memberName;
+          return rName && normalizeName(rName) === cleanMName;
+        });
+        if (foundByName) return foundByName;
+      }
+      
+      return { lead: 0, convert: 0, personalLead: 0, submitted: false };
     };
 
     // 1. Build comprehensive Leaders list (members + approvedUsers + leaderRanking)
@@ -6161,7 +6175,15 @@ export default function App() {
 
   const myMember = useMemo(() => {
     if (!currentAuthUser) return null;
-    return members.find(m => m.name.trim().toLowerCase() === currentAuthUser.fullName.trim().toLowerCase());
+    const cleanAuthName = normalizeName(currentAuthUser.fullName);
+    const cleanAuthWa = currentAuthUser.whatsapp ? currentAuthUser.whatsapp.replace(/\s+/g, '') : '';
+    
+    return members.find(m => {
+      const cleanMName = normalizeName(m.name);
+      const cleanMWa = m.whatsapp ? m.whatsapp.replace(/\s+/g, '') : '';
+      return (cleanAuthName && cleanMName && cleanMName === cleanAuthName) ||
+             (cleanAuthWa && cleanMWa && cleanMWa === cleanAuthWa);
+    });
   }, [members, currentAuthUser]);
 
   const myUserStats = useMemo(() => {
