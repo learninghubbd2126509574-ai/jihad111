@@ -93,18 +93,23 @@ async function startServer() {
           title: title || 'Unity Earning',
           body: body || '',
         },
+        data: {
+          title: title || 'Unity Earning',
+          body: body || '',
+          url: '/',
+          icon: icon || '/icon.jpg',
+          tag: `unity-${Date.now()}`
+        },
         webpush: {
+          headers: {
+            'Urgency': 'high'
+          },
           notification: {
             icon: icon || '/icon.jpg',
             badge: '/icon.jpg',
             vibrate: [300, 100, 300, 100, 300],
             requireInteraction: true,
-            actions: [
-              {
-                action: 'open_url',
-                title: 'Open Dashboard'
-              }
-            ]
+            timestamp: Date.now().toString()
           },
           fcmOptions: {
             link: '/'

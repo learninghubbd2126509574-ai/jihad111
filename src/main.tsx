@@ -4,12 +4,12 @@ import App from './App.tsx';
 import './index.css';
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js', { scope: '/' })
+  navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/' })
     .then((reg) => {
-      console.log('Service Worker registered successfully with scope:', reg.scope);
+      console.log('FCM Service Worker registered successfully with scope:', reg.scope);
     })
     .catch((err) => {
-      console.warn('Service Worker registration failed:', err);
+      console.warn('FCM Service Worker registration failed:', err);
     });
 }
 

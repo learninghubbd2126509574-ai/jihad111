@@ -2878,8 +2878,11 @@ export default function App() {
           }
 
           if (whatsapp && messaging) {
+            // Wait for service worker to be ready
+            const registration = await navigator.serviceWorker.ready;
             const token = await getToken(messaging, {
-              vapidKey: (import.meta as any).env.VITE_FCM_VAPID_KEY
+              vapidKey: (import.meta as any).env.VITE_FCM_VAPID_KEY,
+              serviceWorkerRegistration: registration
             });
             if (token) {
               console.log('FCM Token received:', token);
