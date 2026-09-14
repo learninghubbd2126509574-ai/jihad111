@@ -233,7 +233,12 @@ function packSupabaseRow(tableName: string, id: string, docData: any): any {
     'action', 'amount', 'performedBy', 'reason', 'date', 'title', 'body',
     'recipient', 'sender', 'isSystem', 'isSelected', 'course', 'createdAt',
     'updatedAt', 'submittedAt', 'timerActive', 'timerEndTime', 'timerDuration',
-    'announcement', 'announcementActive'
+    'announcement', 'announcementActive', 'timerStartedAt', 'timerNotificationsActive',
+    'isLocked', 'securityPassword', 'stlPassword', 'autoTimerEnabled', 'autoTimerTime',
+    'fineSystemActive', 'fineAmount', 'fineStartDate', 'finesResetAt', 'giftBoxActive',
+    'giftBoxTitle', 'giftBoxContent', 'paymentMethods', 'socialLinks', 'noticeText',
+    'customLogo', 'appTheme', 'totalConverts', 'leaderRankingActive', 'trainerRankingActive',
+    'stlActive', 'demoActive', 'stlLoginActive', 'counsellingSchedules', 'lastAutoStartTime'
   ];
 
   for (const field of scalarFields) {
@@ -636,6 +641,27 @@ export async function deleteDoc(docRef: DocRef): Promise<void> {
   }
 }
 
+export async function clearCollection(colName: string): Promise<void> {
+  initMemoryStore();
+  const map = memoryStore[colName];
+  if (map) {
+    map.clear();
+  }
+  
+  // Instantly trigger local onSnapshot listeners for optimistic UI updates
+  notifyListeners(colName);
+
+  const supabase = getSupabase();
+  if (supabase && isSupabaseConfigured()) {
+    // Delete all records in this table by using a matching pattern that selects all rows
+    const { error } = await supabase.from(colName).delete().neq('id', '_dummy_id_');
+    if (error) {
+      console.error(`Supabase clearCollection error on ${colName}:`, error);
+      throw error;
+    }
+  }
+}
+
 // ----------------------------------------------------------------------------
 // Batches
 // ----------------------------------------------------------------------------
@@ -656,9 +682,8 @@ export function writeBatch(_db?: any) {
       return this;
     },
     async commit(): Promise<void> {
-      for (const op of operations) {
-        await op();
-      }
+      // Execute all batched operations in parallel for blazing-fast performance
+      await Promise.all(operations.map(op => op()));
     }
   };
 }

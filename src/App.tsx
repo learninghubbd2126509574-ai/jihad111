@@ -24,7 +24,8 @@ import {
   getDocFromServer,
   getDocsFromCache,
   getDocFromCache,
-  increment
+  increment,
+  clearCollection
 } from './lib/supabaseDb';
 import { 
   signInWithPopup, 
@@ -4655,32 +4656,19 @@ export default function App() {
       title: 'Clear ALL submitted results?',
       onConfirm: async () => {
         try {
-          // Reset global converts counter in config
-          await updateDoc(doc(db, 'config', 'global'), {
-            totalConverts: 0
-          });
-
-          const resultsSnap = await getDocs(collection(db, 'results'));
-          let batch = writeBatch(db);
-          let count = 0;
-          let updateCount = 0;
-
-          // Unconditionally delete all results from the database for absolute reliability
-          for (const resDoc of resultsSnap.docs) {
-            batch.delete(resDoc.ref);
-            count++;
-            updateCount++;
-            if (count >= 490) {
-              await batch.commit();
-              batch = writeBatch(db);
-              count = 0;
-            }
-          }
-          if (count > 0) {
-            await batch.commit();
+          // 1. Reset global converts counter in config
+          try {
+            await updateDoc(doc(db, 'config', 'global'), {
+              totalConverts: 0
+            });
+          } catch (configErr) {
+            console.warn('Failed to update config global converts, continuing:', configErr);
           }
 
-          showMsg(`All results cleared! (${updateCount} records reset)`);
+          // 2. Perform lightning-fast bulk delete on the entire 'results' table
+          await clearCollection('results');
+
+          showMsg('All results cleared successfully!');
           setShowConfirm(null);
         } catch (err) {
           console.error('Error in clearResults:', err);
