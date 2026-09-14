@@ -1865,6 +1865,8 @@ const BalanceManagementSection = ({
   onUpdateBalance,
   onWaiveFine,
   onRemoveDayFine,
+  onResetUserFine,
+  onSetExactFine,
   onRecalculateFine,
   computeUserSubmissionStats
 }: {
@@ -1875,6 +1877,8 @@ const BalanceManagementSection = ({
   onUpdateBalance: (whatsapp: string, userName: string, amount: number, isDeduct: boolean, reason: string) => Promise<void>;
   onWaiveFine: (whatsapp: string, userName: string, amount: number, reason: string) => Promise<void>;
   onRemoveDayFine: (whatsapp: string, userName: string, dateStr: string, reason: string) => Promise<void>;
+  onResetUserFine?: (whatsapp: string, userName: string, reason: string) => Promise<void>;
+  onSetExactFine?: (whatsapp: string, userName: string, targetFine: number, reason: string) => Promise<void>;
   onRecalculateFine: (whatsapp: string, userName: string) => Promise<void>;
   computeUserSubmissionStats?: (userWhatsapp: string, memberId?: string) => any;
 }) => {
@@ -1885,12 +1889,15 @@ const BalanceManagementSection = ({
   const [waiveReason, setWaiveReason] = useState<string>('');
   const [removeDate, setRemoveDate] = useState<string>('');
   const [removeReason, setRemoveReason] = useState<string>('');
-  const [activeTab, setActiveTab] = useState<'overview' | 'add' | 'deduct' | 'waive' | 'remove_day' | 'logs'>('overview');
+  const [resetReason, setResetReason] = useState<string>('');
+  const [exactFineAmount, setExactFineAmount] = useState<string>('');
+  const [exactReason, setExactReason] = useState<string>('');
+  const [activeTab, setActiveTab] = useState<'overview' | 'add' | 'deduct' | 'waive' | 'remove_day' | 'delete_reset' | 'logs'>('overview');
   const [busy, setBusy] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   // Quick Action modal/inline box state
-  const [quickUser, setQuickUser] = useState<{ key: string; name: string; type: 'add' | 'deduct' | 'waive' | 'remove_day' } | null>(null);
+  const [quickUser, setQuickUser] = useState<{ key: string; name: string; type: 'add' | 'deduct' | 'waive' | 'remove_day' | 'delete' | 'set_exact' } | null>(null);
   const [quickAmount, setQuickAmount] = useState('');
   const [quickDate, setQuickDate] = useState(new Date().toISOString().split('T')[0]);
   const [quickReason, setQuickReason] = useState('');
@@ -1978,6 +1985,31 @@ const BalanceManagementSection = ({
     }
   };
 
+  const handleResetSubmit = async () => {
+    if (!selectedUser || !onResetUserFine) return;
+    setBusy(true);
+    try {
+      await onResetUserFine(selectedUser.key, selectedUser.name, resetReason || 'জরিমানা সম্পূর্ণ ডিলিট/রিসেট করা হয়েছে');
+      setResetReason('');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleExactSubmit = async () => {
+    if (!selectedUser || !onSetExactFine) return;
+    const amt = parseFloat(exactFineAmount);
+    if (isNaN(amt) || amt < 0) return;
+    setBusy(true);
+    try {
+      await onSetExactFine(selectedUser.key, selectedUser.name, amt, exactReason || `জরিমানা ৳${amt} নির্ধারণ করা হয়েছে`);
+      setExactFineAmount('');
+      setExactReason('');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleQuickSubmit = async () => {
     if (!quickUser) return;
     setBusy(true);
@@ -2000,6 +2032,15 @@ const BalanceManagementSection = ({
       } else if (quickUser.type === 'remove_day') {
         if (quickDate) {
           await onRemoveDayFine(quickUser.key, quickUser.name, quickDate, quickReason || `${quickDate} তারিখের মিসড দিন বাদ দেওয়া হয়েছে`);
+        }
+      } else if (quickUser.type === 'delete') {
+        if (onResetUserFine) {
+          await onResetUserFine(quickUser.key, quickUser.name, quickReason || 'জরিমানা সম্পূর্ণ ডিলিট/রিসেট করা হয়েছে');
+        }
+      } else if (quickUser.type === 'set_exact') {
+        const amt = parseFloat(quickAmount);
+        if (!isNaN(amt) && amt >= 0 && onSetExactFine) {
+          await onSetExactFine(quickUser.key, quickUser.name, amt, quickReason || `জরিমানা ৳${amt} নির্ধারণ করা হয়েছে`);
         }
       }
       setQuickUser(null);
@@ -2029,6 +2070,7 @@ const BalanceManagementSection = ({
           { id: 'deduct', label: '- ফাইন কমান' },
           { id: 'waive', label: '🛡️ ক্ষমা/মওকুফ' },
           { id: 'remove_day', label: '📅 মিসড দিন রিমুভ' },
+          { id: 'delete_reset', label: '🗑️ ফাইন রিসেট' },
           { id: 'logs', label: 'অডিট লগ' }
         ].map((tab) => (
           <button
@@ -2140,6 +2182,17 @@ const BalanceManagementSection = ({
                           className="px-2.5 py-1 rounded-lg bg-purple-500/10 hover:bg-purple-500 text-purple-400 hover:text-white border border-purple-500/30 text-[10px] font-black transition-all"
                         >
                           📅 দিন রিমুভ
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedUserKey(item.key);
+                            setQuickUser({ key: item.key, name: item.name, type: 'delete' });
+                            setQuickReason('');
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-red-500/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/40 text-[10px] font-black transition-all"
+                        >
+                          🗑️ ফাইন ডিলিট
                         </button>
                       </div>
                     </div>
@@ -2312,6 +2365,64 @@ const BalanceManagementSection = ({
             </div>
           )}
 
+          {activeTab === 'delete_reset' && (
+            <div className="space-y-4">
+              <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl space-y-3">
+                <h4 className="text-xs font-black text-red-400 uppercase tracking-wider flex items-center gap-2">
+                  <span>🗑️ জরিমানা সম্পূর্ণ ডিলিট / রিসেট করুন (Reset Fine to ৳0)</span>
+                </h4>
+                <p className="text-[11px] text-muted-main">
+                  সিলেক্ট করা মেম্বারের বর্তমান জমা হওয়া সমস্ত জরিমানা সম্পূর্ণ ডিলিট ও রিসেট হয়ে ৳০ টাকা হয়ে যাবে।
+                </p>
+                <input
+                  type="text"
+                  value={resetReason}
+                  onChange={(e) => setResetReason(e.target.value)}
+                  placeholder="কারণ / নোট (e.g. অ্যাডমিন কর্তৃক সম্পূর্ণ মওকুফ)"
+                  className="w-full bg-surface border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-gold"
+                />
+                <button
+                  type="button"
+                  disabled={busy || !selectedUser}
+                  onClick={handleResetSubmit}
+                  className="w-full py-3 rounded-xl bg-red-600 text-white font-black text-xs uppercase tracking-wider hover:bg-red-700 active:scale-95 transition-all shadow-lg"
+                >
+                  {busy ? 'প্রসেসিং...' : `${selectedUser?.name || 'মেম্বার'}-এর জরিমানা ডিলিট ও রিসেট করুন (৳0)`}
+                </button>
+              </div>
+
+              <div className="p-4 bg-gold/10 border border-gold/20 rounded-2xl space-y-3">
+                <h4 className="text-xs font-black text-gold uppercase tracking-wider flex items-center gap-2">
+                  <span>✏️ নির্দিষ্ট জরিমানা সেট করুন (Set Exact Fine)</span>
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <input
+                    type="number"
+                    value={exactFineAmount}
+                    onChange={(e) => setExactFineAmount(e.target.value)}
+                    placeholder="নির্ধারিত টাকার পরিমাণ (৳)"
+                    className="bg-surface border border-white/10 rounded-xl p-3 text-sm font-bold text-white outline-none focus:border-gold"
+                  />
+                  <input
+                    type="text"
+                    value={exactReason}
+                    onChange={(e) => setExactReason(e.target.value)}
+                    placeholder="কারণ / নোট"
+                    className="bg-surface border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-gold"
+                  />
+                </div>
+                <button
+                  type="button"
+                  disabled={busy || !selectedUser}
+                  onClick={handleExactSubmit}
+                  className="w-full py-3 rounded-xl bg-gold text-bg font-black text-xs uppercase tracking-wider hover:opacity-90 active:scale-95 transition-all shadow-lg"
+                >
+                  {busy ? 'প্রসেসিং...' : `${selectedUser?.name || 'মেম্বার'}-এর জরিমানা সেট করুন`}
+                </button>
+              </div>
+            </div>
+          )}
+
           {activeTab === 'logs' && (
             <div className="space-y-3">
               <h4 className="text-xs font-black text-white uppercase tracking-wider mb-2">
@@ -2361,7 +2472,19 @@ const BalanceManagementSection = ({
             >
               <div className="flex items-center justify-between border-b border-white/10 pb-3">
                 <h3 className="text-sm sm:text-base font-black text-white flex items-center gap-2">
-                  <span>{quickUser.type === 'add' ? '➕ ফাইন বাড়ান' : quickUser.type === 'deduct' ? '➖ ফাইন কমান' : quickUser.type === 'waive' ? '🛡️ জরিমানা মওকুফ করুন' : '📅 মিসড দিন রিমুভ করুন'}</span>
+                  <span>
+                    {quickUser.type === 'add'
+                      ? '➕ ফাইন বাড়ান'
+                      : quickUser.type === 'deduct'
+                      ? '➖ ফাইন কমান'
+                      : quickUser.type === 'waive'
+                      ? '🛡️ জরিমানা মওকুফ করুন'
+                      : quickUser.type === 'remove_day'
+                      ? '📅 মিসড দিন রিমুভ করুন'
+                      : quickUser.type === 'delete'
+                      ? '🗑️ জরিমানা সম্পূর্ণ ডিলিট করুন'
+                      : '✏️ নির্ধারিত জরিমানা সেট করুন'}
+                  </span>
                 </h3>
                 <button type="button" onClick={() => setQuickUser(null)} className="w-7 h-7 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 text-muted-main hover:text-white transition-colors">
                   ✕
@@ -2386,7 +2509,13 @@ const BalanceManagementSection = ({
               </div>
 
               <div className="space-y-3">
-                {quickUser.type === 'remove_day' ? (
+                {quickUser.type === 'delete' ? (
+                  <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-center">
+                    <p className="text-xs font-bold text-red-400">
+                      আপনি কি {quickUser.name}-এর সমস্ত জরিমানা মুছে সম্পূর্ণ ৳০ করতে চান?
+                    </p>
+                  </div>
+                ) : quickUser.type === 'remove_day' ? (
                   <div>
                     <label className="block text-[10px] text-muted-main font-bold uppercase mb-1">তারিখ নির্বাচন করুন</label>
                     <input
@@ -2398,7 +2527,9 @@ const BalanceManagementSection = ({
                   </div>
                 ) : (
                   <div>
-                    <label className="block text-[10px] text-muted-main font-bold uppercase mb-1">টাকার পরিমাণ (৳)</label>
+                    <label className="block text-[10px] text-muted-main font-bold uppercase mb-1">
+                      {quickUser.type === 'set_exact' ? 'নির্ধারিত জরিমানা (৳)' : 'টাকার পরিমাণ (৳)'}
+                    </label>
                     <input
                       type="number"
                       value={quickAmount}
@@ -2409,7 +2540,7 @@ const BalanceManagementSection = ({
                     {/* Preset Amount Chips */}
                     <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                       <span className="text-[10px] text-muted-main font-bold">কুইক সিলেক্ট:</span>
-                      {[10, 20, 30, 50, 100].map(val => (
+                      {[0, 10, 20, 30, 50, 100].map(val => (
                         <button
                           key={val}
                           type="button"
@@ -4839,25 +4970,47 @@ export default function App() {
         totalConverts: 0
       });
 
-      // 2. Reset userBalances for all members
+      // 2. Reset userBalances for all members & approvedUsers
       const batch = writeBatch(db);
+      const processedKeys = new Set<string>();
+
       members.forEach(m => {
-        const uRef = doc(db, 'userBalances', m.id);
-        batch.set(uRef, {
-          whatsapp: m.whatsapp || '',
-          userName: m.name,
-          waivedFines: 0,
-          waivedDays: [],
-          manualAdjustments: 0,
-          balance: 0,
-          updatedAt: serverTimestamp()
-        }, { merge: true });
+        if (m.id) {
+          processedKeys.add(m.id);
+          const uRef = doc(db, 'userBalances', m.id);
+          batch.set(uRef, {
+            whatsapp: m.whatsapp || '',
+            userName: m.name,
+            waivedFines: 0,
+            waivedDays: [],
+            manualAdjustments: 0,
+            balance: 0,
+            updatedAt: serverTimestamp()
+          }, { merge: true });
+        }
 
         if (m.whatsapp) {
+          processedKeys.add(m.whatsapp);
           const uRefWa = doc(db, 'userBalances', m.whatsapp);
           batch.set(uRefWa, {
             whatsapp: m.whatsapp,
             userName: m.name,
+            waivedFines: 0,
+            waivedDays: [],
+            manualAdjustments: 0,
+            balance: 0,
+            updatedAt: serverTimestamp()
+          }, { merge: true });
+        }
+      });
+
+      approvedUsers.forEach(u => {
+        if (u.whatsapp && !processedKeys.has(u.whatsapp)) {
+          processedKeys.add(u.whatsapp);
+          const uRefWa = doc(db, 'userBalances', u.whatsapp);
+          batch.set(uRefWa, {
+            whatsapp: u.whatsapp,
+            userName: u.fullName,
             waivedFines: 0,
             waivedDays: [],
             manualAdjustments: 0,
@@ -5289,6 +5442,117 @@ export default function App() {
 
       await writeAuditLog(primaryKey, userName, 'Remove Day Fine', fineRate, reason, dateStr);
       showMsg(`${dateStr} তারিখের মিসড দিন বাদ দেওয়া হয়েছে!`, 'success');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `userBalances/${userKey}`, showMsg);
+    }
+  };
+
+  const adminResetUserFine = async (userKey: string, userName: string, reason: string) => {
+    try {
+      const cleanName = userName.trim().toLowerCase();
+      const cleanKey = (userKey || '').replace(/\s+/g, '');
+      const matchedApproved = approvedUsers.find(u => 
+        (u.whatsapp && u.whatsapp.replace(/\s+/g, '') === cleanKey) ||
+        u.fullName.trim().toLowerCase() === cleanName
+      );
+      const matchedMember = members.find(m => 
+        m.id === userKey ||
+        (m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanKey) ||
+        m.name.trim().toLowerCase() === cleanName
+      );
+
+      const targetWhatsapp = matchedApproved?.whatsapp || matchedMember?.whatsapp || (userKey.startsWith('01') || userKey.startsWith('+') ? userKey : '');
+      const targetMemberId = matchedMember?.id || (userKey.startsWith('01') || userKey.startsWith('+') ? '' : userKey);
+      const primaryKey = targetWhatsapp || targetMemberId || userKey;
+      const userBalRef = doc(db, 'userBalances', primaryKey);
+
+      const stats = computeUserSubmissionStats(targetWhatsapp || primaryKey, targetMemberId);
+      const rawMissed = stats?.rawMissedDays || 0;
+      const currentRate = config.fineAmount !== undefined ? config.fineAmount : 10;
+      const rawFine = rawMissed * currentRate;
+
+      const updatedBalance: UserBalance = {
+        id: targetMemberId || primaryKey,
+        whatsapp: targetWhatsapp || primaryKey,
+        userName: userName,
+        balance: 0,
+        waivedFines: rawFine,
+        manualAdjustments: 0,
+        waivedDays: [],
+        updatedAt: new Date().toISOString()
+      };
+
+      setUserBalances(prev => {
+        const next = { ...prev, [primaryKey]: updatedBalance };
+        if (targetWhatsapp && targetWhatsapp !== primaryKey) next[targetWhatsapp] = updatedBalance;
+        if (targetMemberId && targetMemberId !== primaryKey) next[targetMemberId] = updatedBalance;
+        if (userKey && userKey !== primaryKey) next[userKey] = updatedBalance;
+        return next;
+      });
+
+      await setDoc(userBalRef, {
+        ...updatedBalance,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+
+      await writeAuditLog(primaryKey, userName, 'Delete/Reset Fine', 0, reason || 'ফাইন সম্পূর্ণ ডিলিট/রিসেট করা হয়েছে');
+      showMsg(`${userName}-এর জরিমানা সম্পূর্ণ ডিলিট/রিসেট করা হয়েছে!`, 'success');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `userBalances/${userKey}`, showMsg);
+    }
+  };
+
+  const adminSetExactFine = async (userKey: string, userName: string, targetFine: number, reason: string) => {
+    try {
+      const cleanName = userName.trim().toLowerCase();
+      const cleanKey = (userKey || '').replace(/\s+/g, '');
+      const matchedApproved = approvedUsers.find(u => 
+        (u.whatsapp && u.whatsapp.replace(/\s+/g, '') === cleanKey) ||
+        u.fullName.trim().toLowerCase() === cleanName
+      );
+      const matchedMember = members.find(m => 
+        m.id === userKey ||
+        (m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanKey) ||
+        m.name.trim().toLowerCase() === cleanName
+      );
+
+      const targetWhatsapp = matchedApproved?.whatsapp || matchedMember?.whatsapp || (userKey.startsWith('01') || userKey.startsWith('+') ? userKey : '');
+      const targetMemberId = matchedMember?.id || (userKey.startsWith('01') || userKey.startsWith('+') ? '' : userKey);
+      const primaryKey = targetWhatsapp || targetMemberId || userKey;
+      const userBalRef = doc(db, 'userBalances', primaryKey);
+
+      const stats = computeUserSubmissionStats(targetWhatsapp || primaryKey, targetMemberId);
+      const rawMissed = stats?.rawMissedDays || 0;
+      const currentRate = config.fineAmount !== undefined ? config.fineAmount : 10;
+      const rawFine = rawMissed * currentRate;
+
+      const manualAdj = targetFine - rawFine;
+
+      const updatedBalance: UserBalance = {
+        id: targetMemberId || primaryKey,
+        whatsapp: targetWhatsapp || primaryKey,
+        userName: userName,
+        balance: 0,
+        waivedFines: 0,
+        manualAdjustments: manualAdj,
+        updatedAt: new Date().toISOString()
+      };
+
+      setUserBalances(prev => {
+        const next = { ...prev, [primaryKey]: updatedBalance };
+        if (targetWhatsapp && targetWhatsapp !== primaryKey) next[targetWhatsapp] = updatedBalance;
+        if (targetMemberId && targetMemberId !== primaryKey) next[targetMemberId] = updatedBalance;
+        if (userKey && userKey !== primaryKey) next[userKey] = updatedBalance;
+        return next;
+      });
+
+      await setDoc(userBalRef, {
+        ...updatedBalance,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+
+      await writeAuditLog(primaryKey, userName, 'Set Exact Fine', targetFine, reason || `জরিমানা ৳${targetFine} করা হয়েছে`);
+      showMsg(`${userName}-এর জরিমানা ৳${targetFine} নির্ধারণ করা হয়েছে!`, 'success');
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `userBalances/${userKey}`, showMsg);
     }
@@ -7638,6 +7902,8 @@ export default function App() {
                        onUpdateBalance={adminUpdateBalance}
                        onWaiveFine={adminWaiveFine}
                        onRemoveDayFine={adminRemoveDayFine}
+                       onResetUserFine={adminResetUserFine}
+                       onSetExactFine={adminSetExactFine}
                        onRecalculateFine={adminRecalculateFine}
                        computeUserSubmissionStats={computeUserSubmissionStats}
                      />
