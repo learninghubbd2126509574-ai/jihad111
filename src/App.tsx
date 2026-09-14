@@ -5855,26 +5855,53 @@ export default function App() {
     
     // 1. Create base lists with all necessary data merged
     const allLeaders = members.filter(m => m.type === 'leader').map((m) => {
+      const cleanMName = normalizeName(m.name);
       const rankingEntry = leaderRanking.find(r => 
-        r.name.trim().toLowerCase() === m.name.trim().toLowerCase()
+        r.id === m.id ||
+        r.name.trim().toLowerCase() === m.name.trim().toLowerCase() ||
+        (cleanMName && normalizeName(r.name) === cleanMName)
       );
+      const res = results[m.id] || { lead: 0, convert: 0, personalLead: 0, submitted: false };
+      const baseScore = Number(rankingEntry?.score) || 0;
+      const todayConvert = (res.submitted || (res.convert || 0) > 0) ? Number(res.convert || 0) : 0;
+      // Effective total score immediately reflects submitted converts even before Firestore snapshot round-trip
+      const effectiveScore = Math.max(baseScore, baseScore + todayConvert, todayConvert);
+
+      const baseLeads = Number(rankingEntry?.leads) || 0;
+      const todayPersonalLead = (res.submitted || (res.personalLead || 0) > 0) ? Number(res.personalLead || 0) : 0;
+      const effectiveLeads = Math.max(baseLeads, todayPersonalLead);
+
       return {
         ...m,
-        score: rankingEntry?.score || 0,
-        leads: rankingEntry?.leads || 0,
-        result: results[m.id] || { lead: 0, convert: 0, personalLead: 0, submitted: false }
+        score: effectiveScore,
+        baseScore: baseScore,
+        leads: effectiveLeads,
+        result: res
       };
     });
 
     const allTrainers = members.filter(m => m.type === 'trainer').map((m) => {
+      const cleanMName = normalizeName(m.name);
       const rankingEntry = trainerRanking.find(r => 
-        r.name.trim().toLowerCase() === m.name.trim().toLowerCase()
+        r.id === m.id ||
+        r.name.trim().toLowerCase() === m.name.trim().toLowerCase() ||
+        (cleanMName && normalizeName(r.name) === cleanMName)
       );
+      const res = results[m.id] || { lead: 0, convert: 0, personalLead: 0, submitted: false };
+      const baseScore = Number(rankingEntry?.score) || 0;
+      const todayConvert = (res.submitted || (res.convert || 0) > 0) ? Number(res.convert || 0) : 0;
+      const effectiveScore = Math.max(baseScore, baseScore + todayConvert, todayConvert);
+
+      const baseLeads = Number(rankingEntry?.leads) || 0;
+      const todayPersonalLead = (res.submitted || (res.personalLead || 0) > 0) ? Number(res.personalLead || 0) : 0;
+      const effectiveLeads = Math.max(baseLeads, todayPersonalLead);
+
       return {
         ...m,
-        score: rankingEntry?.score || 0,
-        leads: rankingEntry?.leads || 0,
-        result: results[m.id] || { lead: 0, convert: 0, personalLead: 0, submitted: false }
+        score: effectiveScore,
+        baseScore: baseScore,
+        leads: effectiveLeads,
+        result: res
       };
     });
 
@@ -5885,15 +5912,6 @@ export default function App() {
       const convB = b.result?.convert || 0;
       if (convB !== convA) return convB - convA;
       
-      // Tie-breaker for same convert: Earlier submission wins
-      if (convA > 0 && convB > 0) {
-        const timeA = a.result?.updatedAt?.toMillis?.() || a.result?.updatedAt?.seconds * 1000 || Date.now();
-        const timeB = b.result?.updatedAt?.toMillis?.() || b.result?.updatedAt?.seconds * 1000 || Date.now();
-        if (timeA !== timeB) {
-          return timeA - timeB; // Lower time (earlier) comes first
-        }
-      }
-
       // Secondary sort: Today's Personal Lead count (descending)
       const pLeadA = a.result?.personalLead || 0;
       const pLeadB = b.result?.personalLead || 0;
@@ -5901,25 +5919,33 @@ export default function App() {
 
       // Tertiary sort: Lifetime Score (score)
       if ((b.score || 0) !== (a.score || 0)) return (b.score || 0) - (a.score || 0);
-      return (b.leads || 0) - (a.leads || 0);
+
+      // Tie-breaker for same convert: Earlier submission wins
+      const timeA = a.result?.updatedAt?.toMillis?.() || a.result?.updatedAt?.seconds * 1000 || 0;
+      const timeB = b.result?.updatedAt?.toMillis?.() || b.result?.updatedAt?.seconds * 1000 || 0;
+      if (timeA && timeB && timeA !== timeB) {
+        return timeA - timeB; // Lower time (earlier) comes first
+      }
+
+      return a.name.localeCompare(b.name);
     };
 
     // Ranking sort function: strictly by Total Converts (score)
     const sortByTotalRanking = (a: any, b: any) => {
-      // Primary sort: Total Converts / Lifetime score (descending)
+      // Primary sort: Total Converts / Lifetime score + Today's converts (descending)
       const scoreA = a.score || 0;
       const scoreB = b.score || 0;
       if (scoreB !== scoreA) return scoreB - scoreA;
 
-      // Secondary sort: Total Leads (descending)
-      const leadsA = a.leads || 0;
-      const leadsB = b.leads || 0;
-      if (leadsB !== leadsA) return leadsB - leadsA;
-
-      // Tertiary sort: Today's Convert count (descending)
+      // Secondary sort: Today's Convert count (descending)
       const convA = a.result?.convert || 0;
       const convB = b.result?.convert || 0;
       if (convB !== convA) return convB - convA;
+
+      // Tertiary sort: Total Leads (descending)
+      const leadsA = a.leads || 0;
+      const leadsB = b.leads || 0;
+      if (leadsB !== leadsA) return leadsB - leadsA;
 
       // Alphabetical tie-breaker
       return a.name.localeCompare(b.name);
@@ -5927,19 +5953,19 @@ export default function App() {
 
     // 3. Calculate Global Stats (Team Leaders + Team Trainers)
     allLeaders.forEach(m => {
-      if (m.result.submitted) {
-        totalLeads += m.result.lead;
-        todayConverts += m.result.convert;
-        todayLeads += m.result.lead;
+      if (m.result.submitted || (m.result.convert || 0) > 0) {
+        totalLeads += m.result.lead || 0;
+        todayConverts += m.result.convert || 0;
+        todayLeads += m.result.lead || 0;
         totalSubmittedConverts += m.result.convert || 0;
       }
     });
 
     allTrainers.forEach(m => {
-      if (m.result.submitted) {
-        totalLeads += m.result.lead;
-        todayConverts += m.result.convert;
-        todayLeads += m.result.lead;
+      if (m.result.submitted || (m.result.convert || 0) > 0) {
+        totalLeads += m.result.lead || 0;
+        todayConverts += m.result.convert || 0;
+        todayLeads += m.result.lead || 0;
         totalSubmittedConverts += m.result.convert || 0;
       }
     });
@@ -5962,9 +5988,9 @@ export default function App() {
         todayConverts: todayConverts,
         todayLeads: todayLeads
       },
-      topLeader: sortedL[0]?.result?.submitted && sortedL[0]?.result?.convert > 0 ? sortedL[0] : null,
-      topTrainer: sortedT[0]?.result?.submitted && sortedT[0]?.result?.convert > 0 ? sortedT[0] : null,
-      topOverall: allSorted[0]?.result?.submitted && allSorted[0]?.result?.convert > 0 ? allSorted[0] : null,
+      topLeader: sortedL[0] && (sortedL[0]?.result?.convert || 0) > 0 ? sortedL[0] : null,
+      topTrainer: sortedT[0] && (sortedT[0]?.result?.convert || 0) > 0 ? sortedT[0] : null,
+      topOverall: allSorted[0] && (allSorted[0]?.result?.convert || 0) > 0 ? allSorted[0] : null,
       sortedLeaders: sortedL,
       sortedTrainers: sortedT,
       sortedLeaderRanking: sortedLR,
