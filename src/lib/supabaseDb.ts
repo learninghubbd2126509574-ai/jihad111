@@ -55,12 +55,12 @@ async function initMemoryStore() {
           const docId = t.id;
           const map = memoryStore[colName] || (memoryStore[colName] = new Map());
           const localDoc = map.get(docId);
-          listener.onNext(createDocSnapshot(docId, localDoc));
+          listener.onNext(createDocSnapshot(colName, docId, localDoc));
         } else {
           const colName = t.type === 'query' ? t.collection : t.name;
           const constraints = t.type === 'query' ? t.constraints : [];
           const map = memoryStore[colName] || (memoryStore[colName] = new Map());
-          listener.onNext(createQuerySnapshot(map, constraints));
+          listener.onNext(createQuerySnapshot(colName, map, constraints));
         }
       } catch (e) {
         console.warn('Error notifying listener on backup load:', e);
@@ -201,14 +201,14 @@ function notifyListeners(colName: string, docId?: string) {
       if (t.type === 'doc') {
         if (t.collection === colName && (!docId || t.id === docId)) {
           const map = memoryStore[colName] || (memoryStore[colName] = new Map());
-          listener.onNext(createDocSnapshot(t.id, map.get(t.id) || null));
+          listener.onNext(createDocSnapshot(colName, t.id, map.get(t.id) || null));
         }
       } else {
         const targetCol = t.type === 'query' ? t.collection : t.name;
         if (targetCol === colName) {
           const map = memoryStore[colName] || (memoryStore[colName] = new Map());
           const constraints = t.type === 'query' ? t.constraints : [];
-          listener.onNext(createQuerySnapshot(map, constraints));
+          listener.onNext(createQuerySnapshot(colName, map, constraints));
         }
       }
     } catch (e) {
@@ -245,18 +245,19 @@ function packSupabaseRow(tableName: string, id: string, docData: any): any {
   return row;
 }
 
-function createDocSnapshot(id: string, rawData: any): DocumentSnapshot {
+function createDocSnapshot(colName: string, id: string, rawData: any): DocumentSnapshot {
   const exists = rawData !== null && rawData !== undefined;
   const data = exists ? { ...rawData, id } : undefined;
   return {
     id,
+    ref: { type: 'doc', collection: colName, id },
     exists: () => exists,
     data: () => (exists ? { ...data } : undefined),
     ...(exists ? data : {})
   };
 }
 
-function createQuerySnapshot(docsMap: Map<string, any>, constraints: QueryConstraint[] = []): QuerySnapshot {
+function createQuerySnapshot(colName: string, docsMap: Map<string, any>, constraints: QueryConstraint[] = []): QuerySnapshot {
   let list = Array.from(docsMap.values());
 
   // Apply constraints in-memory
@@ -289,7 +290,7 @@ function createQuerySnapshot(docsMap: Map<string, any>, constraints: QueryConstr
     }
   }
 
-  const docs = list.map((item) => createDocSnapshot(item.id, item));
+  const docs = list.map((item) => createDocSnapshot(colName, item.id, item));
   return {
     docs,
     size: docs.length,
@@ -344,7 +345,7 @@ export function onSnapshot(
 
     // 1. Initial emission from memory/cache
     const localDoc = map.get(docId);
-    onNext(createDocSnapshot(docId, localDoc));
+    onNext(createDocSnapshot(colName, docId, localDoc));
 
     let active = true;
     let channel: any = null;
@@ -358,7 +359,7 @@ export function onSnapshot(
           if (!error && data) {
             const unpacked = unpackSupabaseRow(data);
             map.set(docId, unpacked);
-            onNext(createDocSnapshot(docId, unpacked));
+            onNext(createDocSnapshot(colName, docId, unpacked));
           }
         } catch (err) {
           if (onError) onError(err);
@@ -376,11 +377,11 @@ export function onSnapshot(
             if (!active) return;
             if (payload.eventType === 'DELETE') {
               map.delete(docId);
-              onNext(createDocSnapshot(docId, null));
+              onNext(createDocSnapshot(colName, docId, null));
             } else {
               const unpacked = unpackSupabaseRow(payload.new);
               map.set(docId, unpacked);
-              onNext(createDocSnapshot(docId, unpacked));
+              onNext(createDocSnapshot(colName, docId, unpacked));
             }
           }
         )
@@ -403,7 +404,7 @@ export function onSnapshot(
   const map = memoryStore[colName];
 
   // 1. Initial emission from memory
-  onNext(createQuerySnapshot(map, constraints));
+  onNext(createQuerySnapshot(colName, map, constraints));
 
   let active = true;
   let channel: any = null;
@@ -422,7 +423,7 @@ export function onSnapshot(
               map.set(String(unpacked.id), unpacked);
             }
           }
-          onNext(createQuerySnapshot(map, constraints));
+          onNext(createQuerySnapshot(colName, map, constraints));
         }
       } catch (err) {
         if (onError) onError(err);
@@ -447,7 +448,7 @@ export function onSnapshot(
               map.set(String(unpacked.id), unpacked);
             }
           }
-          onNext(createQuerySnapshot(map, constraints));
+          onNext(createQuerySnapshot(colName, map, constraints));
         }
       )
       .subscribe();
@@ -479,14 +480,14 @@ export async function getDoc(docRef: DocRef): Promise<DocumentSnapshot> {
       if (!error && data) {
         const unpacked = unpackSupabaseRow(data);
         map.set(docId, unpacked);
-        return createDocSnapshot(docId, unpacked);
+        return createDocSnapshot(colName, docId, unpacked);
       }
     } catch (e) {
       console.warn(`Supabase getDoc fallback for ${colName}/${docId}:`, e);
     }
   }
 
-  return createDocSnapshot(docId, map.get(docId) || null);
+  return createDocSnapshot(colName, docId, map.get(docId) || null);
 }
 
 export async function getDocFromServer(docRef: DocRef): Promise<DocumentSnapshot> {
@@ -498,7 +499,7 @@ export async function getDocFromCache(docRef: DocRef): Promise<DocumentSnapshot>
   const colName = docRef.collection;
   const docId = docRef.id;
   const map = memoryStore[colName] || (memoryStore[colName] = new Map());
-  return createDocSnapshot(docId, map.get(docId) || null);
+  return createDocSnapshot(colName, docId, map.get(docId) || null);
 }
 
 export async function getDocs(target: CollectionRef | QueryRef): Promise<QuerySnapshot> {
@@ -533,7 +534,7 @@ export async function getDocs(target: CollectionRef | QueryRef): Promise<QuerySn
     }
   }
 
-  return createQuerySnapshot(map, constraints);
+  return createQuerySnapshot(colName, map, constraints);
 }
 
 export async function getDocsFromCache(target: CollectionRef | QueryRef): Promise<QuerySnapshot> {
@@ -541,7 +542,7 @@ export async function getDocsFromCache(target: CollectionRef | QueryRef): Promis
   const colName = target.type === 'query' ? target.collection : target.name;
   const constraints = target.type === 'query' ? target.constraints : [];
   const map = memoryStore[colName] || (memoryStore[colName] = new Map());
-  return createQuerySnapshot(map, constraints);
+  return createQuerySnapshot(colName, map, constraints);
 }
 
 function applyFieldOperations(existing: any = {}, incoming: any = {}): any {
