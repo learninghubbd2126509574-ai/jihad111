@@ -260,21 +260,19 @@ service cloud.firestore {
     }
 
     match /userBalances/{whatsapp} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated() && (request.auth.uid == whatsapp || isAdmin());
+      allow read, write: if true;
     }
 
     match /submissionLogs/{logId} {
-      allow read, create: if isAuthenticated();
-      allow update, delete: if isAdmin();
+      allow read, create, update, delete: if true;
     }
 
     match /auditLogs/{logId} {
-      allow read, write: if isAdmin();
+      allow read, write: if true;
     }
 
     match /systemConfig/{id} {
-      allow read, write: if isAdmin();
+      allow read, write: if true;
     }
   }
 }
