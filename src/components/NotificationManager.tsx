@@ -361,6 +361,22 @@ export const sendNotification = async (title: string, body: string, recipient: s
       readBy: [],
       isSystem: sender === 'system'
     }).catch(e => console.error('Error writing notification doc:', e));
+
+    // Send Push Notification via Backend (FCM)
+    try {
+      fetch('/api/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: formattedTitle,
+          body,
+          recipient,
+          icon: '/icon.jpg'
+        })
+      }).catch(e => console.warn('Push notification delivery skipped:', e));
+    } catch (e) {
+      // ignore push errors
+    }
   } catch (error) {
     console.error('Failed to send notification:', error);
   }

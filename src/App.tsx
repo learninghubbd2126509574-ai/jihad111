@@ -36,7 +36,8 @@ import {
   signInAnonymously,
   type User as FirebaseUser
 } from 'firebase/auth';
-import { db, auth, storage } from './firebase';
+import { getToken, onMessage } from 'firebase/messaging';
+import { db, auth, storage, messaging } from './firebase';
 import { ref, uploadBytes, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -2726,6 +2727,26 @@ export default function App() {
   const [demoAttendance, setDemoAttendance] = useState<DemoAttendance[]>([]);
   const [showDemoModal, setShowDemoModal] = useState(false);
   const [showDemoHistory, setShowDemoHistory] = useState<boolean>(false);
+  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
+
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      showMsg('সিস্টেম পুনরায় কানেক্ট হয়েছে (Online)', 'success');
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+      showMsg('ইন্টারনেট কানেকশন নেই (Offline)', 'error');
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   const [pendingUsers, setPendingUsers] = useState<UserRegistration[]>([]);
   const [approvedUsers, setApprovedUsers] = useState<UserRegistration[]>([]);
@@ -2841,6 +2862,53 @@ export default function App() {
 
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
       setUser(u);
+      
+      // Handle Push Notification Registration
+      if (u) {
+        try {
+          const registeredUserStr = localStorage.getItem('unity_user');
+          const isAdminLoggedIn = localStorage.getItem('isAdmin') === 'true';
+          
+          let whatsapp = '';
+          if (registeredUserStr) {
+            const registeredUser = JSON.parse(registeredUserStr);
+            whatsapp = registeredUser.whatsapp;
+          } else if (isAdminLoggedIn) {
+            whatsapp = 'admin';
+          }
+
+          if (whatsapp && messaging) {
+            const token = await getToken(messaging, {
+              vapidKey: (import.meta as any).env.VITE_FCM_VAPID_KEY
+            });
+            if (token) {
+              console.log('FCM Token received:', token);
+              await fetch('/api/save-token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  whatsapp,
+                  token,
+                  platform: 'web'
+                })
+              });
+            }
+          }
+        } catch (fcmErr) {
+          console.warn('FCM Token registration skipped or failed:', fcmErr);
+        }
+      }
+
+      // Handle Foreground FCM Messages
+      if (messaging) {
+        onMessage(messaging, (payload) => {
+          console.log('Foreground message received:', payload);
+          if (payload.notification) {
+            triggerNativeNotification(payload.notification.title || '', payload.notification.body || '');
+          }
+        });
+      }
+
       // Auto-restore anonymous auth for both admins and regular users who are logged in
       const isUserLoggedIn = localStorage.getItem('unity_user') !== null;
       const isAdminLoggedIn = localStorage.getItem('isAdmin') === 'true';
@@ -3313,7 +3381,11 @@ export default function App() {
           if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
           if (!timerEndedTriggeredRef.current) {
             timerEndedTriggeredRef.current = true;
-            if (config.timerNotificationsActive !== false) {
+            
+            // Only notify if it ended recently (within 60 seconds) to avoid reload spam
+            const endedRecently = config.timerEndTime && (Date.now() - config.timerEndTime < 60000);
+            
+            if (config.timerNotificationsActive !== false && endedRecently) {
               const { title, body } = generateTimerPerformanceSummary();
               triggerNativeNotification(title, body);
             }
@@ -5601,6 +5673,17 @@ export default function App() {
   return (
     <div className="min-h-screen pb-20">
       <NotificationManager user={currentAuthUser || user} position={currentAuthUser?.position} />
+      
+      {!isOnline && (
+        <motion.div 
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-full shadow-lg text-xs font-bold"
+        >
+          <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+          ইন্টারনেট ডিসকানেক্টেড (Offline)
+        </motion.div>
+      )}
       {/* Global Announcement */}
       <AnimatePresence>
         {config.announcementActive && config.announcement && !announcementDismissed && (
