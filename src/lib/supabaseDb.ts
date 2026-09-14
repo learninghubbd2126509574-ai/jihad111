@@ -5,28 +5,47 @@
  */
 
 import { getSupabase, isSupabaseConfigured } from '../supabase';
-import initialBackupData from '../../firestore_backup.json';
 
 // In-memory cache to support instant UI response and offline/fallback behavior
 const memoryStore: Record<string, Map<string, any>> = {};
+let isBackupLoaded = false;
+let isBackupLoading = false;
 
-// Initialize memory store from backup data
-function initMemoryStore() {
-  if (Object.keys(memoryStore).length > 0) return;
-  const backup = initialBackupData as Record<string, any[]>;
-  for (const [col, docs] of Object.entries(backup)) {
-    const map = new Map<string, any>();
-    if (Array.isArray(docs)) {
-      for (const d of docs) {
-        if (d && d.id) {
-          map.set(String(d.id), { ...d });
+// Async initialize memory store from public backup file if available
+async function initMemoryStore() {
+  if (isBackupLoaded || isBackupLoading) return;
+  isBackupLoading = true;
+  
+  try {
+    const response = await fetch('/firestore_backup.json');
+    if (response.ok) {
+      const backup = await response.json() as Record<string, any[]>;
+      for (const [col, docs] of Object.entries(backup)) {
+        if (!memoryStore[col]) {
+          memoryStore[col] = new Map<string, any>();
+        }
+        const map = memoryStore[col];
+        if (Array.isArray(docs)) {
+          for (const d of docs) {
+            if (d && d.id && !map.has(String(d.id))) {
+              map.set(String(d.id), { ...d });
+            }
+          }
         }
       }
     }
-    memoryStore[col] = map;
+  } catch (err) {
+    console.warn('Could not load backup data, using default empty state.', err);
+  } finally {
+    isBackupLoaded = true;
+    isBackupLoading = false;
   }
 }
-initMemoryStore();
+
+// Trigger load in background
+if (typeof window !== 'undefined') {
+  initMemoryStore();
+}
 
 export interface CollectionRef {
   type: 'collection';
