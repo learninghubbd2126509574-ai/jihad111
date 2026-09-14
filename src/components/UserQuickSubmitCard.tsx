@@ -54,17 +54,21 @@ export default function UserQuickSubmitCard({
   useEffect(() => {
     if (myMember) {
       setSelectedMemberId(myMember.id);
-    } else if (eligibleMembers.length > 0 && !selectedMemberId) {
-      // Try to find by name match
-      if (currentAuthUser?.fullName) {
-        const found = eligibleMembers.find(
-          m => m.name.trim().toLowerCase() === currentAuthUser.fullName.trim().toLowerCase()
-        );
-        if (found) {
-          setSelectedMemberId(found.id);
-          return;
-        }
+    } else if (currentAuthUser) {
+      // Find matching member in eligibleMembers by name or whatsapp
+      const cleanWa = currentAuthUser.whatsapp ? currentAuthUser.whatsapp.replace(/\s+/g, '') : '';
+      const cleanName = currentAuthUser.fullName ? currentAuthUser.fullName.trim().toLowerCase() : '';
+      const found = eligibleMembers.find(
+        m => (cleanName && m.name.trim().toLowerCase() === cleanName) ||
+             (cleanWa && (m as any).whatsapp && (m as any).whatsapp.replace(/\s+/g, '') === cleanWa)
+      );
+      if (found) {
+        setSelectedMemberId(found.id);
+      } else {
+        // Fallback to user's own registered whatsapp ID if no member record exists yet
+        setSelectedMemberId(`user-${currentAuthUser.whatsapp || 'self'}`);
       }
+    } else if (eligibleMembers.length > 0 && !selectedMemberId) {
       setSelectedMemberId(eligibleMembers[0].id);
     }
   }, [myMember, currentAuthUser, eligibleMembers]);

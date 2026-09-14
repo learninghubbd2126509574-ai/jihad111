@@ -4842,15 +4842,33 @@ export default function App() {
       return;
     }
     try {
-      const prevResult = results[memberId] || { lead: 0, convert: 0, personalLead: 0 };
+      // Find matching member from members OR approvedUsers
+      const cleanWa = currentAuthUser?.whatsapp ? currentAuthUser.whatsapp.replace(/\s+/g, '') : '';
+      const cleanAuthName = currentAuthUser?.fullName ? normalizeName(currentAuthUser.fullName) : '';
+      
+      const member = members.find(m => 
+        m.id === memberId ||
+        (cleanWa && m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanWa) ||
+        (cleanAuthName && normalizeName(m.name) === cleanAuthName)
+      );
+
+      const matchedUser = approvedUsers.find(u => 
+        (cleanWa && u.whatsapp && u.whatsapp.replace(/\s+/g, '') === cleanWa) ||
+        (cleanAuthName && normalizeName(u.fullName) === cleanAuthName)
+      );
+
+      const targetName = member?.name || matchedUser?.fullName || currentAuthUser?.fullName || 'Leader';
+      const targetWhatsapp = member?.whatsapp || matchedUser?.whatsapp || currentAuthUser?.whatsapp || '';
+      const targetId = member?.id || memberId || (targetWhatsapp ? `user-${targetWhatsapp}` : 'unknown');
+
+      const prevResult = results[targetId] || results[memberId] || { lead: 0, convert: 0, personalLead: 0 };
       const diffScore = convert - (prevResult.convert || 0);
       const diffLeads = personalLead - (prevResult.personalLead || 0);
-      const member = members.find(m => m.id === memberId);
 
-      // Use memberId as the document ID for predictable updates
-      const resultRef = doc(db, 'results', memberId);
       const data = {
-        memberId,
+        memberId: targetId,
+        memberName: targetName,
+        whatsapp: targetWhatsapp,
         lead,
         convert,
         personalLead,
@@ -4858,15 +4876,30 @@ export default function App() {
         updatedAt: serverTimestamp()
       };
       
-      await setDoc(resultRef, data);
+      await setDoc(doc(db, 'results', targetId), data);
+      if (memberId && memberId !== targetId) {
+        await setDoc(doc(db, 'results', memberId), data);
+      }
+
+      // Optimistic state update so UI updates INSTANTLY
+      const localResultData = {
+        ...data,
+        updatedAt: { seconds: Math.floor(Date.now() / 1000) }
+      } as any;
+
+      setResults(prev => ({
+        ...prev,
+        [targetId]: localResultData,
+        ...(memberId !== targetId ? { [memberId]: localResultData } : {})
+      }));
 
       // Save in submissionLogs for permanent historical daily logging
       const todayStr = format(new Date(), 'yyyy-MM-dd');
-      const logRef = doc(db, 'submissionLogs', `${memberId}_${todayStr}`);
+      const logRef = doc(db, 'submissionLogs', `${targetId}_${todayStr}`);
       await setDoc(logRef, {
-        whatsapp: currentAuthUser?.whatsapp || '',
-        memberId,
-        memberName: member?.name || '',
+        whatsapp: targetWhatsapp,
+        memberId: targetId,
+        memberName: targetName,
         date: todayStr,
         lead,
         convert,
@@ -4874,41 +4907,52 @@ export default function App() {
         submittedAt: serverTimestamp()
       }, { merge: true });
 
+      // Determine user type (Leader or Trainer)
+      const isLeader = member?.type === 'leader' || matchedUser?.position === 'Team Leader' || matchedUser?.position === 'STL' || currentAuthUser?.position === 'Team Leader' || currentAuthUser?.position === 'STL';
+      const isTrainer = member?.type === 'trainer' || matchedUser?.position === 'Team Trainer' || currentAuthUser?.position === 'Team Trainer';
+      const userType = isLeader ? 'leader' : (isTrainer ? 'trainer' : (member?.type || 'leader'));
+
       // Update global total and individual ranking score
       if (diffScore !== 0 || diffLeads !== 0) {
         // Update global total (Only for Leaders)
-        if (member?.type === 'leader' && diffScore !== 0) {
+        if (userType === 'leader' && diffScore !== 0) {
           await updateDoc(doc(db, 'config', 'global'), {
             totalConverts: increment(diffScore)
           });
         }
 
-        // Update individual ranking score if names match
-        if (member) {
-          const rankingList = member.type === 'leader' ? leaderRanking : trainerRanking;
-          const cleanMemberName = normalizeName(member.name);
-          const rankingEntry = rankingList.find(r => 
-            r.id === member.id ||
-            r.name.trim().toLowerCase() === member.name.trim().toLowerCase() ||
-            (cleanMemberName && normalizeName(r.name) === cleanMemberName)
-          );
-          
-          const coll = member.type === 'leader' ? 'leaderRanking' : 'trainerRanking';
+        const rankingList = userType === 'leader' ? leaderRanking : trainerRanking;
+        const cleanTargetName = normalizeName(targetName);
+        const rankingEntry = rankingList.find(r => 
+          r.id === targetId ||
+          r.id === memberId ||
+          (cleanWa && r.whatsapp && r.whatsapp.replace(/\s+/g, '') === cleanWa) ||
+          r.name.trim().toLowerCase() === targetName.trim().toLowerCase() ||
+          (cleanTargetName && normalizeName(r.name) === cleanTargetName)
+        );
+        
+        const coll = userType === 'leader' ? 'leaderRanking' : 'trainerRanking';
 
-          if (rankingEntry) {
-            await updateDoc(doc(db, coll, rankingEntry.id), {
-              score: increment(diffScore),
-              leads: increment(diffLeads)
-            });
-          } else {
-            // Auto-create ranking entry if missing, so their score is tracked
-            await addDoc(collection(db, coll), {
-              name: member.name,
-              score: convert, // Starting score is their current total
-              leads: personalLead,
-              createdAt: serverTimestamp()
-            });
-          }
+        if (rankingEntry) {
+          await updateDoc(doc(db, coll, rankingEntry.id), {
+            score: increment(diffScore),
+            leads: increment(diffLeads)
+          });
+          // Optimistic local state update
+          const updater = userType === 'leader' ? setLeaderRanking : setTrainerRanking;
+          updater(prev => prev.map(r => r.id === rankingEntry.id ? { ...r, score: Math.max(0, (r.score || 0) + diffScore), leads: Math.max(0, (r.leads || 0) + diffLeads) } : r));
+        } else {
+          // Auto-create ranking entry if missing, so their score is tracked
+          const newDocRef = await addDoc(collection(db, coll), {
+            name: targetName,
+            whatsapp: targetWhatsapp,
+            score: convert, // Starting score is their current total
+            leads: personalLead,
+            createdAt: serverTimestamp()
+          });
+          // Optimistic local state update
+          const updater = userType === 'leader' ? setLeaderRanking : setTrainerRanking;
+          updater(prev => [...prev, { id: newDocRef.id, name: targetName, score: convert, leads: personalLead, whatsapp: targetWhatsapp }]);
         }
       }
 
@@ -5853,18 +5897,80 @@ export default function App() {
     let totalSubmittedConverts = 0;
     let todayLeads = 0;
     
-    // 1. Create base lists with all necessary data merged
-    const allLeaders = members.filter(m => m.type === 'leader').map((m) => {
+    // Helper to resolve result for any member/user by ID, whatsapp, or name
+    const getResultForMember = (m: { id: string; name: string; whatsapp?: string }) => {
+      if (results[m.id]) return results[m.id];
+      const cleanWa = m.whatsapp ? m.whatsapp.replace(/\s+/g, '') : '';
+      if (cleanWa && results[cleanWa]) return results[cleanWa];
+      if (cleanWa && results[`user-${cleanWa}`]) return results[`user-${cleanWa}`];
+      
       const cleanMName = normalizeName(m.name);
+      const foundEntry = Object.values(results).find(r => {
+        const resObj = r as any;
+        if (resObj.memberId === m.id) return true;
+        if (cleanWa && resObj.memberId && resObj.memberId.replace(/\s+/g, '') === cleanWa) return true;
+        const rName = resObj.name || resObj.memberName;
+        if (cleanMName && rName && normalizeName(rName) === cleanMName) return true;
+        return false;
+      });
+      return foundEntry || { lead: 0, convert: 0, personalLead: 0, submitted: false };
+    };
+
+    // 1. Build comprehensive Leaders list (members + approvedUsers + leaderRanking)
+    const leaderMap = new Map<string, any>();
+
+    // Add leaders from manual members collection
+    members.filter(m => m.type === 'leader').forEach(m => {
+      const key = normalizeName(m.name) || m.id;
+      leaderMap.set(key, m);
+    });
+
+    // Add registered Team Leaders / STLs
+    approvedUsers.filter(u => u.position === 'Team Leader' || u.position === 'STL').forEach(u => {
+      const key = normalizeName(u.fullName);
+      if (key && !leaderMap.has(key)) {
+        leaderMap.set(key, {
+          id: `user-${u.whatsapp}`,
+          name: u.fullName,
+          type: 'leader',
+          whatsapp: u.whatsapp,
+          createdAt: u.createdAt
+        });
+      }
+    });
+
+    // Add any standalone leaderRanking entries
+    leaderRanking.forEach(r => {
+      const cleanRName = normalizeName(r.name);
+      const cleanRWa = r.whatsapp ? r.whatsapp.replace(/\s+/g, '') : '';
+      const exists = Array.from(leaderMap.values()).some(m => 
+        m.id === r.id ||
+        (cleanRWa && m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanRWa) ||
+        (cleanRName && normalizeName(m.name) === cleanRName)
+      );
+      if (!exists && r.name) {
+        const key = cleanRName || r.id;
+        leaderMap.set(key, {
+          id: r.id,
+          name: r.name,
+          type: 'leader',
+          whatsapp: r.whatsapp || ''
+        });
+      }
+    });
+
+    const allLeaders = Array.from(leaderMap.values()).map((m) => {
+      const cleanMName = normalizeName(m.name);
+      const cleanWa = m.whatsapp ? m.whatsapp.replace(/\s+/g, '') : '';
       const rankingEntry = leaderRanking.find(r => 
         r.id === m.id ||
+        (cleanWa && r.whatsapp && r.whatsapp.replace(/\s+/g, '') === cleanWa) ||
         r.name.trim().toLowerCase() === m.name.trim().toLowerCase() ||
         (cleanMName && normalizeName(r.name) === cleanMName)
       );
-      const res = results[m.id] || { lead: 0, convert: 0, personalLead: 0, submitted: false };
+      const res = getResultForMember(m);
       const baseScore = Number(rankingEntry?.score) || 0;
       const todayConvert = (res.submitted || (res.convert || 0) > 0) ? Number(res.convert || 0) : 0;
-      // Effective total score immediately reflects submitted converts even before Firestore snapshot round-trip
       const effectiveScore = Math.max(baseScore, baseScore + todayConvert, todayConvert);
 
       const baseLeads = Number(rankingEntry?.leads) || 0;
@@ -5880,14 +5986,56 @@ export default function App() {
       };
     });
 
-    const allTrainers = members.filter(m => m.type === 'trainer').map((m) => {
+    // 2. Build comprehensive Trainers list (members + approvedUsers + trainerRanking)
+    const trainerMap = new Map<string, any>();
+
+    members.filter(m => m.type === 'trainer').forEach(m => {
+      const key = normalizeName(m.name) || m.id;
+      trainerMap.set(key, m);
+    });
+
+    approvedUsers.filter(u => u.position === 'Team Trainer').forEach(u => {
+      const key = normalizeName(u.fullName);
+      if (key && !trainerMap.has(key)) {
+        trainerMap.set(key, {
+          id: `user-${u.whatsapp}`,
+          name: u.fullName,
+          type: 'trainer',
+          whatsapp: u.whatsapp,
+          createdAt: u.createdAt
+        });
+      }
+    });
+
+    trainerRanking.forEach(r => {
+      const cleanRName = normalizeName(r.name);
+      const cleanRWa = r.whatsapp ? r.whatsapp.replace(/\s+/g, '') : '';
+      const exists = Array.from(trainerMap.values()).some(m => 
+        m.id === r.id ||
+        (cleanRWa && m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanRWa) ||
+        (cleanRName && normalizeName(m.name) === cleanRName)
+      );
+      if (!exists && r.name) {
+        const key = cleanRName || r.id;
+        trainerMap.set(key, {
+          id: r.id,
+          name: r.name,
+          type: 'trainer',
+          whatsapp: r.whatsapp || ''
+        });
+      }
+    });
+
+    const allTrainers = Array.from(trainerMap.values()).map((m) => {
       const cleanMName = normalizeName(m.name);
+      const cleanWa = m.whatsapp ? m.whatsapp.replace(/\s+/g, '') : '';
       const rankingEntry = trainerRanking.find(r => 
         r.id === m.id ||
+        (cleanWa && r.whatsapp && r.whatsapp.replace(/\s+/g, '') === cleanWa) ||
         r.name.trim().toLowerCase() === m.name.trim().toLowerCase() ||
         (cleanMName && normalizeName(r.name) === cleanMName)
       );
-      const res = results[m.id] || { lead: 0, convert: 0, personalLead: 0, submitted: false };
+      const res = getResultForMember(m);
       const baseScore = Number(rankingEntry?.score) || 0;
       const todayConvert = (res.submitted || (res.convert || 0) > 0) ? Number(res.convert || 0) : 0;
       const effectiveScore = Math.max(baseScore, baseScore + todayConvert, todayConvert);
@@ -5905,53 +6053,45 @@ export default function App() {
       };
     });
 
-    // 2. Define universal performance sorting (Real-time priority)
+    // 3. Define universal performance sorting (Real-time priority)
     const sortByPerformance = (a: any, b: any) => {
-      // Primary sort: Today's Convert count (descending)
       const convA = a.result?.convert || 0;
       const convB = b.result?.convert || 0;
       if (convB !== convA) return convB - convA;
       
-      // Secondary sort: Today's Personal Lead count (descending)
       const pLeadA = a.result?.personalLead || 0;
       const pLeadB = b.result?.personalLead || 0;
       if (pLeadB !== pLeadA) return pLeadB - pLeadA;
 
-      // Tertiary sort: Lifetime Score (score)
       if ((b.score || 0) !== (a.score || 0)) return (b.score || 0) - (a.score || 0);
 
-      // Tie-breaker for same convert: Earlier submission wins
       const timeA = a.result?.updatedAt?.toMillis?.() || a.result?.updatedAt?.seconds * 1000 || 0;
       const timeB = b.result?.updatedAt?.toMillis?.() || b.result?.updatedAt?.seconds * 1000 || 0;
       if (timeA && timeB && timeA !== timeB) {
-        return timeA - timeB; // Lower time (earlier) comes first
+        return timeA - timeB;
       }
 
       return a.name.localeCompare(b.name);
     };
 
-    // Ranking sort function: strictly by Total Converts (score)
+    // Ranking sort function: strictly by Total Converts / Effective Score (score)
     const sortByTotalRanking = (a: any, b: any) => {
-      // Primary sort: Total Converts / Lifetime score + Today's converts (descending)
       const scoreA = a.score || 0;
       const scoreB = b.score || 0;
       if (scoreB !== scoreA) return scoreB - scoreA;
 
-      // Secondary sort: Today's Convert count (descending)
       const convA = a.result?.convert || 0;
       const convB = b.result?.convert || 0;
       if (convB !== convA) return convB - convA;
 
-      // Tertiary sort: Total Leads (descending)
       const leadsA = a.leads || 0;
       const leadsB = b.leads || 0;
       if (leadsB !== leadsA) return leadsB - leadsA;
 
-      // Alphabetical tie-breaker
       return a.name.localeCompare(b.name);
     };
 
-    // 3. Calculate Global Stats (Team Leaders + Team Trainers)
+    // 4. Calculate Global Stats
     allLeaders.forEach(m => {
       if (m.result.submitted || (m.result.convert || 0) > 0) {
         totalLeads += m.result.lead || 0;
@@ -5970,12 +6110,11 @@ export default function App() {
       }
     });
 
-    // 4. Generate sorted lists
+    // 5. Generate sorted lists
     const sortedL = [...allLeaders].sort(sortByPerformance);
     const sortedT = [...allTrainers].sort(sortByPerformance);
     const allSorted = [...allLeaders, ...allTrainers].sort(sortByPerformance);
 
-    // sortedLR and sortedTR are for the "Ranking" sections (Top 3 Leaders, Top 3 Trainers & Ranking Modals)
     const sortedLR = [...allLeaders].sort(sortByTotalRanking);
     const sortedTR = [...allTrainers].sort(sortByTotalRanking);
 
@@ -5998,7 +6137,7 @@ export default function App() {
       sortedLeadersByRanking: sortedLR,
       sortedTrainersByRanking: sortedTR
     };
-  }, [members, results, leaderRanking, trainerRanking]);
+  }, [members, approvedUsers, results, leaderRanking, trainerRanking]);
 
   useEffect(() => {
     rankingDataRef.current = {
