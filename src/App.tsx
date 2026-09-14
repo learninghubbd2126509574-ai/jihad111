@@ -4861,9 +4861,13 @@ export default function App() {
       const targetWhatsapp = member?.whatsapp || matchedUser?.whatsapp || currentAuthUser?.whatsapp || '';
       const targetId = member?.id || memberId || (targetWhatsapp ? `user-${targetWhatsapp}` : 'unknown');
 
-      const prevResult = results[targetId] || results[memberId] || { lead: 0, convert: 0, personalLead: 0 };
-      const diffScore = convert - (prevResult.convert || 0);
-      const diffLeads = personalLead - (prevResult.personalLead || 0);
+      // 1. Fetch current database state for this member's result to ensure correct diff calculation
+      const resultDocRef = doc(db, 'results', targetId);
+      const resultSnap = await getDoc(resultDocRef);
+      const dbResult = resultSnap.exists() ? resultSnap.data() as Result : { lead: 0, convert: 0, personalLead: 0 };
+      
+      const diffScore = convert - (dbResult.convert || 0);
+      const diffLeads = personalLead - (dbResult.personalLead || 0);
 
       const data = {
         memberId: targetId,
@@ -4876,12 +4880,12 @@ export default function App() {
         updatedAt: serverTimestamp()
       };
       
-      await setDoc(doc(db, 'results', targetId), data);
+      await setDoc(resultDocRef, data);
       if (memberId && memberId !== targetId) {
         await setDoc(doc(db, 'results', memberId), data);
       }
 
-      // Optimistic state update so UI updates INSTANTLY
+      // Optimistic local update
       const localResultData = {
         ...data,
         updatedAt: { seconds: Math.floor(Date.now() / 1000) }
@@ -4893,7 +4897,7 @@ export default function App() {
         ...(memberId !== targetId ? { [memberId]: localResultData } : {})
       }));
 
-      // Save in submissionLogs for permanent historical daily logging
+      // Save in submissionLogs
       const todayStr = format(new Date(), 'yyyy-MM-dd');
       const logRef = doc(db, 'submissionLogs', `${targetId}_${todayStr}`);
       await setDoc(logRef, {
@@ -4907,56 +4911,50 @@ export default function App() {
         submittedAt: serverTimestamp()
       }, { merge: true });
 
-      // Determine user type (Leader or Trainer)
+      // Determine user type
       const isLeader = member?.type === 'leader' || matchedUser?.position === 'Team Leader' || matchedUser?.position === 'STL' || currentAuthUser?.position === 'Team Leader' || currentAuthUser?.position === 'STL';
       const isTrainer = member?.type === 'trainer' || matchedUser?.position === 'Team Trainer' || currentAuthUser?.position === 'Team Trainer';
       const userType = isLeader ? 'leader' : (isTrainer ? 'trainer' : (member?.type || 'leader'));
 
-      // Update global total and individual ranking score
+      // Update ranking scores using diff derived from DATABASE values
       if (diffScore !== 0 || diffLeads !== 0) {
-        // Update global total (Only for Leaders)
         if (userType === 'leader' && diffScore !== 0) {
           await updateDoc(doc(db, 'config', 'global'), {
             totalConverts: increment(diffScore)
           });
         }
 
+        const coll = userType === 'leader' ? 'leaderRanking' : 'trainerRanking';
         const rankingList = userType === 'leader' ? leaderRanking : trainerRanking;
-        const cleanTargetName = normalizeName(targetName);
+        
+        // Find correct ranking doc
         const rankingEntry = rankingList.find(r => 
           r.id === targetId ||
           r.id === memberId ||
           (cleanWa && r.whatsapp && r.whatsapp.replace(/\s+/g, '') === cleanWa) ||
-          r.name.trim().toLowerCase() === targetName.trim().toLowerCase() ||
-          (cleanTargetName && normalizeName(r.name) === cleanTargetName)
+          normalizeName(r.name) === normalizeName(targetName)
         );
-        
-        const coll = userType === 'leader' ? 'leaderRanking' : 'trainerRanking';
 
         if (rankingEntry) {
           await updateDoc(doc(db, coll, rankingEntry.id), {
             score: increment(diffScore),
-            leads: increment(diffLeads)
+            leads: increment(diffLeads),
+            updatedAt: serverTimestamp()
           });
-          // Optimistic local state update
-          const updater = userType === 'leader' ? setLeaderRanking : setTrainerRanking;
-          updater(prev => prev.map(r => r.id === rankingEntry.id ? { ...r, score: Math.max(0, (r.score || 0) + diffScore), leads: Math.max(0, (r.leads || 0) + diffLeads) } : r));
         } else {
-          // Auto-create ranking entry if missing, so their score is tracked
-          const newDocRef = await addDoc(collection(db, coll), {
+          // Auto-create if missing
+          await addDoc(collection(db, coll), {
             name: targetName,
             whatsapp: targetWhatsapp,
-            score: convert, // Starting score is their current total
+            score: convert,
             leads: personalLead,
-            createdAt: serverTimestamp()
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
           });
-          // Optimistic local state update
-          const updater = userType === 'leader' ? setLeaderRanking : setTrainerRanking;
-          updater(prev => [...prev, { id: newDocRef.id, name: targetName, score: convert, leads: personalLead, whatsapp: targetWhatsapp }]);
         }
       }
 
-      showMsg('Result submitted!');
+      showMsg('Result submitted successfully!', 'success');
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'results', showMsg);
     }
@@ -5969,19 +5967,16 @@ export default function App() {
         (cleanMName && normalizeName(r.name) === cleanMName)
       );
       const res = getResultForMember(m);
-      const baseScore = Number(rankingEntry?.score) || 0;
-      const todayConvert = (res.submitted || (res.convert || 0) > 0) ? Number(res.convert || 0) : 0;
-      const effectiveScore = Math.max(baseScore, baseScore + todayConvert, todayConvert);
-
-      const baseLeads = Number(rankingEntry?.leads) || 0;
-      const todayPersonalLead = (res.submitted || (res.personalLead || 0) > 0) ? Number(res.personalLead || 0) : 0;
-      const effectiveLeads = Math.max(baseLeads, todayPersonalLead);
+      
+      // Database score is the single source of truth for ranking
+      // It already includes today's increments via submitResult
+      const score = Number(rankingEntry?.score) || 0;
+      const leads = Number(rankingEntry?.leads) || 0;
 
       return {
         ...m,
-        score: effectiveScore,
-        baseScore: baseScore,
-        leads: effectiveLeads,
+        score,
+        leads,
         result: res
       };
     });
@@ -6036,35 +6031,36 @@ export default function App() {
         (cleanMName && normalizeName(r.name) === cleanMName)
       );
       const res = getResultForMember(m);
-      const baseScore = Number(rankingEntry?.score) || 0;
-      const todayConvert = (res.submitted || (res.convert || 0) > 0) ? Number(res.convert || 0) : 0;
-      const effectiveScore = Math.max(baseScore, baseScore + todayConvert, todayConvert);
-
-      const baseLeads = Number(rankingEntry?.leads) || 0;
-      const todayPersonalLead = (res.submitted || (res.personalLead || 0) > 0) ? Number(res.personalLead || 0) : 0;
-      const effectiveLeads = Math.max(baseLeads, todayPersonalLead);
+      
+      const score = Number(rankingEntry?.score) || 0;
+      const leads = Number(rankingEntry?.leads) || 0;
 
       return {
         ...m,
-        score: effectiveScore,
-        baseScore: baseScore,
-        leads: effectiveLeads,
+        score,
+        leads,
         result: res
       };
     });
 
-    // 3. Define universal performance sorting (Real-time priority)
+    // 3. Define universal performance sorting (Stable Ranking priority)
     const sortByPerformance = (a: any, b: any) => {
+      // Primary sort: Latest Total Score (Cumulative)
+      const scoreA = a.score || 0;
+      const scoreB = b.score || 0;
+      if (scoreB !== scoreA) return scoreB - scoreA;
+
+      // Secondary sort: Today's Convert count (descending)
       const convA = a.result?.convert || 0;
       const convB = b.result?.convert || 0;
       if (convB !== convA) return convB - convA;
       
+      // Tertiary sort: Today's Personal Lead count (descending)
       const pLeadA = a.result?.personalLead || 0;
       const pLeadB = b.result?.personalLead || 0;
       if (pLeadB !== pLeadA) return pLeadB - pLeadA;
 
-      if ((b.score || 0) !== (a.score || 0)) return (b.score || 0) - (a.score || 0);
-
+      // Submission time tie-breaker
       const timeA = a.result?.updatedAt?.toMillis?.() || a.result?.updatedAt?.seconds * 1000 || 0;
       const timeB = b.result?.updatedAt?.toMillis?.() || b.result?.updatedAt?.seconds * 1000 || 0;
       if (timeA && timeB && timeA !== timeB) {
@@ -6118,6 +6114,18 @@ export default function App() {
     const sortedLR = [...allLeaders].sort(sortByTotalRanking);
     const sortedTR = [...allTrainers].sort(sortByTotalRanking);
 
+    // Identify Top Performers strictly by TODAY's highest converts
+    const sortByToday = (a: any, b: any) => {
+      const convA = a.result?.convert || 0;
+      const convB = b.result?.convert || 0;
+      if (convB !== convA) return convB - convA;
+      return (b.score || 0) - (a.score || 0);
+    };
+
+    const bestLeader = [...allLeaders].sort(sortByToday)[0];
+    const bestTrainer = [...allTrainers].sort(sortByToday)[0];
+    const bestOverall = [...allLeaders, ...allTrainers].sort(sortByToday)[0];
+
     return {
       stats: {
         leaders: allLeaders.length,
@@ -6127,9 +6135,9 @@ export default function App() {
         todayConverts: todayConverts,
         todayLeads: todayLeads
       },
-      topLeader: sortedL[0] && (sortedL[0]?.result?.convert || 0) > 0 ? sortedL[0] : null,
-      topTrainer: sortedT[0] && (sortedT[0]?.result?.convert || 0) > 0 ? sortedT[0] : null,
-      topOverall: allSorted[0] && (allSorted[0]?.result?.convert || 0) > 0 ? allSorted[0] : null,
+      topLeader: bestLeader && (bestLeader.result?.convert || 0) > 0 ? bestLeader : null,
+      topTrainer: bestTrainer && (bestTrainer.result?.convert || 0) > 0 ? bestTrainer : null,
+      topOverall: bestOverall && (bestOverall.result?.convert || 0) > 0 ? bestOverall : null,
       sortedLeaders: sortedL,
       sortedTrainers: sortedT,
       sortedLeaderRanking: sortedLR,
