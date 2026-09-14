@@ -25,7 +25,7 @@ import {
   getDocsFromCache,
   getDocFromCache,
   increment
-} from 'firebase/firestore';
+} from './lib/supabaseDb';
 import { 
   signInWithPopup, 
   signInWithRedirect,
@@ -115,8 +115,10 @@ import {
   Share2,
   Target,
   Save,
-  KeyRound
+  KeyRound,
+  Database
 } from 'lucide-react';
+import { SupabaseSettings } from './components/SupabaseSettings';
 
 import { 
   format, 
@@ -7099,6 +7101,11 @@ export default function App() {
               {/* Admin Navigation "Slots" (Three-line style alternative) */}
               <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 custom-scrollbar space-y-4">
                 
+                {/* Supabase Database & Realtime Migration */}
+                <AdminAccordion title="Supabase Database & Migration" icon={<Database size={16} />} colorClass="text-emerald-400">
+                  <SupabaseSettings showMsg={showMsg} />
+                </AdminAccordion>
+
                 {/* 1. Website Branding & Logo */}
                                       <AdminAccordion title="Push Notifications & Broadcasts" icon={<Bell size={16} />} colorClass="text-blue-400">
                          <div className="bg-surface/40 border border-white/5 p-4 sm:p-6 rounded-2xl sm:rounded-3xl relative overflow-hidden group mb-4">

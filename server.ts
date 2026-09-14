@@ -109,7 +109,7 @@ async function startServer() {
             badge: '/icon.jpg',
             vibrate: [300, 100, 300, 100, 300],
             requireInteraction: true,
-            timestamp: Date.now().toString()
+            timestamp: Date.now()
           },
           fcmOptions: {
             link: '/'
