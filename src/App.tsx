@@ -415,39 +415,35 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   const message = err?.message || String(error);
   const code = err?.code || '';
   
-  // If code is 'unavailable', 'resource-exhausted', offline or quota exceeded, log warning rather than treating as fatal error
-  if (code === 'unavailable' || code === 'resource-exhausted' || message.includes('unavailable') || message.includes('offline') || message.includes('Quota exceeded') || message.includes('Could not reach Cloud Firestore')) {
-    console.warn('Firestore is reconnecting, quota exceeded, or operating in offline cache mode:', message);
+  if (code === 'unavailable' || code === 'resource-exhausted' || message.includes('unavailable') || message.includes('offline') || message.includes('Quota exceeded')) {
+    console.warn('Database is synchronizing or operating in offline cache mode:', message);
     return;
   }
 
   const errInfo: FirestoreErrorInfo = {
     error: message,
     authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData?.map(provider => ({
-        providerId: provider.providerId,
-        displayName: provider.displayName,
-        email: provider.email,
-        photoUrl: provider.photoURL
-      })) || []
+      userId: auth?.currentUser?.uid,
+      email: auth?.currentUser?.email,
+      emailVerified: auth?.currentUser?.emailVerified,
+      isAnonymous: auth?.currentUser?.isAnonymous,
+      tenantId: auth?.currentUser?.tenantId,
+      providerInfo: []
     },
     operationType,
     path
   };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  console.error('Database Error: ', JSON.stringify(errInfo));
   if (showMsg) {
-    if (message.includes('permission-denied') || message.includes('Missing or insufficient permissions')) {
-      showMsg('Permission Denied! (Admin access via Google Login may be required)', 'error');
+    if (message.includes('permission-denied') || message.includes('Missing or insufficient permissions') || message.includes('JWT') || message.includes('unauthorized')) {
+      showMsg('Permission Denied / Unauthorized access!', 'error');
     } else {
-      showMsg(`System Error: ${message}`, 'error');
+      showMsg(`Database Error: ${message}`, 'error');
     }
   }
 }
+
+const handleDatabaseError = handleFirestoreError;
 
 // --- Components ---
 

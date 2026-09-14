@@ -23,18 +23,20 @@ async function initMemoryStore() {
   isBackupLoading = true;
   
   try {
-    const response = await fetch('/firestore_backup.json');
-    if (response.ok) {
-      const backup = await response.json() as Record<string, any[]>;
-      for (const [col, docs] of Object.entries(backup)) {
-        if (!memoryStore[col]) {
-          memoryStore[col] = new Map<string, any>();
-        }
-        const map = memoryStore[col];
-        if (Array.isArray(docs)) {
-          for (const d of docs) {
-            if (d && d.id && !map.has(String(d.id))) {
-              map.set(String(d.id), { ...d });
+    if (typeof window !== 'undefined' && typeof fetch === 'function') {
+      const response = await fetch('/firestore_backup.json');
+      if (response.ok) {
+        const backup = await response.json() as Record<string, any[]>;
+        for (const [col, docs] of Object.entries(backup)) {
+          if (!memoryStore[col]) {
+            memoryStore[col] = new Map<string, any>();
+          }
+          const map = memoryStore[col];
+          if (Array.isArray(docs)) {
+            for (const d of docs) {
+              if (d && d.id && !map.has(String(d.id))) {
+                map.set(String(d.id), { ...d });
+              }
             }
           }
         }
@@ -168,21 +170,25 @@ const camelCaseMap: Record<string, string> = {
   username: 'userName',
   waivedfines: 'waivedFines',
   manualadjustments: 'manualAdjustments',
+  waiveddays: 'waivedDays',
   performedby: 'performedBy',
   createdmillis: 'createdMillis',
   readby: 'readBy',
   issystem: 'isSystem',
-  isselected: 'isSelected'
+  isselected: 'isSelected',
+  teacherid: 'teacherId',
+  teachername: 'teacherName'
 };
 
 // Normalizes row returned from Supabase
 function unpackSupabaseRow(row: any): any {
   if (!row) return null;
-  const dataObj = row.data && typeof row.data === 'object' ? row.data : {};
+  const dataObj = row.data && typeof row.data === 'object' && !Array.isArray(row.data) ? { ...row.data } : {};
   const { data, ...columns } = row;
   
   const normalizedColumns: any = {};
   for (const [key, val] of Object.entries(columns)) {
+    if (val === null || val === undefined) continue;
     const lowerKey = key.toLowerCase();
     if (camelCaseMap[lowerKey]) {
       normalizedColumns[camelCaseMap[lowerKey]] = val;
@@ -191,7 +197,30 @@ function unpackSupabaseRow(row: any): any {
     }
   }
   
-  return { ...dataObj, ...normalizedColumns };
+  // Data object is the primary document source of truth.
+  // We merge normalizedColumns first, then dataObj on top, so column defaults (like empty arrays or 0 for missing data)
+  // never overwrite actual document properties.
+  const unpacked = { ...normalizedColumns, ...dataObj };
+  
+  // Clean / normalize numerical fields for user balances & fines
+  if (unpacked.waivedFines !== undefined) {
+    const num = Number(unpacked.waivedFines);
+    unpacked.waivedFines = isNaN(num) ? 0 : num;
+  }
+  if (unpacked.manualAdjustments !== undefined) {
+    const num = Number(unpacked.manualAdjustments);
+    unpacked.manualAdjustments = isNaN(num) ? 0 : num;
+  }
+  if (unpacked.balance !== undefined) {
+    const num = Number(unpacked.balance);
+    unpacked.balance = isNaN(num) ? 0 : num;
+  }
+  if (unpacked.waivedDays !== undefined) {
+    unpacked.waivedDays = Array.isArray(unpacked.waivedDays) ? unpacked.waivedDays : [];
+  }
+  
+  unpacked.id = String(row.id || dataObj.id || unpacked.id || '');
+  return unpacked;
 }
 
 function notifyListeners(colName: string, docId?: string) {
@@ -217,33 +246,58 @@ function notifyListeners(colName: string, docId?: string) {
   }
 }
 
+// Strict column definition per table from PostgreSQL schema
+const tableAllowedColumns: Record<string, string[]> = {
+  members: ['name', 'type', 'profilePic', 'target', 'whatsapp', 'createdAt'],
+  results: ['memberId', 'lead', 'convert', 'personalLead', 'submitted', 'updatedAt'],
+  config: [
+    'timerActive', 'timerEndTime', 'timerDuration', 'timerStartedAt', 'timerNotificationsActive',
+    'announcement', 'announcementActive', 'isLocked', 'securityPassword', 'stlPassword',
+    'autoTimerEnabled', 'autoTimerTime', 'fineSystemActive', 'fineAmount', 'fineStartDate',
+    'finesResetAt', 'giftBoxActive', 'giftBoxTitle', 'giftBoxContent', 'paymentMethods',
+    'socialLinks', 'noticeText', 'customLogo', 'appTheme', 'totalConverts',
+    'leaderRankingActive', 'trainerRankingActive', 'stlActive', 'demoActive', 'stlLoginActive',
+    'counsellingSchedules', 'lastAutoStartTime', 'updatedAt'
+  ],
+  pickingSchedule: ['name', 'isSelected', 'createdAt'],
+  applications: ['fullName', 'mobileNumber', 'email', 'createdAt'],
+  teachers: ['name', 'createdAt'],
+  teacherAttendance: ['teacherId', 'teacherName', 'course', 'date', 'submittedAt'],
+  stlMembers: ['name', 'target', 'assignedTLs', 'createdAt'],
+  stlAttendance: ['memberId', 'memberName', 'submittedAt'],
+  demoMembers: ['name', 'createdAt'],
+  demoAttendance: ['memberId', 'memberName', 'submittedAt'],
+  leaderRanking: ['name', 'score', 'leads', 'whatsapp', 'createdAt'],
+  trainerRanking: ['name', 'score', 'leads', 'createdAt'],
+  quickLinks: ['name', 'url', 'createdAt'],
+  pendingRegistrations: ['fullName', 'whatsapp', 'position', 'password', 'status', 'profilePic', 'createdAt'],
+  registeredUsers: ['fullName', 'whatsapp', 'position', 'password', 'status', 'profilePic', 'createdAt'],
+  userBalances: ['whatsapp', 'userName', 'balance', 'waivedFines', 'manualAdjustments', 'updatedAt'],
+  submissionLogs: ['memberId', 'memberName', 'whatsapp', 'lead', 'convert', 'personalLead', 'date', 'submittedAt'],
+  auditLogs: ['action', 'amount', 'userName', 'whatsapp', 'performedBy', 'reason', 'date', 'createdAt'],
+  notifications: ['title', 'body', 'recipient', 'sender', 'createdMillis', 'readBy', 'isSystem', 'createdAt'],
+  systemConfig: ['updatedAt'],
+  fcmTokens: ['whatsapp', 'platform', 'updatedAt']
+};
+
 // Prepares object for Supabase upsert/insert
 function packSupabaseRow(tableName: string, id: string, docData: any): any {
   const { id: _, ...rest } = docData;
   const row: any = {
     id: String(id),
-    data: rest
+    data: { ...rest }
   };
 
-  // Populate relational columns for SQL search and sorting
-  const scalarFields = [
-    'name', 'type', 'profilePic', 'target', 'whatsapp', 'memberId', 'memberName',
-    'lead', 'convert', 'personalLead', 'submitted', 'score', 'leads', 'url',
-    'fullName', 'position', 'password', 'status', 'userName', 'balance',
-    'action', 'amount', 'performedBy', 'reason', 'date', 'title', 'body',
-    'recipient', 'sender', 'isSystem', 'isSelected', 'course', 'createdAt',
-    'updatedAt', 'submittedAt', 'timerActive', 'timerEndTime', 'timerDuration',
-    'announcement', 'announcementActive', 'timerStartedAt', 'timerNotificationsActive',
-    'isLocked', 'securityPassword', 'stlPassword', 'autoTimerEnabled', 'autoTimerTime',
-    'fineSystemActive', 'fineAmount', 'fineStartDate', 'finesResetAt', 'giftBoxActive',
-    'giftBoxTitle', 'giftBoxContent', 'paymentMethods', 'socialLinks', 'noticeText',
-    'customLogo', 'appTheme', 'totalConverts', 'leaderRankingActive', 'trainerRankingActive',
-    'stlActive', 'demoActive', 'stlLoginActive', 'counsellingSchedules', 'lastAutoStartTime'
-  ];
-
-  for (const field of scalarFields) {
+  // Only assign columns that strictly exist in this table
+  const allowed = tableAllowedColumns[tableName] || [];
+  for (const field of allowed) {
     if (rest[field] !== undefined) {
-      row[field] = rest[field];
+      if (field === 'waivedFines' || field === 'manualAdjustments' || field === 'balance' || field === 'target' || field === 'score' || field === 'leads' || field === 'lead' || field === 'convert' || field === 'personalLead' || field === 'amount') {
+        const numVal = Number(rest[field]);
+        row[field] = isNaN(numVal) ? 0 : numVal;
+      } else {
+        row[field] = rest[field];
+      }
     }
   }
 
@@ -553,12 +607,29 @@ export async function getDocsFromCache(target: CollectionRef | QueryRef): Promis
 function applyFieldOperations(existing: any = {}, incoming: any = {}): any {
   const result = { ...existing };
   for (const [key, value] of Object.entries(incoming)) {
-    if (value && typeof value === 'object' && (value as any).__type === 'increment') {
-      const currentVal = Number(existing[key]) || 0;
-      result[key] = currentVal + (value as any).value;
-    } else {
-      result[key] = value;
+    if (value && typeof value === 'object') {
+      const fieldOp = value as any;
+      if (fieldOp.__type === 'increment') {
+        const currentVal = Number(existing[key]) || 0;
+        result[key] = currentVal + (fieldOp.value || 0);
+        continue;
+      } else if (fieldOp.__type === 'arrayUnion') {
+        const currentArr = Array.isArray(existing[key]) ? [...existing[key]] : [];
+        for (const el of fieldOp.elements || []) {
+          if (!currentArr.includes(el)) currentArr.push(el);
+        }
+        result[key] = currentArr;
+        continue;
+      } else if (fieldOp.__type === 'arrayRemove') {
+        const currentArr = Array.isArray(existing[key]) ? [...existing[key]] : [];
+        result[key] = currentArr.filter(el => !(fieldOp.elements || []).includes(el));
+        continue;
+      } else if (fieldOp.__type === 'deleteField') {
+        delete result[key];
+        continue;
+      }
     }
+    result[key] = value;
   }
   return result;
 }
@@ -722,4 +793,57 @@ export function serverTimestamp(): string {
 export function increment(n: number): any {
   // Marked object for increment operations
   return { __type: 'increment', value: n };
+}
+
+export function arrayUnion(...elements: any[]): any {
+  return { __type: 'arrayUnion', elements };
+}
+
+export function arrayRemove(...elements: any[]): any {
+  return { __type: 'arrayRemove', elements };
+}
+
+export function deleteField(): any {
+  return { __type: 'deleteField' };
+}
+
+export async function runTransaction<T>(
+  _db: any,
+  updateFunction: (transaction: {
+    get: (docRef: DocRef) => Promise<DocumentSnapshot>;
+    set: (docRef: DocRef, data: any, options?: { merge?: boolean }) => any;
+    update: (docRef: DocRef, data: any) => any;
+    delete: (docRef: DocRef) => any;
+  }) => Promise<T>
+): Promise<T> {
+  const stagedSets: Array<{ docRef: DocRef; data: any; options?: { merge?: boolean } }> = [];
+  const stagedUpdates: Array<{ docRef: DocRef; data: any }> = [];
+  const stagedDeletes: Array<DocRef> = [];
+
+  const transaction = {
+    get: async (docRef: DocRef) => getDoc(docRef),
+    set: (docRef: DocRef, data: any, options?: { merge?: boolean }) => {
+      stagedSets.push({ docRef, data, options });
+    },
+    update: (docRef: DocRef, data: any) => {
+      stagedUpdates.push({ docRef, data });
+    },
+    delete: (docRef: DocRef) => {
+      stagedDeletes.push(docRef);
+    }
+  };
+
+  const result = await updateFunction(transaction);
+
+  for (const s of stagedSets) {
+    await setDoc(s.docRef, s.data, s.options);
+  }
+  for (const u of stagedUpdates) {
+    await updateDoc(u.docRef, u.data);
+  }
+  for (const d of stagedDeletes) {
+    await deleteDoc(d);
+  }
+
+  return result;
 }
