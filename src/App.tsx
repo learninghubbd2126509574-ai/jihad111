@@ -4890,9 +4890,27 @@ export default function App() {
         updatedAt: serverTimestamp()
       };
       
-      await setDoc(resultDocRef, data);
+      await updateDoc(resultDocRef, {
+        memberId: targetId,
+        memberName: targetName,
+        whatsapp: targetWhatsapp,
+        lead: increment(lead - (dbResult.lead || 0)),
+        convert: increment(convert - (dbResult.convert || 0)),
+        personalLead: increment(personalLead - (dbResult.personalLead || 0)),
+        submitted: true,
+        updatedAt: serverTimestamp()
+      });
       if (memberId && memberId !== targetId) {
-        await setDoc(doc(db, 'results', memberId), data);
+        await updateDoc(doc(db, 'results', memberId), {
+          memberId: targetId,
+          memberName: targetName,
+          whatsapp: targetWhatsapp,
+          lead: increment(lead - (dbResult.lead || 0)),
+          convert: increment(convert - (dbResult.convert || 0)),
+          personalLead: increment(personalLead - (dbResult.personalLead || 0)),
+          submitted: true,
+          updatedAt: serverTimestamp()
+        });
       }
 
       // Optimistic local update
