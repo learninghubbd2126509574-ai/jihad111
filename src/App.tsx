@@ -24,9 +24,8 @@ import {
   getDocFromServer,
   getDocsFromCache,
   getDocFromCache,
-  increment,
-  clearCollection
-} from './lib/supabaseDb';
+  increment
+} from 'firebase/firestore';
 import { 
   signInWithPopup, 
   signInWithRedirect,
@@ -116,10 +115,8 @@ import {
   Share2,
   Target,
   Save,
-  KeyRound,
-  Database
+  KeyRound
 } from 'lucide-react';
-import { SupabaseSettings } from './components/SupabaseSettings';
 
 import { 
   format, 
@@ -415,35 +412,39 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   const message = err?.message || String(error);
   const code = err?.code || '';
   
-  if (code === 'unavailable' || code === 'resource-exhausted' || message.includes('unavailable') || message.includes('offline') || message.includes('Quota exceeded')) {
-    console.warn('Database is synchronizing or operating in offline cache mode:', message);
+  // If code is 'unavailable', 'resource-exhausted', offline or quota exceeded, log warning rather than treating as fatal error
+  if (code === 'unavailable' || code === 'resource-exhausted' || message.includes('unavailable') || message.includes('offline') || message.includes('Quota exceeded') || message.includes('Could not reach Cloud Firestore')) {
+    console.warn('Firestore is reconnecting, quota exceeded, or operating in offline cache mode:', message);
     return;
   }
 
   const errInfo: FirestoreErrorInfo = {
     error: message,
     authInfo: {
-      userId: auth?.currentUser?.uid,
-      email: auth?.currentUser?.email,
-      emailVerified: auth?.currentUser?.emailVerified,
-      isAnonymous: auth?.currentUser?.isAnonymous,
-      tenantId: auth?.currentUser?.tenantId,
-      providerInfo: []
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData?.map(provider => ({
+        providerId: provider.providerId,
+        displayName: provider.displayName,
+        email: provider.email,
+        photoUrl: provider.photoURL
+      })) || []
     },
     operationType,
     path
   };
-  console.error('Database Error: ', JSON.stringify(errInfo));
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
   if (showMsg) {
-    if (message.includes('permission-denied') || message.includes('Missing or insufficient permissions') || message.includes('JWT') || message.includes('unauthorized')) {
-      showMsg('Permission Denied / Unauthorized access!', 'error');
+    if (message.includes('permission-denied') || message.includes('Missing or insufficient permissions')) {
+      showMsg('Permission Denied! (Admin access via Google Login may be required)', 'error');
     } else {
-      showMsg(`Database Error: ${message}`, 'error');
+      showMsg(`System Error: ${message}`, 'error');
     }
   }
 }
-
-const handleDatabaseError = handleFirestoreError;
 
 // --- Components ---
 
@@ -1865,8 +1866,6 @@ const BalanceManagementSection = ({
   onUpdateBalance,
   onWaiveFine,
   onRemoveDayFine,
-  onResetUserFine,
-  onSetExactFine,
   onRecalculateFine,
   computeUserSubmissionStats
 }: {
@@ -1877,8 +1876,6 @@ const BalanceManagementSection = ({
   onUpdateBalance: (whatsapp: string, userName: string, amount: number, isDeduct: boolean, reason: string) => Promise<void>;
   onWaiveFine: (whatsapp: string, userName: string, amount: number, reason: string) => Promise<void>;
   onRemoveDayFine: (whatsapp: string, userName: string, dateStr: string, reason: string) => Promise<void>;
-  onResetUserFine?: (whatsapp: string, userName: string, reason: string) => Promise<void>;
-  onSetExactFine?: (whatsapp: string, userName: string, targetFine: number, reason: string) => Promise<void>;
   onRecalculateFine: (whatsapp: string, userName: string) => Promise<void>;
   computeUserSubmissionStats?: (userWhatsapp: string, memberId?: string) => any;
 }) => {
@@ -1889,15 +1886,12 @@ const BalanceManagementSection = ({
   const [waiveReason, setWaiveReason] = useState<string>('');
   const [removeDate, setRemoveDate] = useState<string>('');
   const [removeReason, setRemoveReason] = useState<string>('');
-  const [resetReason, setResetReason] = useState<string>('');
-  const [exactFineAmount, setExactFineAmount] = useState<string>('');
-  const [exactReason, setExactReason] = useState<string>('');
-  const [activeTab, setActiveTab] = useState<'overview' | 'add' | 'deduct' | 'waive' | 'remove_day' | 'delete_reset' | 'logs'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'add' | 'deduct' | 'waive' | 'remove_day' | 'logs'>('overview');
   const [busy, setBusy] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   // Quick Action modal/inline box state
-  const [quickUser, setQuickUser] = useState<{ key: string; name: string; type: 'add' | 'deduct' | 'waive' | 'remove_day' | 'delete' | 'set_exact' } | null>(null);
+  const [quickUser, setQuickUser] = useState<{ key: string; name: string; type: 'add' | 'deduct' | 'waive' | 'remove_day' } | null>(null);
   const [quickAmount, setQuickAmount] = useState('');
   const [quickDate, setQuickDate] = useState(new Date().toISOString().split('T')[0]);
   const [quickReason, setQuickReason] = useState('');
@@ -1922,7 +1916,7 @@ const BalanceManagementSection = ({
           key: m.id, 
           name: m.name, 
           position: m.type === 'leader' ? 'Team Leader' : m.type === 'trainer' ? 'Team Trainer' : 'Team Member', 
-          whatsapp: m.whatsapp || '', 
+          whatsapp: '', 
           memberId: m.id 
         });
       }
@@ -1985,31 +1979,6 @@ const BalanceManagementSection = ({
     }
   };
 
-  const handleResetSubmit = async () => {
-    if (!selectedUser || !onResetUserFine) return;
-    setBusy(true);
-    try {
-      await onResetUserFine(selectedUser.key, selectedUser.name, resetReason || 'জরিমানা সম্পূর্ণ ডিলিট/রিসেট করা হয়েছে');
-      setResetReason('');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleExactSubmit = async () => {
-    if (!selectedUser || !onSetExactFine) return;
-    const amt = parseFloat(exactFineAmount);
-    if (isNaN(amt) || amt < 0) return;
-    setBusy(true);
-    try {
-      await onSetExactFine(selectedUser.key, selectedUser.name, amt, exactReason || `জরিমানা ৳${amt} নির্ধারণ করা হয়েছে`);
-      setExactFineAmount('');
-      setExactReason('');
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const handleQuickSubmit = async () => {
     if (!quickUser) return;
     setBusy(true);
@@ -2032,15 +2001,6 @@ const BalanceManagementSection = ({
       } else if (quickUser.type === 'remove_day') {
         if (quickDate) {
           await onRemoveDayFine(quickUser.key, quickUser.name, quickDate, quickReason || `${quickDate} তারিখের মিসড দিন বাদ দেওয়া হয়েছে`);
-        }
-      } else if (quickUser.type === 'delete') {
-        if (onResetUserFine) {
-          await onResetUserFine(quickUser.key, quickUser.name, quickReason || 'জরিমানা সম্পূর্ণ ডিলিট/রিসেট করা হয়েছে');
-        }
-      } else if (quickUser.type === 'set_exact') {
-        const amt = parseFloat(quickAmount);
-        if (!isNaN(amt) && amt >= 0 && onSetExactFine) {
-          await onSetExactFine(quickUser.key, quickUser.name, amt, quickReason || `জরিমানা ৳${amt} নির্ধারণ করা হয়েছে`);
         }
       }
       setQuickUser(null);
@@ -2070,7 +2030,6 @@ const BalanceManagementSection = ({
           { id: 'deduct', label: '- ফাইন কমান' },
           { id: 'waive', label: '🛡️ ক্ষমা/মওকুফ' },
           { id: 'remove_day', label: '📅 মিসড দিন রিমুভ' },
-          { id: 'delete_reset', label: '🗑️ ফাইন রিসেট' },
           { id: 'logs', label: 'অডিট লগ' }
         ].map((tab) => (
           <button
@@ -2140,7 +2099,7 @@ const BalanceManagementSection = ({
                           onClick={() => {
                             setSelectedUserKey(item.key);
                             setQuickUser({ key: item.key, name: item.name, type: 'add' });
-                            setQuickAmount('10');
+                            setQuickAmount('');
                             setQuickReason('');
                           }}
                           className="px-2.5 py-1 rounded-lg bg-red-accent/10 hover:bg-red-accent text-red-accent hover:text-white border border-red-accent/30 text-[10px] font-black transition-all"
@@ -2152,7 +2111,7 @@ const BalanceManagementSection = ({
                           onClick={() => {
                             setSelectedUserKey(item.key);
                             setQuickUser({ key: item.key, name: item.name, type: 'deduct' });
-                            setQuickAmount('10');
+                            setQuickAmount('');
                             setQuickReason('');
                           }}
                           className="px-2.5 py-1 rounded-lg bg-green-accent/10 hover:bg-green-accent text-green-accent hover:text-bg border border-green-accent/30 text-[10px] font-black transition-all"
@@ -2164,7 +2123,7 @@ const BalanceManagementSection = ({
                           onClick={() => {
                             setSelectedUserKey(item.key);
                             setQuickUser({ key: item.key, name: item.name, type: 'waive' });
-                            setQuickAmount(stats.totalFine > 0 ? String(stats.totalFine) : '10');
+                            setQuickAmount('');
                             setQuickReason('');
                           }}
                           className="px-2.5 py-1 rounded-lg bg-gold/10 hover:bg-gold text-gold hover:text-bg border border-gold/30 text-[10px] font-black transition-all"
@@ -2182,17 +2141,6 @@ const BalanceManagementSection = ({
                           className="px-2.5 py-1 rounded-lg bg-purple-500/10 hover:bg-purple-500 text-purple-400 hover:text-white border border-purple-500/30 text-[10px] font-black transition-all"
                         >
                           📅 দিন রিমুভ
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedUserKey(item.key);
-                            setQuickUser({ key: item.key, name: item.name, type: 'delete' });
-                            setQuickReason('');
-                          }}
-                          className="px-2.5 py-1 rounded-lg bg-red-500/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/40 text-[10px] font-black transition-all"
-                        >
-                          🗑️ ফাইন ডিলিট
                         </button>
                       </div>
                     </div>
@@ -2365,64 +2313,6 @@ const BalanceManagementSection = ({
             </div>
           )}
 
-          {activeTab === 'delete_reset' && (
-            <div className="space-y-4">
-              <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl space-y-3">
-                <h4 className="text-xs font-black text-red-400 uppercase tracking-wider flex items-center gap-2">
-                  <span>🗑️ জরিমানা সম্পূর্ণ ডিলিট / রিসেট করুন (Reset Fine to ৳0)</span>
-                </h4>
-                <p className="text-[11px] text-muted-main">
-                  সিলেক্ট করা মেম্বারের বর্তমান জমা হওয়া সমস্ত জরিমানা সম্পূর্ণ ডিলিট ও রিসেট হয়ে ৳০ টাকা হয়ে যাবে।
-                </p>
-                <input
-                  type="text"
-                  value={resetReason}
-                  onChange={(e) => setResetReason(e.target.value)}
-                  placeholder="কারণ / নোট (e.g. অ্যাডমিন কর্তৃক সম্পূর্ণ মওকুফ)"
-                  className="w-full bg-surface border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-gold"
-                />
-                <button
-                  type="button"
-                  disabled={busy || !selectedUser}
-                  onClick={handleResetSubmit}
-                  className="w-full py-3 rounded-xl bg-red-600 text-white font-black text-xs uppercase tracking-wider hover:bg-red-700 active:scale-95 transition-all shadow-lg"
-                >
-                  {busy ? 'প্রসেসিং...' : `${selectedUser?.name || 'মেম্বার'}-এর জরিমানা ডিলিট ও রিসেট করুন (৳0)`}
-                </button>
-              </div>
-
-              <div className="p-4 bg-gold/10 border border-gold/20 rounded-2xl space-y-3">
-                <h4 className="text-xs font-black text-gold uppercase tracking-wider flex items-center gap-2">
-                  <span>✏️ নির্দিষ্ট জরিমানা সেট করুন (Set Exact Fine)</span>
-                </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <input
-                    type="number"
-                    value={exactFineAmount}
-                    onChange={(e) => setExactFineAmount(e.target.value)}
-                    placeholder="নির্ধারিত টাকার পরিমাণ (৳)"
-                    className="bg-surface border border-white/10 rounded-xl p-3 text-sm font-bold text-white outline-none focus:border-gold"
-                  />
-                  <input
-                    type="text"
-                    value={exactReason}
-                    onChange={(e) => setExactReason(e.target.value)}
-                    placeholder="কারণ / নোট"
-                    className="bg-surface border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-gold"
-                  />
-                </div>
-                <button
-                  type="button"
-                  disabled={busy || !selectedUser}
-                  onClick={handleExactSubmit}
-                  className="w-full py-3 rounded-xl bg-gold text-bg font-black text-xs uppercase tracking-wider hover:opacity-90 active:scale-95 transition-all shadow-lg"
-                >
-                  {busy ? 'প্রসেসিং...' : `${selectedUser?.name || 'মেম্বার'}-এর জরিমানা সেট করুন`}
-                </button>
-              </div>
-            </div>
-          )}
-
           {activeTab === 'logs' && (
             <div className="space-y-3">
               <h4 className="text-xs font-black text-white uppercase tracking-wider mb-2">
@@ -2456,66 +2346,35 @@ const BalanceManagementSection = ({
       {/* Quick Action Modal Dialog */}
       <AnimatePresence>
         {quickUser && (
-          <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-black/80 backdrop-blur-md"
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
               onClick={() => setQuickUser(null)}
             />
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="relative w-full max-w-sm bg-surface border border-gold/40 p-5 sm:p-6 rounded-3xl shadow-2xl space-y-4 z-10"
+              className="relative w-full max-w-sm bg-surface border border-gold/30 p-5 rounded-2xl shadow-2xl space-y-4"
             >
               <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                <h3 className="text-sm sm:text-base font-black text-white flex items-center gap-2">
-                  <span>
-                    {quickUser.type === 'add'
-                      ? '➕ ফাইন বাড়ান'
-                      : quickUser.type === 'deduct'
-                      ? '➖ ফাইন কমান'
-                      : quickUser.type === 'waive'
-                      ? '🛡️ জরিমানা মওকুফ করুন'
-                      : quickUser.type === 'remove_day'
-                      ? '📅 মিসড দিন রিমুভ করুন'
-                      : quickUser.type === 'delete'
-                      ? '🗑️ জরিমানা সম্পূর্ণ ডিলিট করুন'
-                      : '✏️ নির্ধারিত জরিমানা সেট করুন'}
-                  </span>
+                <h3 className="text-sm font-black text-white">
+                  {quickUser.type === 'add' ? '➕ ফাইন বাড়ান' : quickUser.type === 'deduct' ? '➖ ফাইন কমান' : quickUser.type === 'waive' ? '🛡️ জরিমানা মওকুফ করুন' : '📅 মিসড দিন রিমুভ করুন'}
                 </h3>
-                <button type="button" onClick={() => setQuickUser(null)} className="w-7 h-7 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 text-muted-main hover:text-white transition-colors">
+                <button type="button" onClick={() => setQuickUser(null)} className="w-6 h-6 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 text-muted-main hover:text-white transition-colors">
                   ✕
                 </button>
               </div>
               
-              <div className="p-3 bg-white/5 rounded-xl border border-white/5 flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] text-muted-main uppercase font-bold block">মেম্বার</span>
-                  <span className="text-sm text-white font-bold">{quickUser.name}</span>
-                </div>
-                {(() => {
-                  const qUser = userOptions.find(u => u.key === quickUser.key);
-                  const qStats = qUser && computeUserSubmissionStats ? computeUserSubmissionStats(qUser.whatsapp, qUser.memberId) : null;
-                  return qStats ? (
-                    <div className="text-right">
-                      <span className="text-[10px] text-muted-main uppercase font-bold block">বর্তমান জরিমানা</span>
-                      <span className="text-xs font-black text-gold">৳{qStats.totalFine}</span>
-                    </div>
-                  ) : null;
-                })()}
+              <div className="text-xs text-muted-main mb-2">
+                User: <span className="text-white font-bold">{quickUser.name}</span>
               </div>
 
               <div className="space-y-3">
-                {quickUser.type === 'delete' ? (
-                  <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-center">
-                    <p className="text-xs font-bold text-red-400">
-                      আপনি কি {quickUser.name}-এর সমস্ত জরিমানা মুছে সম্পূর্ণ ৳০ করতে চান?
-                    </p>
-                  </div>
-                ) : quickUser.type === 'remove_day' ? (
+                {quickUser.type === 'remove_day' ? (
                   <div>
                     <label className="block text-[10px] text-muted-main font-bold uppercase mb-1">তারিখ নির্বাচন করুন</label>
                     <input
@@ -2527,43 +2386,23 @@ const BalanceManagementSection = ({
                   </div>
                 ) : (
                   <div>
-                    <label className="block text-[10px] text-muted-main font-bold uppercase mb-1">
-                      {quickUser.type === 'set_exact' ? 'নির্ধারিত জরিমানা (৳)' : 'টাকার পরিমাণ (৳)'}
-                    </label>
+                    <label className="block text-[10px] text-muted-main font-bold uppercase mb-1">টাকার পরিমাণ (৳)</label>
                     <input
                       type="number"
                       value={quickAmount}
                       onChange={(e) => setQuickAmount(e.target.value)}
-                      placeholder="টাকার পরিমাণ লিখুন..."
-                      className="w-full bg-bg border border-white/10 rounded-xl p-3 text-sm font-bold text-white outline-none focus:border-gold transition-colors"
+                      placeholder="Enter amount..."
+                      className="w-full bg-bg border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-gold transition-colors"
                     />
-                    {/* Preset Amount Chips */}
-                    <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                      <span className="text-[10px] text-muted-main font-bold">কুইক সিলেক্ট:</span>
-                      {[0, 10, 20, 30, 50, 100].map(val => (
-                        <button
-                          key={val}
-                          type="button"
-                          onClick={() => setQuickAmount(String(val))}
-                          className={`px-2 py-1 rounded-lg text-xs font-bold transition-all border ${
-                            quickAmount === String(val)
-                              ? 'bg-gold text-bg border-gold shadow-sm'
-                              : 'bg-white/5 text-muted-main hover:text-white border-white/10 hover:border-white/20'
-                          }`}
-                        >
-                          ৳{val}
-                        </button>
-                      ))}
-                    </div>
                   </div>
                 )}
                 <div>
-                  <label className="block text-[10px] text-muted-main font-bold uppercase mb-1">কারণ / নোট (ঐচ্ছিক)</label>
+                  <label className="block text-[10px] text-muted-main font-bold uppercase mb-1">কারণ / নোট (Optional)</label>
                   <input
                     type="text"
                     value={quickReason}
                     onChange={(e) => setQuickReason(e.target.value)}
-                    placeholder="কারণ লিখুন (যেমন: বিলম্ব ফি, বিশেষ ছাড়)..."
+                    placeholder="Enter reason..."
                     className="w-full bg-bg border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-gold transition-colors"
                   />
                 </div>
@@ -2573,7 +2412,7 @@ const BalanceManagementSection = ({
                 type="button"
                 disabled={busy}
                 onClick={handleQuickSubmit}
-                className="w-full py-3 rounded-xl bg-gold text-bg font-black text-sm uppercase tracking-wider hover:bg-gold/90 transition-all shadow-[0_0_15px_rgba(245,197,66,0.3)] disabled:opacity-50 disabled:cursor-not-allowed mt-2 active:scale-95"
+                className="w-full py-3 rounded-xl bg-gold text-bg font-black text-sm uppercase tracking-wider hover:bg-gold/90 transition-all shadow-[0_0_15px_rgba(245,197,66,0.3)] disabled:opacity-50 disabled:cursor-not-allowed mt-2"
               >
                 {busy ? 'প্রসেসিং...' : 'কনফার্ম করুন'}
               </button>
@@ -2851,24 +2690,6 @@ export default function App() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [results, setResults] = useState<Record<string, Result>>({});
-
-  const leaderRanking = useMemo(() => {
-    const ranking = members.filter(m => m.type === 'leader').map(m => {
-      const memberResults = (Object.values(results) as Result[]).filter(r => r.memberId === m.id);
-      const score = memberResults.reduce((acc, r) => acc + (r.convert || 0), 0);
-      return { id: m.id, name: m.name, score, createdAt: null } as RankingMember;
-    });
-    return ranking.sort((a, b) => b.score - a.score);
-  }, [members, results]);
-
-  const trainerRanking = useMemo(() => {
-    const ranking = members.filter(m => m.type === 'trainer').map(m => {
-      const memberResults = (Object.values(results) as Result[]).filter(r => r.memberId === m.id);
-      const score = memberResults.reduce((acc, r) => acc + (r.convert || 0), 0);
-      return { id: m.id, name: m.name, score, createdAt: null } as RankingMember;
-    });
-    return ranking.sort((a, b) => b.score - a.score);
-  }, [members, results]);
   const [config, setConfig] = useState<Config>({ 
     timerActive: false, 
     timerEndTime: 0, 
@@ -2931,6 +2752,8 @@ export default function App() {
   const [approvedUsers, setApprovedUsers] = useState<UserRegistration[]>([]);
   const [authenticatedUser, setAuthenticatedUser] = useState<UserRegistration | null>(null);
 
+  const [leaderRanking, setLeaderRanking] = useState<RankingMember[]>([]);
+  const [trainerRanking, setTrainerRanking] = useState<RankingMember[]>([]);
   const [showLeaderRankingModal, setShowLeaderRankingModal] = useState(false);
   const [showTrainerRankingModal, setShowTrainerRankingModal] = useState(false);
   const [showOverallStatsModal, setShowOverallStatsModal] = useState(false);
@@ -3199,6 +3022,41 @@ export default function App() {
       handleFirestoreError(err, OperationType.GET, 'pickingSchedule', showMsg);
     });
 
+    // Listen to Rankings
+    const unsubLeaderRanking = onSnapshot(query(collection(db, 'leaderRanking'), orderBy('score', 'desc')), (snapshot) => {
+      const list: RankingMember[] = [];
+      snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as RankingMember));
+      setLeaderRanking(list);
+    }, async (err) => {
+      console.warn('LeaderRanking Listener Error, attempting cache fallback:', err);
+      try {
+        const cacheSnap = await getDocsFromCache(query(collection(db, 'leaderRanking'), orderBy('score', 'desc')));
+        const list: RankingMember[] = [];
+        cacheSnap.forEach(d => list.push({ id: d.id, ...d.data() } as RankingMember));
+        setLeaderRanking(list);
+      } catch (cacheErr) {
+        console.warn('Failed to fetch leader ranking from cache:', cacheErr);
+      }
+      handleFirestoreError(err, OperationType.GET, 'leaderRanking', showMsg);
+    });
+
+    const unsubTrainerRanking = onSnapshot(query(collection(db, 'trainerRanking'), orderBy('score', 'desc')), (snapshot) => {
+      const list: RankingMember[] = [];
+      snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as RankingMember));
+      setTrainerRanking(list);
+    }, async (err) => {
+      console.warn('TrainerRanking Listener Error, attempting cache fallback:', err);
+      try {
+        const cacheSnap = await getDocsFromCache(query(collection(db, 'trainerRanking'), orderBy('score', 'desc')));
+        const list: RankingMember[] = [];
+        cacheSnap.forEach(d => list.push({ id: d.id, ...d.data() } as RankingMember));
+        setTrainerRanking(list);
+      } catch (cacheErr) {
+        console.warn('Failed to fetch trainer ranking from cache:', cacheErr);
+      }
+      handleFirestoreError(err, OperationType.GET, 'trainerRanking', showMsg);
+    });
+
     // Listen to Teachers
     const unsubTeachers = onSnapshot(query(collection(db, 'teachers'), orderBy('createdAt', 'asc')), (snapshot) => {
       const tList: Teacher[] = [];
@@ -3271,56 +3129,6 @@ export default function App() {
       handleFirestoreError(err, OperationType.GET, 'quickLinks', showMsg);
     });
 
-    // Listen to User Balances (Always real-time)
-    const unsubBalances = onSnapshot(collection(db, 'userBalances'), (snapshot) => {
-      const bMap: Record<string, UserBalance> = {};
-      snapshot.forEach(d => {
-        bMap[d.id] = { id: d.id, ...d.data() } as UserBalance;
-      });
-      setUserBalances(bMap);
-    }, async (err) => {
-      console.warn('Balances Listener Error, attempting cache fallback:', err);
-      try {
-        const cacheSnap = await getDocsFromCache(collection(db, 'userBalances'));
-        const bMap: Record<string, UserBalance> = {};
-        cacheSnap.forEach(d => {
-          bMap[d.id] = { id: d.id, ...d.data() } as UserBalance;
-        });
-        setUserBalances(bMap);
-      } catch (cacheErr) {
-        console.warn('Failed to fetch balances from cache:', cacheErr);
-      }
-      handleFirestoreError(err, OperationType.GET, 'userBalances', showMsg);
-    });
-
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth();
-    const safeYear = currentMonth === 0 ? currentYear - 1 : currentYear;
-    const safeMonth = currentMonth === 0 ? 12 : currentMonth; // previous month (1-indexed)
-    const startOfPrevMonthStr = `${safeYear}-${String(safeMonth).padStart(2, '0')}-01`;
-
-    const unsubSubmissionLogs = onSnapshot(query(collection(db, 'submissionLogs'), where('date', '>=', startOfPrevMonthStr)), (snapshot) => {
-      const logs: SubmissionLog[] = [];
-      snapshot.forEach(d => {
-        logs.push({ id: d.id, ...d.data() } as SubmissionLog);
-      });
-      setSubmissionLogs(logs);
-    }, async (err) => {
-      console.warn('SubmissionLogs Listener Error, attempting cache fallback:', err);
-      try {
-        const cacheSnap = await getDocsFromCache(query(collection(db, 'submissionLogs'), where('date', '>=', startOfPrevMonthStr)));
-        const logs: SubmissionLog[] = [];
-        cacheSnap.forEach(d => {
-          logs.push({ id: d.id, ...d.data() } as SubmissionLog);
-        });
-        setSubmissionLogs(logs);
-      } catch (cacheErr) {
-        console.warn('Failed to fetch submission logs from cache:', cacheErr);
-      }
-      handleFirestoreError(err, OperationType.GET, 'submissionLogs', showMsg);
-    });
-
     // ---------------------------------------------------------
     // AUTH DEPENDENT LISTENERS (Admin / Authed only)
     // ---------------------------------------------------------
@@ -3330,11 +3138,62 @@ export default function App() {
     let unsubDemoAttendance = () => {};
     let unsubPending = () => {};
     let unsubApproved = () => {};
+    let unsubBalances = () => {};
+    let unsubSubmissionLogs = () => {};
     let unsubAuditLogs = () => {};
 
-    const isActuallyAdmin = (user && (user.email === adminEmail || user.email === devEmail || user.isAnonymous)) || isAdmin;
+    if (isAuthReady && user) {
+      // Authenticated Users Listeners
+      unsubBalances = onSnapshot(collection(db, 'userBalances'), (snapshot) => {
+        const bMap: Record<string, UserBalance> = {};
+        snapshot.forEach(d => {
+          bMap[d.id] = { id: d.id, ...d.data() } as UserBalance;
+        });
+        setUserBalances(bMap);
+      }, async (err) => {
+        console.warn('Balances Listener Error, attempting cache fallback:', err);
+        try {
+          const cacheSnap = await getDocsFromCache(collection(db, 'userBalances'));
+          const bMap: Record<string, UserBalance> = {};
+          cacheSnap.forEach(d => {
+            bMap[d.id] = { id: d.id, ...d.data() } as UserBalance;
+          });
+          setUserBalances(bMap);
+        } catch (cacheErr) {
+          console.warn('Failed to fetch balances from cache:', cacheErr);
+        }
+        handleFirestoreError(err, OperationType.GET, 'userBalances', showMsg);
+      });
 
-    if (isActuallyAdmin || (isAuthReady && user)) {
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth();
+      const safeYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+      const safeMonth = currentMonth === 0 ? 12 : currentMonth; // previous month (1-indexed)
+      const startOfPrevMonthStr = `${safeYear}-${String(safeMonth).padStart(2, '0')}-01`;
+
+      unsubSubmissionLogs = onSnapshot(query(collection(db, 'submissionLogs'), where('date', '>=', startOfPrevMonthStr)), (snapshot) => {
+        const logs: SubmissionLog[] = [];
+        snapshot.forEach(d => {
+          logs.push({ id: d.id, ...d.data() } as SubmissionLog);
+        });
+        setSubmissionLogs(logs);
+      }, async (err) => {
+        console.warn('SubmissionLogs Listener Error, attempting cache fallback:', err);
+        try {
+          const cacheSnap = await getDocsFromCache(query(collection(db, 'submissionLogs'), where('date', '>=', startOfPrevMonthStr)));
+          const logs: SubmissionLog[] = [];
+          cacheSnap.forEach(d => {
+            logs.push({ id: d.id, ...d.data() } as SubmissionLog);
+          });
+          setSubmissionLogs(logs);
+        } catch (cacheErr) {
+          console.warn('Failed to fetch submission logs from cache:', cacheErr);
+        }
+        handleFirestoreError(err, OperationType.GET, 'submissionLogs', showMsg);
+      });
+
+      const isActuallyAdmin = user.email === adminEmail || user.email === devEmail || user.isAnonymous || isAdmin;
       
       // If signed in via Firebase Auth with admin email
       if (isActuallyAdmin) {
@@ -3464,6 +3323,8 @@ export default function App() {
       unsubMembers();
       unsubResults();
       unsubPicking();
+      unsubLeaderRanking();
+      unsubTrainerRanking();
       unsubTeachers();
       unsubStlMembers();
       unsubDemoMembers();
@@ -4792,19 +4653,38 @@ export default function App() {
       title: 'Clear ALL submitted results?',
       onConfirm: async () => {
         try {
-          // 1. Reset global converts counter in config
-          try {
-            await updateDoc(doc(db, 'config', 'global'), {
-              totalConverts: 0
-            });
-          } catch (configErr) {
-            console.warn('Failed to update config global converts, continuing:', configErr);
+          const resultsSnap = await getDocs(collection(db, 'results'));
+          let batch = writeBatch(db);
+          let count = 0;
+          let updateCount = 0;
+
+          // First update all existing result docs
+          for (const resDoc of resultsSnap.docs) {
+            const data = resDoc.data();
+            // Only update if they actually have data to clear
+            if (data.submitted === true || data.lead > 0 || data.convert > 0 || data.personalLead > 0) {
+              batch.set(resDoc.ref, {
+                memberId: resDoc.id,
+                lead: 0,
+                convert: 0,
+                personalLead: 0,
+                submitted: false,
+                updatedAt: serverTimestamp()
+              });
+              count++;
+              updateCount++;
+              if (count >= 490) {
+                await batch.commit();
+                batch = writeBatch(db);
+                count = 0;
+              }
+            }
+          }
+          if (count > 0) {
+            await batch.commit();
           }
 
-          // 2. Perform lightning-fast bulk delete on the entire 'results' table
-          await clearCollection('results');
-
-          showMsg('All results cleared successfully!');
+          showMsg(`All results cleared! (${updateCount} records reset)`);
           setShowConfirm(null);
         } catch (err) {
           console.error('Error in clearResults:', err);
@@ -4821,37 +4701,15 @@ export default function App() {
       return;
     }
     try {
-      // Find matching member from members OR approvedUsers
-      const cleanWa = currentAuthUser?.whatsapp ? currentAuthUser.whatsapp.replace(/\s+/g, '') : '';
-      const cleanAuthName = currentAuthUser?.fullName ? normalizeName(currentAuthUser.fullName) : '';
-      
-      const member = members.find(m => 
-        m.id === memberId ||
-        (cleanWa && m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanWa) ||
-        (cleanAuthName && normalizeName(m.name) === cleanAuthName)
-      );
+      const prevResult = results[memberId] || { lead: 0, convert: 0, personalLead: 0 };
+      const diffScore = convert - (prevResult.convert || 0);
+      const diffLeads = personalLead - (prevResult.personalLead || 0);
+      const member = members.find(m => m.id === memberId);
 
-      const matchedUser = approvedUsers.find(u => 
-        (cleanWa && u.whatsapp && u.whatsapp.replace(/\s+/g, '') === cleanWa) ||
-        (cleanAuthName && normalizeName(u.fullName) === cleanAuthName)
-      );
-
-      const targetName = member?.name || matchedUser?.fullName || currentAuthUser?.fullName || 'Leader';
-      const targetWhatsapp = member?.whatsapp || matchedUser?.whatsapp || currentAuthUser?.whatsapp || '';
-      const targetId = member?.id || memberId || (targetWhatsapp ? `user-${targetWhatsapp}` : 'unknown');
-
-      // 1. Fetch current database state for this member's result to ensure correct diff calculation
-      const resultDocRef = doc(db, 'results', targetId);
-      const resultSnap = await getDoc(resultDocRef);
-      const dbResult = resultSnap.exists() ? resultSnap.data() as Result : { lead: 0, convert: 0, personalLead: 0 };
-      
-      const diffScore = convert - (dbResult.convert || 0);
-      const diffLeads = personalLead - (dbResult.personalLead || 0);
-
+      // Use memberId as the document ID for predictable updates
+      const resultRef = doc(db, 'results', memberId);
       const data = {
-        memberId: targetId,
-        memberName: targetName,
-        whatsapp: targetWhatsapp,
+        memberId,
         lead,
         convert,
         personalLead,
@@ -4859,30 +4717,15 @@ export default function App() {
         updatedAt: serverTimestamp()
       };
       
-      await setDoc(resultDocRef, data);
-      if (memberId && memberId !== targetId) {
-        await setDoc(doc(db, 'results', memberId), data);
-      }
+      await setDoc(resultRef, data);
 
-      // Optimistic local update
-      const localResultData = {
-        ...data,
-        updatedAt: { seconds: Math.floor(Date.now() / 1000) }
-      } as any;
-
-      setResults(prev => ({
-        ...prev,
-        [targetId]: localResultData,
-        ...(memberId !== targetId ? { [memberId]: localResultData } : {})
-      }));
-
-      // Save in submissionLogs
+      // Save in submissionLogs for permanent historical daily logging
       const todayStr = format(new Date(), 'yyyy-MM-dd');
-      const logRef = doc(db, 'submissionLogs', `${targetId}_${todayStr}`);
+      const logRef = doc(db, 'submissionLogs', `${memberId}_${todayStr}`);
       await setDoc(logRef, {
-        whatsapp: targetWhatsapp,
-        memberId: targetId,
-        memberName: targetName,
+        whatsapp: currentAuthUser?.whatsapp || '',
+        memberId,
+        memberName: member?.name || '',
         date: todayStr,
         lead,
         convert,
@@ -4890,50 +4733,45 @@ export default function App() {
         submittedAt: serverTimestamp()
       }, { merge: true });
 
-      // Determine user type
-      const isLeader = member?.type === 'leader' || matchedUser?.position === 'Team Leader' || matchedUser?.position === 'STL' || currentAuthUser?.position === 'Team Leader' || currentAuthUser?.position === 'STL';
-      const isTrainer = member?.type === 'trainer' || matchedUser?.position === 'Team Trainer' || currentAuthUser?.position === 'Team Trainer';
-      const userType = isLeader ? 'leader' : (isTrainer ? 'trainer' : (member?.type || 'leader'));
-
-      // Update ranking scores using diff derived from DATABASE values
+      // Update global total and individual ranking score
       if (diffScore !== 0 || diffLeads !== 0) {
-        if (userType === 'leader' && diffScore !== 0) {
+        // Update global total (Only for Leaders)
+        if (member?.type === 'leader' && diffScore !== 0) {
           await updateDoc(doc(db, 'config', 'global'), {
             totalConverts: increment(diffScore)
           });
         }
 
-        const coll = userType === 'leader' ? 'leaderRanking' : 'trainerRanking';
-        const rankingList = userType === 'leader' ? leaderRanking : trainerRanking;
-        
-        // Find correct ranking doc
-        const rankingEntry = rankingList.find(r => 
-          r.id === targetId ||
-          r.id === memberId ||
-          (cleanWa && r.whatsapp && r.whatsapp.replace(/\s+/g, '') === cleanWa) ||
-          normalizeName(r.name) === normalizeName(targetName)
-        );
+        // Update individual ranking score if names match
+        if (member) {
+          const rankingList = member.type === 'leader' ? leaderRanking : trainerRanking;
+          const cleanMemberName = normalizeName(member.name);
+          const rankingEntry = rankingList.find(r => 
+            r.id === member.id ||
+            r.name.trim().toLowerCase() === member.name.trim().toLowerCase() ||
+            (cleanMemberName && normalizeName(r.name) === cleanMemberName)
+          );
+          
+          const coll = member.type === 'leader' ? 'leaderRanking' : 'trainerRanking';
 
-        if (rankingEntry) {
-          await updateDoc(doc(db, coll, rankingEntry.id), {
-            score: increment(diffScore),
-            leads: increment(diffLeads),
-            updatedAt: serverTimestamp()
-          });
-        } else {
-          // Auto-create if missing
-          await addDoc(collection(db, coll), {
-            name: targetName,
-            whatsapp: targetWhatsapp,
-            score: convert,
-            leads: personalLead,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp()
-          });
+          if (rankingEntry) {
+            await updateDoc(doc(db, coll, rankingEntry.id), {
+              score: increment(diffScore),
+              leads: increment(diffLeads)
+            });
+          } else {
+            // Auto-create ranking entry if missing, so their score is tracked
+            await addDoc(collection(db, coll), {
+              name: member.name,
+              score: convert, // Starting score is their current total
+              leads: personalLead,
+              createdAt: serverTimestamp()
+            });
+          }
         }
       }
 
-      showMsg('Result submitted successfully!', 'success');
+      showMsg('Result submitted!');
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'results', showMsg);
     }
@@ -4991,47 +4829,25 @@ export default function App() {
         totalConverts: 0
       });
 
-      // 2. Reset userBalances for all members & approvedUsers
+      // 2. Reset userBalances for all members
       const batch = writeBatch(db);
-      const processedKeys = new Set<string>();
-
       members.forEach(m => {
-        if (m.id) {
-          processedKeys.add(m.id);
-          const uRef = doc(db, 'userBalances', m.id);
-          batch.set(uRef, {
-            whatsapp: m.whatsapp || '',
-            userName: m.name,
-            waivedFines: 0,
-            waivedDays: [],
-            manualAdjustments: 0,
-            balance: 0,
-            updatedAt: serverTimestamp()
-          }, { merge: true });
-        }
+        const uRef = doc(db, 'userBalances', m.id);
+        batch.set(uRef, {
+          whatsapp: m.whatsapp || '',
+          userName: m.name,
+          waivedFines: 0,
+          waivedDays: [],
+          manualAdjustments: 0,
+          balance: 0,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
 
         if (m.whatsapp) {
-          processedKeys.add(m.whatsapp);
           const uRefWa = doc(db, 'userBalances', m.whatsapp);
           batch.set(uRefWa, {
             whatsapp: m.whatsapp,
             userName: m.name,
-            waivedFines: 0,
-            waivedDays: [],
-            manualAdjustments: 0,
-            balance: 0,
-            updatedAt: serverTimestamp()
-          }, { merge: true });
-        }
-      });
-
-      approvedUsers.forEach(u => {
-        if (u.whatsapp && !processedKeys.has(u.whatsapp)) {
-          processedKeys.add(u.whatsapp);
-          const uRefWa = doc(db, 'userBalances', u.whatsapp);
-          batch.set(uRefWa, {
-            whatsapp: u.whatsapp,
-            userName: u.fullName,
             waivedFines: 0,
             waivedDays: [],
             manualAdjustments: 0,
@@ -5150,58 +4966,26 @@ export default function App() {
   const adminUpdateBalance = async (userKey: string, userName: string, amount: number, isDeduct: boolean, reason: string) => {
     try {
       const cleanName = userName.trim().toLowerCase();
-      const cleanKey = (userKey || '').replace(/\s+/g, '');
-      const matchedApproved = approvedUsers.find(u => 
-        (u.whatsapp && u.whatsapp.replace(/\s+/g, '') === cleanKey) ||
-        u.fullName.trim().toLowerCase() === cleanName
-      );
-      const matchedMember = members.find(m => 
-        m.id === userKey ||
-        (m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanKey) ||
-        m.name.trim().toLowerCase() === cleanName
-      );
-
-      const targetWhatsapp = matchedApproved?.whatsapp || matchedMember?.whatsapp || (userKey.startsWith('01') || userKey.startsWith('+') ? userKey : '');
-      const targetMemberId = matchedMember?.id || (userKey.startsWith('01') || userKey.startsWith('+') ? '' : userKey);
-      const primaryKey = targetWhatsapp || targetMemberId || userKey;
+      const matchedUser = approvedUsers.find(u => u.fullName.trim().toLowerCase() === cleanName) ||
+                          members.find(m => m.name.trim().toLowerCase() === cleanName);
+      
+      const primaryKey = (matchedUser && 'whatsapp' in matchedUser && matchedUser.whatsapp) ? matchedUser.whatsapp : userKey;
       const userBalRef = doc(db, 'userBalances', primaryKey);
       
-      const existing = (primaryKey && userBalances[primaryKey]) ||
-                       (targetWhatsapp && userBalances[targetWhatsapp]) ||
-                       (targetMemberId && userBalances[targetMemberId]) ||
-                       (userKey && userBalances[userKey]) ||
-                       Object.values(userBalances).find(b => {
-                         const bal = b as UserBalance;
-                         return (targetWhatsapp && bal.whatsapp === targetWhatsapp) ||
-                                (targetMemberId && bal.id === targetMemberId) ||
-                                (bal.userName && bal.userName.trim().toLowerCase() === cleanName);
-                       }) ||
-                       { whatsapp: targetWhatsapp || primaryKey, id: targetMemberId, userName, balance: 1500, waivedFines: 0, manualAdjustments: 0, waivedDays: [] };
+      const existing = userBalances[primaryKey] || 
+                       userBalances[userKey] || 
+                       Object.values(userBalances).find(b => (b as UserBalance).userName?.trim().toLowerCase() === cleanName) || 
+                       { whatsapp: primaryKey, userName, balance: 1500, waivedFines: 0, manualAdjustments: 0 };
       
       const currentManual = existing.manualAdjustments || 0;
       const diff = isDeduct ? -amount : amount;
       const newManual = currentManual + diff;
 
-      const updatedBalance: UserBalance = {
-        ...existing,
-        id: targetMemberId || existing.id,
-        whatsapp: targetWhatsapp || existing.whatsapp || primaryKey,
-        userName: userName || existing.userName,
-        manualAdjustments: newManual,
-        updatedAt: new Date().toISOString()
-      };
-
-      // Immediate optimistic update in state so UI updates in 0ms!
-      setUserBalances(prev => {
-        const next = { ...prev, [primaryKey]: updatedBalance };
-        if (targetWhatsapp && targetWhatsapp !== primaryKey) next[targetWhatsapp] = updatedBalance;
-        if (targetMemberId && targetMemberId !== primaryKey) next[targetMemberId] = updatedBalance;
-        if (userKey && userKey !== primaryKey) next[userKey] = updatedBalance;
-        return next;
-      });
-
       await setDoc(userBalRef, {
-        ...updatedBalance,
+        ...existing,
+        whatsapp: primaryKey,
+        userName,
+        manualAdjustments: newManual,
         updatedAt: serverTimestamp()
       }, { merge: true });
 
@@ -5338,57 +5122,25 @@ export default function App() {
   const adminWaiveFine = async (userKey: string, userName: string, amount: number, reason: string) => {
     try {
       const cleanName = userName.trim().toLowerCase();
-      const cleanKey = (userKey || '').replace(/\s+/g, '');
-      const matchedApproved = approvedUsers.find(u => 
-        (u.whatsapp && u.whatsapp.replace(/\s+/g, '') === cleanKey) ||
-        u.fullName.trim().toLowerCase() === cleanName
-      );
-      const matchedMember = members.find(m => 
-        m.id === userKey ||
-        (m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanKey) ||
-        m.name.trim().toLowerCase() === cleanName
-      );
-
-      const targetWhatsapp = matchedApproved?.whatsapp || matchedMember?.whatsapp || (userKey.startsWith('01') || userKey.startsWith('+') ? userKey : '');
-      const targetMemberId = matchedMember?.id || (userKey.startsWith('01') || userKey.startsWith('+') ? '' : userKey);
-      const primaryKey = targetWhatsapp || targetMemberId || userKey;
+      const matchedUser = approvedUsers.find(u => u.fullName.trim().toLowerCase() === cleanName) ||
+                          members.find(m => m.name.trim().toLowerCase() === cleanName);
+      
+      const primaryKey = (matchedUser && 'whatsapp' in matchedUser && matchedUser.whatsapp) ? matchedUser.whatsapp : userKey;
       const userBalRef = doc(db, 'userBalances', primaryKey);
       
-      const existing = (primaryKey && userBalances[primaryKey]) ||
-                       (targetWhatsapp && userBalances[targetWhatsapp]) ||
-                       (targetMemberId && userBalances[targetMemberId]) ||
-                       (userKey && userBalances[userKey]) ||
-                       Object.values(userBalances).find(b => {
-                         const bal = b as UserBalance;
-                         return (targetWhatsapp && bal.whatsapp === targetWhatsapp) ||
-                                (targetMemberId && bal.id === targetMemberId) ||
-                                (bal.userName && bal.userName.trim().toLowerCase() === cleanName);
-                       }) ||
-                       { whatsapp: targetWhatsapp || primaryKey, id: targetMemberId, userName, balance: 1500, waivedFines: 0, manualAdjustments: 0, waivedDays: [] };
+      const existing = userBalances[primaryKey] || 
+                       userBalances[userKey] || 
+                       Object.values(userBalances).find(b => (b as UserBalance).userName?.trim().toLowerCase() === cleanName) || 
+                       { whatsapp: primaryKey, userName, balance: 1500, waivedFines: 0, manualAdjustments: 0 };
       
       const currentWaived = existing.waivedFines || 0;
       const newWaived = currentWaived + amount;
 
-      const updatedBalance: UserBalance = {
-        ...existing,
-        id: targetMemberId || existing.id,
-        whatsapp: targetWhatsapp || existing.whatsapp || primaryKey,
-        userName: userName || existing.userName,
-        waivedFines: newWaived,
-        updatedAt: new Date().toISOString()
-      };
-
-      // Immediate optimistic update
-      setUserBalances(prev => {
-        const next = { ...prev, [primaryKey]: updatedBalance };
-        if (targetWhatsapp && targetWhatsapp !== primaryKey) next[targetWhatsapp] = updatedBalance;
-        if (targetMemberId && targetMemberId !== primaryKey) next[targetMemberId] = updatedBalance;
-        if (userKey && userKey !== primaryKey) next[userKey] = updatedBalance;
-        return next;
-      });
-
       await setDoc(userBalRef, {
-        ...updatedBalance,
+        ...existing,
+        whatsapp: primaryKey,
+        userName,
+        waivedFines: newWaived,
         updatedAt: serverTimestamp()
       }, { merge: true });
 
@@ -5402,33 +5154,16 @@ export default function App() {
   const adminRemoveDayFine = async (userKey: string, userName: string, dateStr: string, reason: string) => {
     try {
       const cleanName = userName.trim().toLowerCase();
-      const cleanKey = (userKey || '').replace(/\s+/g, '');
-      const matchedApproved = approvedUsers.find(u => 
-        (u.whatsapp && u.whatsapp.replace(/\s+/g, '') === cleanKey) ||
-        u.fullName.trim().toLowerCase() === cleanName
-      );
-      const matchedMember = members.find(m => 
-        m.id === userKey ||
-        (m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanKey) ||
-        m.name.trim().toLowerCase() === cleanName
-      );
-
-      const targetWhatsapp = matchedApproved?.whatsapp || matchedMember?.whatsapp || (userKey.startsWith('01') || userKey.startsWith('+') ? userKey : '');
-      const targetMemberId = matchedMember?.id || (userKey.startsWith('01') || userKey.startsWith('+') ? '' : userKey);
-      const primaryKey = targetWhatsapp || targetMemberId || userKey;
+      const matchedUser = approvedUsers.find(u => u.fullName.trim().toLowerCase() === cleanName) ||
+                          members.find(m => m.name.trim().toLowerCase() === cleanName);
+      
+      const primaryKey = (matchedUser && 'whatsapp' in matchedUser && matchedUser.whatsapp) ? matchedUser.whatsapp : userKey;
       const userBalRef = doc(db, 'userBalances', primaryKey);
       
-      const existing = (primaryKey && userBalances[primaryKey]) ||
-                       (targetWhatsapp && userBalances[targetWhatsapp]) ||
-                       (targetMemberId && userBalances[targetMemberId]) ||
-                       (userKey && userBalances[userKey]) ||
-                       Object.values(userBalances).find(b => {
-                         const bal = b as UserBalance;
-                         return (targetWhatsapp && bal.whatsapp === targetWhatsapp) ||
-                                (targetMemberId && bal.id === targetMemberId) ||
-                                (bal.userName && bal.userName.trim().toLowerCase() === cleanName);
-                       }) ||
-                       { whatsapp: targetWhatsapp || primaryKey, id: targetMemberId, userName, balance: 1500, waivedFines: 0, manualAdjustments: 0, waivedDays: [] };
+      const existing = userBalances[primaryKey] || 
+                       userBalances[userKey] || 
+                       Object.values(userBalances).find(b => (b as UserBalance).userName?.trim().toLowerCase() === cleanName) || 
+                       { whatsapp: primaryKey, userName, balance: 1500, waivedFines: 0, manualAdjustments: 0, waivedDays: [] };
       
       const currentWaivedDays = [...(existing.waivedDays || [])];
 
@@ -5438,142 +5173,16 @@ export default function App() {
 
       const fineRate = config.fineAmount !== undefined ? config.fineAmount : 10;
 
-      const updatedBalance: UserBalance = {
-        ...existing,
-        id: targetMemberId || existing.id,
-        whatsapp: targetWhatsapp || existing.whatsapp || primaryKey,
-        userName: userName || existing.userName,
-        waivedDays: currentWaivedDays,
-        updatedAt: new Date().toISOString()
-      };
-
-      // Immediate optimistic update
-      setUserBalances(prev => {
-        const next = { ...prev, [primaryKey]: updatedBalance };
-        if (targetWhatsapp && targetWhatsapp !== primaryKey) next[targetWhatsapp] = updatedBalance;
-        if (targetMemberId && targetMemberId !== primaryKey) next[targetMemberId] = updatedBalance;
-        if (userKey && userKey !== primaryKey) next[userKey] = updatedBalance;
-        return next;
-      });
-
       await setDoc(userBalRef, {
-        ...updatedBalance,
+        ...existing,
+        whatsapp: primaryKey,
+        userName,
+        waivedDays: currentWaivedDays,
         updatedAt: serverTimestamp()
       }, { merge: true });
 
       await writeAuditLog(primaryKey, userName, 'Remove Day Fine', fineRate, reason, dateStr);
       showMsg(`${dateStr} তারিখের মিসড দিন বাদ দেওয়া হয়েছে!`, 'success');
-    } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, `userBalances/${userKey}`, showMsg);
-    }
-  };
-
-  const adminResetUserFine = async (userKey: string, userName: string, reason: string) => {
-    try {
-      const cleanName = userName.trim().toLowerCase();
-      const cleanKey = (userKey || '').replace(/\s+/g, '');
-      const matchedApproved = approvedUsers.find(u => 
-        (u.whatsapp && u.whatsapp.replace(/\s+/g, '') === cleanKey) ||
-        u.fullName.trim().toLowerCase() === cleanName
-      );
-      const matchedMember = members.find(m => 
-        m.id === userKey ||
-        (m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanKey) ||
-        m.name.trim().toLowerCase() === cleanName
-      );
-
-      const targetWhatsapp = matchedApproved?.whatsapp || matchedMember?.whatsapp || (userKey.startsWith('01') || userKey.startsWith('+') ? userKey : '');
-      const targetMemberId = matchedMember?.id || (userKey.startsWith('01') || userKey.startsWith('+') ? '' : userKey);
-      const primaryKey = targetWhatsapp || targetMemberId || userKey;
-      const userBalRef = doc(db, 'userBalances', primaryKey);
-
-      const stats = computeUserSubmissionStats(targetWhatsapp || primaryKey, targetMemberId);
-      const rawMissed = stats?.rawMissedDays || 0;
-      const currentRate = config.fineAmount !== undefined ? config.fineAmount : 10;
-      const rawFine = rawMissed * currentRate;
-
-      const updatedBalance: UserBalance = {
-        id: targetMemberId || primaryKey,
-        whatsapp: targetWhatsapp || primaryKey,
-        userName: userName,
-        balance: 0,
-        waivedFines: rawFine,
-        manualAdjustments: 0,
-        waivedDays: [],
-        updatedAt: new Date().toISOString()
-      };
-
-      setUserBalances(prev => {
-        const next = { ...prev, [primaryKey]: updatedBalance };
-        if (targetWhatsapp && targetWhatsapp !== primaryKey) next[targetWhatsapp] = updatedBalance;
-        if (targetMemberId && targetMemberId !== primaryKey) next[targetMemberId] = updatedBalance;
-        if (userKey && userKey !== primaryKey) next[userKey] = updatedBalance;
-        return next;
-      });
-
-      await setDoc(userBalRef, {
-        ...updatedBalance,
-        updatedAt: serverTimestamp()
-      }, { merge: true });
-
-      await writeAuditLog(primaryKey, userName, 'Delete/Reset Fine', 0, reason || 'ফাইন সম্পূর্ণ ডিলিট/রিসেট করা হয়েছে');
-      showMsg(`${userName}-এর জরিমানা সম্পূর্ণ ডিলিট/রিসেট করা হয়েছে!`, 'success');
-    } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, `userBalances/${userKey}`, showMsg);
-    }
-  };
-
-  const adminSetExactFine = async (userKey: string, userName: string, targetFine: number, reason: string) => {
-    try {
-      const cleanName = userName.trim().toLowerCase();
-      const cleanKey = (userKey || '').replace(/\s+/g, '');
-      const matchedApproved = approvedUsers.find(u => 
-        (u.whatsapp && u.whatsapp.replace(/\s+/g, '') === cleanKey) ||
-        u.fullName.trim().toLowerCase() === cleanName
-      );
-      const matchedMember = members.find(m => 
-        m.id === userKey ||
-        (m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanKey) ||
-        m.name.trim().toLowerCase() === cleanName
-      );
-
-      const targetWhatsapp = matchedApproved?.whatsapp || matchedMember?.whatsapp || (userKey.startsWith('01') || userKey.startsWith('+') ? userKey : '');
-      const targetMemberId = matchedMember?.id || (userKey.startsWith('01') || userKey.startsWith('+') ? '' : userKey);
-      const primaryKey = targetWhatsapp || targetMemberId || userKey;
-      const userBalRef = doc(db, 'userBalances', primaryKey);
-
-      const stats = computeUserSubmissionStats(targetWhatsapp || primaryKey, targetMemberId);
-      const rawMissed = stats?.rawMissedDays || 0;
-      const currentRate = config.fineAmount !== undefined ? config.fineAmount : 10;
-      const rawFine = rawMissed * currentRate;
-
-      const manualAdj = targetFine - rawFine;
-
-      const updatedBalance: UserBalance = {
-        id: targetMemberId || primaryKey,
-        whatsapp: targetWhatsapp || primaryKey,
-        userName: userName,
-        balance: 0,
-        waivedFines: 0,
-        manualAdjustments: manualAdj,
-        updatedAt: new Date().toISOString()
-      };
-
-      setUserBalances(prev => {
-        const next = { ...prev, [primaryKey]: updatedBalance };
-        if (targetWhatsapp && targetWhatsapp !== primaryKey) next[targetWhatsapp] = updatedBalance;
-        if (targetMemberId && targetMemberId !== primaryKey) next[targetMemberId] = updatedBalance;
-        if (userKey && userKey !== primaryKey) next[userKey] = updatedBalance;
-        return next;
-      });
-
-      await setDoc(userBalRef, {
-        ...updatedBalance,
-        updatedAt: serverTimestamp()
-      }, { merge: true });
-
-      await writeAuditLog(primaryKey, userName, 'Set Exact Fine', targetFine, reason || `জরিমানা ৳${targetFine} করা হয়েছে`);
-      showMsg(`${userName}-এর জরিমানা ৳${targetFine} নির্ধারণ করা হয়েছে!`, 'success');
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `userBalances/${userKey}`, showMsg);
     }
@@ -5874,236 +5483,96 @@ export default function App() {
     let totalSubmittedConverts = 0;
     let todayLeads = 0;
     
-    // Helper to resolve result for any member/user by ID, whatsapp, or name
-    const getResultForMember = (m: { id: string; name: string; whatsapp?: string }) => {
-      if (results[m.id]) return results[m.id];
-      const cleanWa = m.whatsapp ? m.whatsapp.replace(/\s+/g, '') : '';
-      if (cleanWa && results[cleanWa]) return results[cleanWa];
-      if (cleanWa && results[`user-${cleanWa}`]) return results[`user-${cleanWa}`];
-      
-      const cleanMName = normalizeName(m.name);
-      const foundEntry = Object.values(results).find(r => {
-        const resObj = r as any;
-        if (resObj.memberId === m.id) return true;
-        if (cleanWa && resObj.memberId && resObj.memberId.replace(/\s+/g, '') === cleanWa) return true;
-        const rName = resObj.name || resObj.memberName;
-        if (cleanMName && rName && normalizeName(rName) === cleanMName) return true;
-        return false;
-      });
-      return foundEntry || { lead: 0, convert: 0, personalLead: 0, submitted: false };
-    };
-
-    // 1. Build comprehensive Leaders list (members + approvedUsers + leaderRanking)
-    const leaderMap = new Map<string, any>();
-
-    // Add leaders from manual members collection
-    members.filter(m => m.type === 'leader').forEach(m => {
-      const key = normalizeName(m.name) || m.id;
-      leaderMap.set(key, m);
-    });
-
-    // Add registered Team Leaders / STLs
-    approvedUsers.filter(u => u.position === 'Team Leader' || u.position === 'STL').forEach(u => {
-      const key = normalizeName(u.fullName);
-      if (key && !leaderMap.has(key)) {
-        leaderMap.set(key, {
-          id: `user-${u.whatsapp}`,
-          name: u.fullName,
-          type: 'leader',
-          whatsapp: u.whatsapp,
-          createdAt: u.createdAt
-        });
-      }
-    });
-
-    // Add any standalone leaderRanking entries
-    leaderRanking.forEach(r => {
-      const cleanRName = normalizeName(r.name);
-      const cleanRWa = r.whatsapp ? r.whatsapp.replace(/\s+/g, '') : '';
-      const exists = Array.from(leaderMap.values()).some(m => 
-        m.id === r.id ||
-        (cleanRWa && m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanRWa) ||
-        (cleanRName && normalizeName(m.name) === cleanRName)
-      );
-      if (!exists && r.name) {
-        const key = cleanRName || r.id;
-        leaderMap.set(key, {
-          id: r.id,
-          name: r.name,
-          type: 'leader',
-          whatsapp: r.whatsapp || ''
-        });
-      }
-    });
-
-    const allLeaders = Array.from(leaderMap.values()).map((m) => {
-      const cleanMName = normalizeName(m.name);
-      const cleanWa = m.whatsapp ? m.whatsapp.replace(/\s+/g, '') : '';
+    // 1. Create base lists with all necessary data merged
+    const allLeaders = members.filter(m => m.type === 'leader').map((m) => {
       const rankingEntry = leaderRanking.find(r => 
-        r.id === m.id ||
-        (cleanWa && r.whatsapp && r.whatsapp.replace(/\s+/g, '') === cleanWa) ||
-        r.name.trim().toLowerCase() === m.name.trim().toLowerCase() ||
-        (cleanMName && normalizeName(r.name) === cleanMName)
+        r.name.trim().toLowerCase() === m.name.trim().toLowerCase()
       );
-      const res = getResultForMember(m);
-      
-      // Database score is the single source of truth for ranking
-      // It already includes today's increments via submitResult
-      const score = Number(rankingEntry?.score) || 0;
-      const leads = Number(rankingEntry?.leads) || 0;
-
       return {
         ...m,
-        score,
-        leads,
-        result: res
+        score: rankingEntry?.score || 0,
+        leads: rankingEntry?.leads || 0,
+        result: results[m.id] || { lead: 0, convert: 0, personalLead: 0, submitted: false }
       };
     });
 
-    // 2. Build comprehensive Trainers list (members + approvedUsers + trainerRanking)
-    const trainerMap = new Map<string, any>();
-
-    members.filter(m => m.type === 'trainer').forEach(m => {
-      const key = normalizeName(m.name) || m.id;
-      trainerMap.set(key, m);
-    });
-
-    approvedUsers.filter(u => u.position === 'Team Trainer').forEach(u => {
-      const key = normalizeName(u.fullName);
-      if (key && !trainerMap.has(key)) {
-        trainerMap.set(key, {
-          id: `user-${u.whatsapp}`,
-          name: u.fullName,
-          type: 'trainer',
-          whatsapp: u.whatsapp,
-          createdAt: u.createdAt
-        });
-      }
-    });
-
-    trainerRanking.forEach(r => {
-      const cleanRName = normalizeName(r.name);
-      const cleanRWa = r.whatsapp ? r.whatsapp.replace(/\s+/g, '') : '';
-      const exists = Array.from(trainerMap.values()).some(m => 
-        m.id === r.id ||
-        (cleanRWa && m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanRWa) ||
-        (cleanRName && normalizeName(m.name) === cleanRName)
-      );
-      if (!exists && r.name) {
-        const key = cleanRName || r.id;
-        trainerMap.set(key, {
-          id: r.id,
-          name: r.name,
-          type: 'trainer',
-          whatsapp: r.whatsapp || ''
-        });
-      }
-    });
-
-    const allTrainers = Array.from(trainerMap.values()).map((m) => {
-      const cleanMName = normalizeName(m.name);
-      const cleanWa = m.whatsapp ? m.whatsapp.replace(/\s+/g, '') : '';
+    const allTrainers = members.filter(m => m.type === 'trainer').map((m) => {
       const rankingEntry = trainerRanking.find(r => 
-        r.id === m.id ||
-        (cleanWa && r.whatsapp && r.whatsapp.replace(/\s+/g, '') === cleanWa) ||
-        r.name.trim().toLowerCase() === m.name.trim().toLowerCase() ||
-        (cleanMName && normalizeName(r.name) === cleanMName)
+        r.name.trim().toLowerCase() === m.name.trim().toLowerCase()
       );
-      const res = getResultForMember(m);
-      
-      const score = Number(rankingEntry?.score) || 0;
-      const leads = Number(rankingEntry?.leads) || 0;
-
       return {
         ...m,
-        score,
-        leads,
-        result: res
+        score: rankingEntry?.score || 0,
+        leads: rankingEntry?.leads || 0,
+        result: results[m.id] || { lead: 0, convert: 0, personalLead: 0, submitted: false }
       };
     });
 
-    // 3. Define universal performance sorting (Stable Ranking priority)
+    // 2. Define universal performance sorting (Real-time priority)
     const sortByPerformance = (a: any, b: any) => {
-      // Primary sort: Latest Total Score (Cumulative)
-      const scoreA = a.score || 0;
-      const scoreB = b.score || 0;
-      if (scoreB !== scoreA) return scoreB - scoreA;
-
-      // Secondary sort: Today's Convert count (descending)
+      // Primary sort: Today's Convert count (descending)
       const convA = a.result?.convert || 0;
       const convB = b.result?.convert || 0;
       if (convB !== convA) return convB - convA;
       
-      // Tertiary sort: Today's Personal Lead count (descending)
+      // Tie-breaker for same convert: Earlier submission wins
+      if (convA > 0 && convB > 0) {
+        const timeA = a.result?.updatedAt?.toMillis?.() || a.result?.updatedAt?.seconds * 1000 || Date.now();
+        const timeB = b.result?.updatedAt?.toMillis?.() || b.result?.updatedAt?.seconds * 1000 || Date.now();
+        if (timeA !== timeB) {
+          return timeA - timeB; // Lower time (earlier) comes first
+        }
+      }
+
+      // Secondary sort: Today's Personal Lead count (descending)
       const pLeadA = a.result?.personalLead || 0;
       const pLeadB = b.result?.personalLead || 0;
       if (pLeadB !== pLeadA) return pLeadB - pLeadA;
 
-      // Submission time tie-breaker
-      const timeA = a.result?.updatedAt?.toMillis?.() || a.result?.updatedAt?.seconds * 1000 || 0;
-      const timeB = b.result?.updatedAt?.toMillis?.() || b.result?.updatedAt?.seconds * 1000 || 0;
-      if (timeA && timeB && timeA !== timeB) {
-        return timeA - timeB;
-      }
-
-      return a.name.localeCompare(b.name);
+      // Tertiary sort: Lifetime Score (score)
+      if ((b.score || 0) !== (a.score || 0)) return (b.score || 0) - (a.score || 0);
+      return (b.leads || 0) - (a.leads || 0);
     };
 
-    // Ranking sort function: strictly by Total Converts / Effective Score (score)
+    // Ranking sort function: strictly by Total Converts (score)
     const sortByTotalRanking = (a: any, b: any) => {
+      // Primary sort: Total Converts / Lifetime score (descending)
       const scoreA = a.score || 0;
       const scoreB = b.score || 0;
       if (scoreB !== scoreA) return scoreB - scoreA;
 
-      const convA = a.result?.convert || 0;
-      const convB = b.result?.convert || 0;
-      if (convB !== convA) return convB - convA;
-
+      // Secondary sort: Total Leads (descending)
       const leadsA = a.leads || 0;
       const leadsB = b.leads || 0;
       if (leadsB !== leadsA) return leadsB - leadsA;
 
+      // Tertiary sort: Today's Convert count (descending)
+      const convA = a.result?.convert || 0;
+      const convB = b.result?.convert || 0;
+      if (convB !== convA) return convB - convA;
+
+      // Alphabetical tie-breaker
       return a.name.localeCompare(b.name);
     };
 
-    // 4. Calculate Global Stats
+    // 3. Calculate Global Stats
     allLeaders.forEach(m => {
-      if (m.result.submitted || (m.result.convert || 0) > 0) {
-        totalLeads += m.result.lead || 0;
-        todayConverts += m.result.convert || 0;
-        todayLeads += m.result.lead || 0;
+      if (m.result.submitted) {
+        totalLeads += m.result.lead;
+        todayConverts += m.result.convert;
+        todayLeads += m.result.lead;
         totalSubmittedConverts += m.result.convert || 0;
       }
     });
 
-    allTrainers.forEach(m => {
-      if (m.result.submitted || (m.result.convert || 0) > 0) {
-        totalLeads += m.result.lead || 0;
-        todayConverts += m.result.convert || 0;
-        todayLeads += m.result.lead || 0;
-        totalSubmittedConverts += m.result.convert || 0;
-      }
-    });
-
-    // 5. Generate sorted lists
+    // 4. Generate sorted lists
     const sortedL = [...allLeaders].sort(sortByPerformance);
     const sortedT = [...allTrainers].sort(sortByPerformance);
     const allSorted = [...allLeaders, ...allTrainers].sort(sortByPerformance);
 
+    // sortedLR and sortedTR are for the "Ranking" sections (Top 3 Leaders, Top 3 Trainers & Ranking Modals)
     const sortedLR = [...allLeaders].sort(sortByTotalRanking);
     const sortedTR = [...allTrainers].sort(sortByTotalRanking);
-
-    // Identify Top Performers strictly by TODAY's highest converts
-    const sortByToday = (a: any, b: any) => {
-      const convA = a.result?.convert || 0;
-      const convB = b.result?.convert || 0;
-      if (convB !== convA) return convB - convA;
-      return (b.score || 0) - (a.score || 0);
-    };
-
-    const bestLeader = [...allLeaders].sort(sortByToday)[0];
-    const bestTrainer = [...allTrainers].sort(sortByToday)[0];
-    const bestOverall = [...allLeaders, ...allTrainers].sort(sortByToday)[0];
 
     return {
       stats: {
@@ -6114,9 +5583,9 @@ export default function App() {
         todayConverts: todayConverts,
         todayLeads: todayLeads
       },
-      topLeader: bestLeader && (bestLeader.result?.convert || 0) > 0 ? bestLeader : null,
-      topTrainer: bestTrainer && (bestTrainer.result?.convert || 0) > 0 ? bestTrainer : null,
-      topOverall: bestOverall && (bestOverall.result?.convert || 0) > 0 ? bestOverall : null,
+      topLeader: sortedL[0]?.result?.submitted && sortedL[0]?.result?.convert > 0 ? sortedL[0] : null,
+      topTrainer: sortedT[0]?.result?.submitted && sortedT[0]?.result?.convert > 0 ? sortedT[0] : null,
+      topOverall: allSorted[0]?.result?.submitted && allSorted[0]?.result?.convert > 0 ? allSorted[0] : null,
       sortedLeaders: sortedL,
       sortedTrainers: sortedT,
       sortedLeaderRanking: sortedLR,
@@ -6124,7 +5593,7 @@ export default function App() {
       sortedLeadersByRanking: sortedLR,
       sortedTrainersByRanking: sortedTR
     };
-  }, [members, approvedUsers, results, leaderRanking, trainerRanking]);
+  }, [members, results, leaderRanking, trainerRanking]);
 
   useEffect(() => {
     rankingDataRef.current = {
@@ -7630,11 +7099,6 @@ export default function App() {
               {/* Admin Navigation "Slots" (Three-line style alternative) */}
               <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 custom-scrollbar space-y-4">
                 
-                {/* Supabase Database & Realtime Migration */}
-                <AdminAccordion title="Supabase Database & Migration" icon={<Database size={16} />} colorClass="text-emerald-400">
-                  <SupabaseSettings showMsg={showMsg} />
-                </AdminAccordion>
-
                 {/* 1. Website Branding & Logo */}
                                       <AdminAccordion title="Push Notifications & Broadcasts" icon={<Bell size={16} />} colorClass="text-blue-400">
                          <div className="bg-surface/40 border border-white/5 p-4 sm:p-6 rounded-2xl sm:rounded-3xl relative overflow-hidden group mb-4">
@@ -8054,8 +7518,6 @@ export default function App() {
                        onUpdateBalance={adminUpdateBalance}
                        onWaiveFine={adminWaiveFine}
                        onRemoveDayFine={adminRemoveDayFine}
-                       onResetUserFine={adminResetUserFine}
-                       onSetExactFine={adminSetExactFine}
                        onRecalculateFine={adminRecalculateFine}
                        computeUserSubmissionStats={computeUserSubmissionStats}
                      />

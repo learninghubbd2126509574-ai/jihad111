@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { collection, onSnapshot, query, orderBy, limit, addDoc, serverTimestamp } from '../lib/supabaseDb';
+import { collection, onSnapshot, query, orderBy, limit, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Bell, ExternalLink, X, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
