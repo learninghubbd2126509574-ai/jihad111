@@ -182,6 +182,8 @@ interface Result {
   personalLead: number;
   submitted: boolean;
   updatedAt: any;
+  name?: string;
+  memberName?: string;
 }
 
 interface PickingItem {
@@ -415,39 +417,35 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   const message = err?.message || String(error);
   const code = err?.code || '';
   
-  // If code is 'unavailable', 'resource-exhausted', offline or quota exceeded, log warning rather than treating as fatal error
-  if (code === 'unavailable' || code === 'resource-exhausted' || message.includes('unavailable') || message.includes('offline') || message.includes('Quota exceeded') || message.includes('Could not reach Cloud Firestore')) {
-    console.warn('Firestore is reconnecting, quota exceeded, or operating in offline cache mode:', message);
+  if (code === 'unavailable' || code === 'resource-exhausted' || message.includes('unavailable') || message.includes('offline') || message.includes('Quota exceeded')) {
+    console.warn('Database is synchronizing or operating in offline cache mode:', message);
     return;
   }
 
   const errInfo: FirestoreErrorInfo = {
     error: message,
     authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData?.map(provider => ({
-        providerId: provider.providerId,
-        displayName: provider.displayName,
-        email: provider.email,
-        photoUrl: provider.photoURL
-      })) || []
+      userId: auth?.currentUser?.uid,
+      email: auth?.currentUser?.email,
+      emailVerified: auth?.currentUser?.emailVerified,
+      isAnonymous: auth?.currentUser?.isAnonymous,
+      tenantId: auth?.currentUser?.tenantId,
+      providerInfo: []
     },
     operationType,
     path
   };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  console.error('Database Error: ', JSON.stringify(errInfo));
   if (showMsg) {
-    if (message.includes('permission-denied') || message.includes('Missing or insufficient permissions')) {
-      showMsg('Permission Denied! (Admin access via Google Login may be required)', 'error');
+    if (message.includes('permission-denied') || message.includes('Missing or insufficient permissions') || message.includes('JWT') || message.includes('unauthorized')) {
+      showMsg('Permission Denied / Unauthorized access!', 'error');
     } else {
-      showMsg(`System Error: ${message}`, 'error');
+      showMsg(`Database Error: ${message}`, 'error');
     }
   }
 }
+
+const handleDatabaseError = handleFirestoreError;
 
 // --- Components ---
 
@@ -1869,6 +1867,8 @@ const BalanceManagementSection = ({
   onUpdateBalance,
   onWaiveFine,
   onRemoveDayFine,
+  onResetUserFine,
+  onSetExactFine,
   onRecalculateFine,
   computeUserSubmissionStats
 }: {
@@ -1879,6 +1879,8 @@ const BalanceManagementSection = ({
   onUpdateBalance: (whatsapp: string, userName: string, amount: number, isDeduct: boolean, reason: string) => Promise<void>;
   onWaiveFine: (whatsapp: string, userName: string, amount: number, reason: string) => Promise<void>;
   onRemoveDayFine: (whatsapp: string, userName: string, dateStr: string, reason: string) => Promise<void>;
+  onResetUserFine?: (whatsapp: string, userName: string, reason: string) => Promise<void>;
+  onSetExactFine?: (whatsapp: string, userName: string, targetFine: number, reason: string) => Promise<void>;
   onRecalculateFine: (whatsapp: string, userName: string) => Promise<void>;
   computeUserSubmissionStats?: (userWhatsapp: string, memberId?: string) => any;
 }) => {
@@ -1889,12 +1891,15 @@ const BalanceManagementSection = ({
   const [waiveReason, setWaiveReason] = useState<string>('');
   const [removeDate, setRemoveDate] = useState<string>('');
   const [removeReason, setRemoveReason] = useState<string>('');
-  const [activeTab, setActiveTab] = useState<'overview' | 'add' | 'deduct' | 'waive' | 'remove_day' | 'logs'>('overview');
+  const [resetReason, setResetReason] = useState<string>('');
+  const [exactFineAmount, setExactFineAmount] = useState<string>('');
+  const [exactReason, setExactReason] = useState<string>('');
+  const [activeTab, setActiveTab] = useState<'overview' | 'add' | 'deduct' | 'waive' | 'remove_day' | 'delete_reset' | 'logs'>('overview');
   const [busy, setBusy] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   // Quick Action modal/inline box state
-  const [quickUser, setQuickUser] = useState<{ key: string; name: string; type: 'add' | 'deduct' | 'waive' | 'remove_day' } | null>(null);
+  const [quickUser, setQuickUser] = useState<{ key: string; name: string; type: 'add' | 'deduct' | 'waive' | 'remove_day' | 'delete' | 'set_exact' } | null>(null);
   const [quickAmount, setQuickAmount] = useState('');
   const [quickDate, setQuickDate] = useState(new Date().toISOString().split('T')[0]);
   const [quickReason, setQuickReason] = useState('');
@@ -1982,6 +1987,31 @@ const BalanceManagementSection = ({
     }
   };
 
+  const handleResetSubmit = async () => {
+    if (!selectedUser || !onResetUserFine) return;
+    setBusy(true);
+    try {
+      await onResetUserFine(selectedUser.key, selectedUser.name, resetReason || 'জরিমানা সম্পূর্ণ ডিলিট/রিসেট করা হয়েছে');
+      setResetReason('');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleExactSubmit = async () => {
+    if (!selectedUser || !onSetExactFine) return;
+    const amt = parseFloat(exactFineAmount);
+    if (isNaN(amt) || amt < 0) return;
+    setBusy(true);
+    try {
+      await onSetExactFine(selectedUser.key, selectedUser.name, amt, exactReason || `জরিমানা ৳${amt} নির্ধারণ করা হয়েছে`);
+      setExactFineAmount('');
+      setExactReason('');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleQuickSubmit = async () => {
     if (!quickUser) return;
     setBusy(true);
@@ -2004,6 +2034,15 @@ const BalanceManagementSection = ({
       } else if (quickUser.type === 'remove_day') {
         if (quickDate) {
           await onRemoveDayFine(quickUser.key, quickUser.name, quickDate, quickReason || `${quickDate} তারিখের মিসড দিন বাদ দেওয়া হয়েছে`);
+        }
+      } else if (quickUser.type === 'delete') {
+        if (onResetUserFine) {
+          await onResetUserFine(quickUser.key, quickUser.name, quickReason || 'জরিমানা সম্পূর্ণ ডিলিট/রিসেট করা হয়েছে');
+        }
+      } else if (quickUser.type === 'set_exact') {
+        const amt = parseFloat(quickAmount);
+        if (!isNaN(amt) && amt >= 0 && onSetExactFine) {
+          await onSetExactFine(quickUser.key, quickUser.name, amt, quickReason || `জরিমানা ৳${amt} নির্ধারণ করা হয়েছে`);
         }
       }
       setQuickUser(null);
@@ -2033,6 +2072,7 @@ const BalanceManagementSection = ({
           { id: 'deduct', label: '- ফাইন কমান' },
           { id: 'waive', label: '🛡️ ক্ষমা/মওকুফ' },
           { id: 'remove_day', label: '📅 মিসড দিন রিমুভ' },
+          { id: 'delete_reset', label: '🗑️ ফাইন রিসেট' },
           { id: 'logs', label: 'অডিট লগ' }
         ].map((tab) => (
           <button
@@ -2144,6 +2184,17 @@ const BalanceManagementSection = ({
                           className="px-2.5 py-1 rounded-lg bg-purple-500/10 hover:bg-purple-500 text-purple-400 hover:text-white border border-purple-500/30 text-[10px] font-black transition-all"
                         >
                           📅 দিন রিমুভ
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedUserKey(item.key);
+                            setQuickUser({ key: item.key, name: item.name, type: 'delete' });
+                            setQuickReason('');
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-red-500/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/40 text-[10px] font-black transition-all"
+                        >
+                          🗑️ ফাইন ডিলিট
                         </button>
                       </div>
                     </div>
@@ -2316,6 +2367,64 @@ const BalanceManagementSection = ({
             </div>
           )}
 
+          {activeTab === 'delete_reset' && (
+            <div className="space-y-4">
+              <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl space-y-3">
+                <h4 className="text-xs font-black text-red-400 uppercase tracking-wider flex items-center gap-2">
+                  <span>🗑️ জরিমানা সম্পূর্ণ ডিলিট / রিসেট করুন (Reset Fine to ৳0)</span>
+                </h4>
+                <p className="text-[11px] text-muted-main">
+                  সিলেক্ট করা মেম্বারের বর্তমান জমা হওয়া সমস্ত জরিমানা সম্পূর্ণ ডিলিট ও রিসেট হয়ে ৳০ টাকা হয়ে যাবে।
+                </p>
+                <input
+                  type="text"
+                  value={resetReason}
+                  onChange={(e) => setResetReason(e.target.value)}
+                  placeholder="কারণ / নোট (e.g. অ্যাডমিন কর্তৃক সম্পূর্ণ মওকুফ)"
+                  className="w-full bg-surface border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-gold"
+                />
+                <button
+                  type="button"
+                  disabled={busy || !selectedUser}
+                  onClick={handleResetSubmit}
+                  className="w-full py-3 rounded-xl bg-red-600 text-white font-black text-xs uppercase tracking-wider hover:bg-red-700 active:scale-95 transition-all shadow-lg"
+                >
+                  {busy ? 'প্রসেসিং...' : `${selectedUser?.name || 'মেম্বার'}-এর জরিমানা ডিলিট ও রিসেট করুন (৳0)`}
+                </button>
+              </div>
+
+              <div className="p-4 bg-gold/10 border border-gold/20 rounded-2xl space-y-3">
+                <h4 className="text-xs font-black text-gold uppercase tracking-wider flex items-center gap-2">
+                  <span>✏️ নির্দিষ্ট জরিমানা সেট করুন (Set Exact Fine)</span>
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <input
+                    type="number"
+                    value={exactFineAmount}
+                    onChange={(e) => setExactFineAmount(e.target.value)}
+                    placeholder="নির্ধারিত টাকার পরিমাণ (৳)"
+                    className="bg-surface border border-white/10 rounded-xl p-3 text-sm font-bold text-white outline-none focus:border-gold"
+                  />
+                  <input
+                    type="text"
+                    value={exactReason}
+                    onChange={(e) => setExactReason(e.target.value)}
+                    placeholder="কারণ / নোট"
+                    className="bg-surface border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-gold"
+                  />
+                </div>
+                <button
+                  type="button"
+                  disabled={busy || !selectedUser}
+                  onClick={handleExactSubmit}
+                  className="w-full py-3 rounded-xl bg-gold text-bg font-black text-xs uppercase tracking-wider hover:opacity-90 active:scale-95 transition-all shadow-lg"
+                >
+                  {busy ? 'প্রসেসিং...' : `${selectedUser?.name || 'মেম্বার'}-এর জরিমানা সেট করুন`}
+                </button>
+              </div>
+            </div>
+          )}
+
           {activeTab === 'logs' && (
             <div className="space-y-3">
               <h4 className="text-xs font-black text-white uppercase tracking-wider mb-2">
@@ -2365,7 +2474,19 @@ const BalanceManagementSection = ({
             >
               <div className="flex items-center justify-between border-b border-white/10 pb-3">
                 <h3 className="text-sm sm:text-base font-black text-white flex items-center gap-2">
-                  <span>{quickUser.type === 'add' ? '➕ ফাইন বাড়ান' : quickUser.type === 'deduct' ? '➖ ফাইন কমান' : quickUser.type === 'waive' ? '🛡️ জরিমানা মওকুফ করুন' : '📅 মিসড দিন রিমুভ করুন'}</span>
+                  <span>
+                    {quickUser.type === 'add'
+                      ? '➕ ফাইন বাড়ান'
+                      : quickUser.type === 'deduct'
+                      ? '➖ ফাইন কমান'
+                      : quickUser.type === 'waive'
+                      ? '🛡️ জরিমানা মওকুফ করুন'
+                      : quickUser.type === 'remove_day'
+                      ? '📅 মিসড দিন রিমুভ করুন'
+                      : quickUser.type === 'delete'
+                      ? '🗑️ জরিমানা সম্পূর্ণ ডিলিট করুন'
+                      : '✏️ নির্ধারিত জরিমানা সেট করুন'}
+                  </span>
                 </h3>
                 <button type="button" onClick={() => setQuickUser(null)} className="w-7 h-7 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 text-muted-main hover:text-white transition-colors">
                   ✕
@@ -2390,7 +2511,13 @@ const BalanceManagementSection = ({
               </div>
 
               <div className="space-y-3">
-                {quickUser.type === 'remove_day' ? (
+                {quickUser.type === 'delete' ? (
+                  <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-center">
+                    <p className="text-xs font-bold text-red-400">
+                      আপনি কি {quickUser.name}-এর সমস্ত জরিমানা মুছে সম্পূর্ণ ৳০ করতে চান?
+                    </p>
+                  </div>
+                ) : quickUser.type === 'remove_day' ? (
                   <div>
                     <label className="block text-[10px] text-muted-main font-bold uppercase mb-1">তারিখ নির্বাচন করুন</label>
                     <input
@@ -2402,7 +2529,9 @@ const BalanceManagementSection = ({
                   </div>
                 ) : (
                   <div>
-                    <label className="block text-[10px] text-muted-main font-bold uppercase mb-1">টাকার পরিমাণ (৳)</label>
+                    <label className="block text-[10px] text-muted-main font-bold uppercase mb-1">
+                      {quickUser.type === 'set_exact' ? 'নির্ধারিত জরিমানা (৳)' : 'টাকার পরিমাণ (৳)'}
+                    </label>
                     <input
                       type="number"
                       value={quickAmount}
@@ -2413,7 +2542,7 @@ const BalanceManagementSection = ({
                     {/* Preset Amount Chips */}
                     <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                       <span className="text-[10px] text-muted-main font-bold">কুইক সিলেক্ট:</span>
-                      {[10, 20, 30, 50, 100].map(val => (
+                      {[0, 10, 20, 30, 50, 100].map(val => (
                         <button
                           key={val}
                           type="button"
@@ -3019,7 +3148,12 @@ export default function App() {
       const rMap: Record<string, Result> = {};
       snapshot.forEach(d => {
         const data = d.data() as Result;
-        rMap[data.memberId] = { id: d.id, ...data };
+        // Use document ID as the primary key for stable lookup
+        rMap[d.id] = { ...data, id: d.id };
+        // Also map by memberId field if it exists and is different, for backward compatibility
+        if (data.memberId && data.memberId !== d.id) {
+          rMap[data.memberId] = { ...data, id: d.id };
+        }
       });
       setResults(rMap);
     }, async (err) => {
@@ -3029,7 +3163,10 @@ export default function App() {
         const rMap: Record<string, Result> = {};
         cacheSnap.forEach(d => {
           const data = d.data() as Result;
-          rMap[data.memberId] = { id: d.id, ...data };
+          rMap[d.id] = { ...data, id: d.id };
+          if (data.memberId && data.memberId !== d.id) {
+            rMap[data.memberId] = { ...data, id: d.id };
+          }
         });
         setResults(rMap);
       } catch (cacheErr) {
@@ -4715,15 +4852,37 @@ export default function App() {
       return;
     }
     try {
-      const prevResult = results[memberId] || { lead: 0, convert: 0, personalLead: 0 };
-      const diffScore = convert - (prevResult.convert || 0);
-      const diffLeads = personalLead - (prevResult.personalLead || 0);
-      const member = members.find(m => m.id === memberId);
+      // Find matching member from members OR approvedUsers
+      const cleanWa = currentAuthUser?.whatsapp ? currentAuthUser.whatsapp.replace(/\s+/g, '') : '';
+      const cleanAuthName = currentAuthUser?.fullName ? normalizeName(currentAuthUser.fullName) : '';
+      
+      const member = members.find(m => 
+        m.id === memberId ||
+        (cleanWa && m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanWa) ||
+        (cleanAuthName && normalizeName(m.name) === cleanAuthName)
+      );
 
-      // Use memberId as the document ID for predictable updates
-      const resultRef = doc(db, 'results', memberId);
+      const matchedUser = approvedUsers.find(u => 
+        (cleanWa && u.whatsapp && u.whatsapp.replace(/\s+/g, '') === cleanWa) ||
+        (cleanAuthName && normalizeName(u.fullName) === cleanAuthName)
+      );
+
+      const targetName = member?.name || matchedUser?.fullName || currentAuthUser?.fullName || 'Leader';
+      const targetWhatsapp = member?.whatsapp || matchedUser?.whatsapp || currentAuthUser?.whatsapp || '';
+      const targetId = member?.id || memberId || (targetWhatsapp ? `user-${targetWhatsapp}` : 'unknown');
+
+      // 1. Fetch current database state for this member's result to ensure correct diff calculation
+      const resultDocRef = doc(db, 'results', targetId);
+      const resultSnap = await getDoc(resultDocRef);
+      const dbResult = resultSnap.exists() ? resultSnap.data() as Result : { lead: 0, convert: 0, personalLead: 0 };
+      
+      const diffScore = convert - (dbResult.convert || 0);
+      const diffLeads = personalLead - (dbResult.personalLead || 0);
+
       const data = {
-        memberId,
+        memberId: targetId,
+        memberName: targetName,
+        whatsapp: targetWhatsapp,
         lead,
         convert,
         personalLead,
@@ -4731,15 +4890,30 @@ export default function App() {
         updatedAt: serverTimestamp()
       };
       
-      await setDoc(resultRef, data);
+      await setDoc(resultDocRef, data);
+      if (memberId && memberId !== targetId) {
+        await setDoc(doc(db, 'results', memberId), data);
+      }
 
-      // Save in submissionLogs for permanent historical daily logging
+      // Optimistic local update
+      const localResultData = {
+        ...data,
+        updatedAt: { seconds: Math.floor(Date.now() / 1000) }
+      } as any;
+
+      setResults(prev => ({
+        ...prev,
+        [targetId]: localResultData,
+        ...(memberId !== targetId ? { [memberId]: localResultData } : {})
+      }));
+
+      // Save in submissionLogs
       const todayStr = format(new Date(), 'yyyy-MM-dd');
-      const logRef = doc(db, 'submissionLogs', `${memberId}_${todayStr}`);
+      const logRef = doc(db, 'submissionLogs', `${targetId}_${todayStr}`);
       await setDoc(logRef, {
-        whatsapp: currentAuthUser?.whatsapp || '',
-        memberId,
-        memberName: member?.name || '',
+        whatsapp: targetWhatsapp,
+        memberId: targetId,
+        memberName: targetName,
         date: todayStr,
         lead,
         convert,
@@ -4747,45 +4921,50 @@ export default function App() {
         submittedAt: serverTimestamp()
       }, { merge: true });
 
-      // Update global total and individual ranking score
+      // Determine user type
+      const isLeader = member?.type === 'leader' || matchedUser?.position === 'Team Leader' || matchedUser?.position === 'STL' || currentAuthUser?.position === 'Team Leader' || currentAuthUser?.position === 'STL';
+      const isTrainer = member?.type === 'trainer' || matchedUser?.position === 'Team Trainer' || currentAuthUser?.position === 'Team Trainer';
+      const userType = isLeader ? 'leader' : (isTrainer ? 'trainer' : (member?.type || 'leader'));
+
+      // Update ranking scores using diff derived from DATABASE values
       if (diffScore !== 0 || diffLeads !== 0) {
-        // Update global total (Only for Leaders)
-        if (member?.type === 'leader' && diffScore !== 0) {
+        if (userType === 'leader' && diffScore !== 0) {
           await updateDoc(doc(db, 'config', 'global'), {
             totalConverts: increment(diffScore)
           });
         }
 
-        // Update individual ranking score if names match
-        if (member) {
-          const rankingList = member.type === 'leader' ? leaderRanking : trainerRanking;
-          const cleanMemberName = normalizeName(member.name);
-          const rankingEntry = rankingList.find(r => 
-            r.id === member.id ||
-            r.name.trim().toLowerCase() === member.name.trim().toLowerCase() ||
-            (cleanMemberName && normalizeName(r.name) === cleanMemberName)
-          );
-          
-          const coll = member.type === 'leader' ? 'leaderRanking' : 'trainerRanking';
+        const coll = userType === 'leader' ? 'leaderRanking' : 'trainerRanking';
+        const rankingList = userType === 'leader' ? leaderRanking : trainerRanking;
+        
+        // Find correct ranking doc
+        const rankingEntry = rankingList.find(r => 
+          r.id === targetId ||
+          r.id === memberId ||
+          (cleanWa && r.whatsapp && r.whatsapp.replace(/\s+/g, '') === cleanWa) ||
+          normalizeName(r.name) === normalizeName(targetName)
+        );
 
-          if (rankingEntry) {
-            await updateDoc(doc(db, coll, rankingEntry.id), {
-              score: increment(diffScore),
-              leads: increment(diffLeads)
-            });
-          } else {
-            // Auto-create ranking entry if missing, so their score is tracked
-            await addDoc(collection(db, coll), {
-              name: member.name,
-              score: convert, // Starting score is their current total
-              leads: personalLead,
-              createdAt: serverTimestamp()
-            });
-          }
+        if (rankingEntry) {
+          await updateDoc(doc(db, coll, rankingEntry.id), {
+            score: increment(diffScore),
+            leads: increment(diffLeads),
+            updatedAt: serverTimestamp()
+          });
+        } else {
+          // Auto-create if missing - Use targetId for a stable, deterministic document ID
+          await setDoc(doc(db, coll, targetId), {
+            name: targetName,
+            whatsapp: targetWhatsapp,
+            score: convert,
+            leads: personalLead,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          });
         }
       }
 
-      showMsg('Result submitted!');
+      showMsg('Result submitted successfully!', 'success');
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'results', showMsg);
     }
@@ -4843,25 +5022,47 @@ export default function App() {
         totalConverts: 0
       });
 
-      // 2. Reset userBalances for all members
+      // 2. Reset userBalances for all members & approvedUsers
       const batch = writeBatch(db);
+      const processedKeys = new Set<string>();
+
       members.forEach(m => {
-        const uRef = doc(db, 'userBalances', m.id);
-        batch.set(uRef, {
-          whatsapp: m.whatsapp || '',
-          userName: m.name,
-          waivedFines: 0,
-          waivedDays: [],
-          manualAdjustments: 0,
-          balance: 0,
-          updatedAt: serverTimestamp()
-        }, { merge: true });
+        if (m.id) {
+          processedKeys.add(m.id);
+          const uRef = doc(db, 'userBalances', m.id);
+          batch.set(uRef, {
+            whatsapp: m.whatsapp || '',
+            userName: m.name,
+            waivedFines: 0,
+            waivedDays: [],
+            manualAdjustments: 0,
+            balance: 0,
+            updatedAt: serverTimestamp()
+          }, { merge: true });
+        }
 
         if (m.whatsapp) {
+          processedKeys.add(m.whatsapp);
           const uRefWa = doc(db, 'userBalances', m.whatsapp);
           batch.set(uRefWa, {
             whatsapp: m.whatsapp,
             userName: m.name,
+            waivedFines: 0,
+            waivedDays: [],
+            manualAdjustments: 0,
+            balance: 0,
+            updatedAt: serverTimestamp()
+          }, { merge: true });
+        }
+      });
+
+      approvedUsers.forEach(u => {
+        if (u.whatsapp && !processedKeys.has(u.whatsapp)) {
+          processedKeys.add(u.whatsapp);
+          const uRefWa = doc(db, 'userBalances', u.whatsapp);
+          batch.set(uRefWa, {
+            whatsapp: u.whatsapp,
+            userName: u.fullName,
             waivedFines: 0,
             waivedDays: [],
             manualAdjustments: 0,
@@ -5298,6 +5499,117 @@ export default function App() {
     }
   };
 
+  const adminResetUserFine = async (userKey: string, userName: string, reason: string) => {
+    try {
+      const cleanName = userName.trim().toLowerCase();
+      const cleanKey = (userKey || '').replace(/\s+/g, '');
+      const matchedApproved = approvedUsers.find(u => 
+        (u.whatsapp && u.whatsapp.replace(/\s+/g, '') === cleanKey) ||
+        u.fullName.trim().toLowerCase() === cleanName
+      );
+      const matchedMember = members.find(m => 
+        m.id === userKey ||
+        (m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanKey) ||
+        m.name.trim().toLowerCase() === cleanName
+      );
+
+      const targetWhatsapp = matchedApproved?.whatsapp || matchedMember?.whatsapp || (userKey.startsWith('01') || userKey.startsWith('+') ? userKey : '');
+      const targetMemberId = matchedMember?.id || (userKey.startsWith('01') || userKey.startsWith('+') ? '' : userKey);
+      const primaryKey = targetWhatsapp || targetMemberId || userKey;
+      const userBalRef = doc(db, 'userBalances', primaryKey);
+
+      const stats = computeUserSubmissionStats(targetWhatsapp || primaryKey, targetMemberId);
+      const rawMissed = stats?.rawMissedDays || 0;
+      const currentRate = config.fineAmount !== undefined ? config.fineAmount : 10;
+      const rawFine = rawMissed * currentRate;
+
+      const updatedBalance: UserBalance = {
+        id: targetMemberId || primaryKey,
+        whatsapp: targetWhatsapp || primaryKey,
+        userName: userName,
+        balance: 0,
+        waivedFines: rawFine,
+        manualAdjustments: 0,
+        waivedDays: [],
+        updatedAt: new Date().toISOString()
+      };
+
+      setUserBalances(prev => {
+        const next = { ...prev, [primaryKey]: updatedBalance };
+        if (targetWhatsapp && targetWhatsapp !== primaryKey) next[targetWhatsapp] = updatedBalance;
+        if (targetMemberId && targetMemberId !== primaryKey) next[targetMemberId] = updatedBalance;
+        if (userKey && userKey !== primaryKey) next[userKey] = updatedBalance;
+        return next;
+      });
+
+      await setDoc(userBalRef, {
+        ...updatedBalance,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+
+      await writeAuditLog(primaryKey, userName, 'Delete/Reset Fine', 0, reason || 'ফাইন সম্পূর্ণ ডিলিট/রিসেট করা হয়েছে');
+      showMsg(`${userName}-এর জরিমানা সম্পূর্ণ ডিলিট/রিসেট করা হয়েছে!`, 'success');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `userBalances/${userKey}`, showMsg);
+    }
+  };
+
+  const adminSetExactFine = async (userKey: string, userName: string, targetFine: number, reason: string) => {
+    try {
+      const cleanName = userName.trim().toLowerCase();
+      const cleanKey = (userKey || '').replace(/\s+/g, '');
+      const matchedApproved = approvedUsers.find(u => 
+        (u.whatsapp && u.whatsapp.replace(/\s+/g, '') === cleanKey) ||
+        u.fullName.trim().toLowerCase() === cleanName
+      );
+      const matchedMember = members.find(m => 
+        m.id === userKey ||
+        (m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanKey) ||
+        m.name.trim().toLowerCase() === cleanName
+      );
+
+      const targetWhatsapp = matchedApproved?.whatsapp || matchedMember?.whatsapp || (userKey.startsWith('01') || userKey.startsWith('+') ? userKey : '');
+      const targetMemberId = matchedMember?.id || (userKey.startsWith('01') || userKey.startsWith('+') ? '' : userKey);
+      const primaryKey = targetWhatsapp || targetMemberId || userKey;
+      const userBalRef = doc(db, 'userBalances', primaryKey);
+
+      const stats = computeUserSubmissionStats(targetWhatsapp || primaryKey, targetMemberId);
+      const rawMissed = stats?.rawMissedDays || 0;
+      const currentRate = config.fineAmount !== undefined ? config.fineAmount : 10;
+      const rawFine = rawMissed * currentRate;
+
+      const manualAdj = targetFine - rawFine;
+
+      const updatedBalance: UserBalance = {
+        id: targetMemberId || primaryKey,
+        whatsapp: targetWhatsapp || primaryKey,
+        userName: userName,
+        balance: 0,
+        waivedFines: 0,
+        manualAdjustments: manualAdj,
+        updatedAt: new Date().toISOString()
+      };
+
+      setUserBalances(prev => {
+        const next = { ...prev, [primaryKey]: updatedBalance };
+        if (targetWhatsapp && targetWhatsapp !== primaryKey) next[targetWhatsapp] = updatedBalance;
+        if (targetMemberId && targetMemberId !== primaryKey) next[targetMemberId] = updatedBalance;
+        if (userKey && userKey !== primaryKey) next[userKey] = updatedBalance;
+        return next;
+      });
+
+      await setDoc(userBalRef, {
+        ...updatedBalance,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+
+      await writeAuditLog(primaryKey, userName, 'Set Exact Fine', targetFine, reason || `জরিমানা ৳${targetFine} করা হয়েছে`);
+      showMsg(`${userName}-এর জরিমানা ৳${targetFine} নির্ধারণ করা হয়েছে!`, 'success');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, `userBalances/${userKey}`, showMsg);
+    }
+  };
+
   const adminWaiveDay1ForAll = async () => {
     try {
       const now = new Date();
@@ -5593,105 +5905,240 @@ export default function App() {
     let totalSubmittedConverts = 0;
     let todayLeads = 0;
     
-    // 1. Create base lists with all necessary data merged
-    const allLeaders = members.filter(m => m.type === 'leader').map((m) => {
-      const rankingEntry = leaderRanking.find(r => 
-        r.name.trim().toLowerCase() === m.name.trim().toLowerCase()
-      );
-      return {
-        ...m,
-        score: rankingEntry?.score || 0,
-        leads: rankingEntry?.leads || 0,
-        result: results[m.id] || { lead: 0, convert: 0, personalLead: 0, submitted: false }
-      };
-    });
-
-    const allTrainers = members.filter(m => m.type === 'trainer').map((m) => {
-      const rankingEntry = trainerRanking.find(r => 
-        r.name.trim().toLowerCase() === m.name.trim().toLowerCase()
-      );
-      return {
-        ...m,
-        score: rankingEntry?.score || 0,
-        leads: rankingEntry?.leads || 0,
-        result: results[m.id] || { lead: 0, convert: 0, personalLead: 0, submitted: false }
-      };
-    });
-
-    // 2. Define universal performance sorting (Real-time priority)
-    const sortByPerformance = (a: any, b: any) => {
-      // Primary sort: Today's Convert count (descending)
-      const convA = a.result?.convert || 0;
-      const convB = b.result?.convert || 0;
-      if (convB !== convA) return convB - convA;
+    // Helper to resolve result for any member/user by ID, whatsapp, or name
+    const getResultForMember = (m: { id: string; name: string; whatsapp?: string }) => {
+      // 1. Direct ID match (Best)
+      if (results[m.id]) return results[m.id];
       
-      // Tie-breaker for same convert: Earlier submission wins
-      if (convA > 0 && convB > 0) {
-        const timeA = a.result?.updatedAt?.toMillis?.() || a.result?.updatedAt?.seconds * 1000 || Date.now();
-        const timeB = b.result?.updatedAt?.toMillis?.() || b.result?.updatedAt?.seconds * 1000 || Date.now();
-        if (timeA !== timeB) {
-          return timeA - timeB; // Lower time (earlier) comes first
-        }
+      // 2. Whatsapp match
+      const cleanWa = m.whatsapp ? m.whatsapp.replace(/\s+/g, '') : '';
+      if (cleanWa && results[cleanWa]) return results[cleanWa];
+      if (cleanWa && results[`user-${cleanWa}`]) return results[`user-${cleanWa}`];
+      
+      // 3. Name match (Fuzzy)
+      const cleanMName = normalizeName(m.name);
+      if (cleanMName) {
+        const foundByName = Object.values(results).find((r: any) => {
+          const rName = r.name || r.memberName;
+          return rName && normalizeName(rName) === cleanMName;
+        });
+        if (foundByName) return foundByName;
       }
-
-      // Secondary sort: Today's Personal Lead count (descending)
-      const pLeadA = a.result?.personalLead || 0;
-      const pLeadB = b.result?.personalLead || 0;
-      if (pLeadB !== pLeadA) return pLeadB - pLeadA;
-
-      // Tertiary sort: Lifetime Score (score)
-      if ((b.score || 0) !== (a.score || 0)) return (b.score || 0) - (a.score || 0);
-      return (b.leads || 0) - (a.leads || 0);
+      
+      return { lead: 0, convert: 0, personalLead: 0, submitted: false };
     };
 
-    // Ranking sort function: strictly by Total Converts (score)
-    const sortByTotalRanking = (a: any, b: any) => {
-      // Primary sort: Total Converts / Lifetime score (descending)
+    // 1. Build comprehensive Leaders list (members + approvedUsers + leaderRanking)
+    const leaderMap = new Map<string, any>();
+
+    // Add leaders from manual members collection
+    members.filter(m => m.type === 'leader').forEach(m => {
+      const key = normalizeName(m.name) || m.id;
+      leaderMap.set(key, m);
+    });
+
+    // Add registered Team Leaders / STLs
+    approvedUsers.filter(u => u.position === 'Team Leader' || u.position === 'STL').forEach(u => {
+      const key = normalizeName(u.fullName);
+      if (key && !leaderMap.has(key)) {
+        leaderMap.set(key, {
+          id: `user-${u.whatsapp}`,
+          name: u.fullName,
+          type: 'leader',
+          whatsapp: u.whatsapp,
+          createdAt: u.createdAt
+        });
+      }
+    });
+
+    // Add any standalone leaderRanking entries
+    leaderRanking.forEach(r => {
+      const cleanRName = normalizeName(r.name);
+      const cleanRWa = r.whatsapp ? r.whatsapp.replace(/\s+/g, '') : '';
+      const exists = Array.from(leaderMap.values()).some(m => 
+        m.id === r.id ||
+        (cleanRWa && m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanRWa) ||
+        (cleanRName && normalizeName(m.name) === cleanRName)
+      );
+      if (!exists && r.name) {
+        const key = cleanRName || r.id;
+        leaderMap.set(key, {
+          id: r.id,
+          name: r.name,
+          type: 'leader',
+          whatsapp: r.whatsapp || ''
+        });
+      }
+    });
+
+    const allLeaders = Array.from(leaderMap.values()).map((m) => {
+      const cleanMName = normalizeName(m.name);
+      const cleanWa = m.whatsapp ? m.whatsapp.replace(/\s+/g, '') : '';
+      const rankingEntry = leaderRanking.find(r => 
+        r.id === m.id ||
+        (cleanWa && r.whatsapp && r.whatsapp.replace(/\s+/g, '') === cleanWa) ||
+        r.name.trim().toLowerCase() === m.name.trim().toLowerCase() ||
+        (cleanMName && normalizeName(r.name) === cleanMName)
+      );
+      const res = getResultForMember(m);
+      
+      // Database score is the single source of truth for ranking
+      // It already includes today's increments via submitResult
+      const score = Number(rankingEntry?.score) || 0;
+      const leads = Number(rankingEntry?.leads) || 0;
+
+      return {
+        ...m,
+        score,
+        leads,
+        result: res
+      };
+    });
+
+    // 2. Build comprehensive Trainers list (members + approvedUsers + trainerRanking)
+    const trainerMap = new Map<string, any>();
+
+    members.filter(m => m.type === 'trainer').forEach(m => {
+      const key = normalizeName(m.name) || m.id;
+      trainerMap.set(key, m);
+    });
+
+    approvedUsers.filter(u => u.position === 'Team Trainer').forEach(u => {
+      const key = normalizeName(u.fullName);
+      if (key && !trainerMap.has(key)) {
+        trainerMap.set(key, {
+          id: `user-${u.whatsapp}`,
+          name: u.fullName,
+          type: 'trainer',
+          whatsapp: u.whatsapp,
+          createdAt: u.createdAt
+        });
+      }
+    });
+
+    trainerRanking.forEach(r => {
+      const cleanRName = normalizeName(r.name);
+      const cleanRWa = r.whatsapp ? r.whatsapp.replace(/\s+/g, '') : '';
+      const exists = Array.from(trainerMap.values()).some(m => 
+        m.id === r.id ||
+        (cleanRWa && m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanRWa) ||
+        (cleanRName && normalizeName(m.name) === cleanRName)
+      );
+      if (!exists && r.name) {
+        const key = cleanRName || r.id;
+        trainerMap.set(key, {
+          id: r.id,
+          name: r.name,
+          type: 'trainer',
+          whatsapp: r.whatsapp || ''
+        });
+      }
+    });
+
+    const allTrainers = Array.from(trainerMap.values()).map((m) => {
+      const cleanMName = normalizeName(m.name);
+      const cleanWa = m.whatsapp ? m.whatsapp.replace(/\s+/g, '') : '';
+      const rankingEntry = trainerRanking.find(r => 
+        r.id === m.id ||
+        (cleanWa && r.whatsapp && r.whatsapp.replace(/\s+/g, '') === cleanWa) ||
+        r.name.trim().toLowerCase() === m.name.trim().toLowerCase() ||
+        (cleanMName && normalizeName(r.name) === cleanMName)
+      );
+      const res = getResultForMember(m);
+      
+      const score = Number(rankingEntry?.score) || 0;
+      const leads = Number(rankingEntry?.leads) || 0;
+
+      return {
+        ...m,
+        score,
+        leads,
+        result: res
+      };
+    });
+
+    // 3. Define universal performance sorting (Stable Ranking priority)
+    const sortByPerformance = (a: any, b: any) => {
+      // Primary sort: Latest Total Score (Cumulative)
       const scoreA = a.score || 0;
       const scoreB = b.score || 0;
       if (scoreB !== scoreA) return scoreB - scoreA;
 
-      // Secondary sort: Total Leads (descending)
-      const leadsA = a.leads || 0;
-      const leadsB = b.leads || 0;
-      if (leadsB !== leadsA) return leadsB - leadsA;
+      // Secondary sort: Today's Convert count (descending)
+      const convA = a.result?.convert || 0;
+      const convB = b.result?.convert || 0;
+      if (convB !== convA) return convB - convA;
+      
+      // Tertiary sort: Today's Personal Lead count (descending)
+      const pLeadA = a.result?.personalLead || 0;
+      const pLeadB = b.result?.personalLead || 0;
+      if (pLeadB !== pLeadA) return pLeadB - pLeadA;
 
-      // Tertiary sort: Today's Convert count (descending)
+      // Submission time tie-breaker
+      const timeA = a.result?.updatedAt?.toMillis?.() || a.result?.updatedAt?.seconds * 1000 || 0;
+      const timeB = b.result?.updatedAt?.toMillis?.() || b.result?.updatedAt?.seconds * 1000 || 0;
+      if (timeA && timeB && timeA !== timeB) {
+        return timeA - timeB;
+      }
+
+      return a.name.localeCompare(b.name);
+    };
+
+    // Ranking sort function: strictly by Total Converts / Effective Score (score)
+    const sortByTotalRanking = (a: any, b: any) => {
+      const scoreA = a.score || 0;
+      const scoreB = b.score || 0;
+      if (scoreB !== scoreA) return scoreB - scoreA;
+
       const convA = a.result?.convert || 0;
       const convB = b.result?.convert || 0;
       if (convB !== convA) return convB - convA;
 
-      // Alphabetical tie-breaker
+      const leadsA = a.leads || 0;
+      const leadsB = b.leads || 0;
+      if (leadsB !== leadsA) return leadsB - leadsA;
+
       return a.name.localeCompare(b.name);
     };
 
-    // 3. Calculate Global Stats (Team Leaders + Team Trainers)
+    // 4. Calculate Global Stats
     allLeaders.forEach(m => {
-      if (m.result.submitted) {
-        totalLeads += m.result.lead;
-        todayConverts += m.result.convert;
-        todayLeads += m.result.lead;
+      if (m.result.submitted || (m.result.convert || 0) > 0) {
+        totalLeads += m.result.lead || 0;
+        todayConverts += m.result.convert || 0;
+        todayLeads += m.result.lead || 0;
         totalSubmittedConverts += m.result.convert || 0;
       }
     });
 
     allTrainers.forEach(m => {
-      if (m.result.submitted) {
-        totalLeads += m.result.lead;
-        todayConverts += m.result.convert;
-        todayLeads += m.result.lead;
+      if (m.result.submitted || (m.result.convert || 0) > 0) {
+        totalLeads += m.result.lead || 0;
+        todayConverts += m.result.convert || 0;
+        todayLeads += m.result.lead || 0;
         totalSubmittedConverts += m.result.convert || 0;
       }
     });
 
-    // 4. Generate sorted lists
+    // 5. Generate sorted lists
     const sortedL = [...allLeaders].sort(sortByPerformance);
     const sortedT = [...allTrainers].sort(sortByPerformance);
     const allSorted = [...allLeaders, ...allTrainers].sort(sortByPerformance);
 
-    // sortedLR and sortedTR are for the "Ranking" sections (Top 3 Leaders, Top 3 Trainers & Ranking Modals)
     const sortedLR = [...allLeaders].sort(sortByTotalRanking);
     const sortedTR = [...allTrainers].sort(sortByTotalRanking);
+
+    // Identify Top Performers strictly by TODAY's highest converts
+    const sortByToday = (a: any, b: any) => {
+      const convA = a.result?.convert || 0;
+      const convB = b.result?.convert || 0;
+      if (convB !== convA) return convB - convA;
+      return (b.score || 0) - (a.score || 0);
+    };
+
+    const bestLeader = [...allLeaders].sort(sortByToday)[0];
+    const bestTrainer = [...allTrainers].sort(sortByToday)[0];
+    const bestOverall = [...allLeaders, ...allTrainers].sort(sortByToday)[0];
 
     return {
       stats: {
@@ -5702,9 +6149,9 @@ export default function App() {
         todayConverts: todayConverts,
         todayLeads: todayLeads
       },
-      topLeader: sortedL[0]?.result?.submitted && sortedL[0]?.result?.convert > 0 ? sortedL[0] : null,
-      topTrainer: sortedT[0]?.result?.submitted && sortedT[0]?.result?.convert > 0 ? sortedT[0] : null,
-      topOverall: allSorted[0]?.result?.submitted && allSorted[0]?.result?.convert > 0 ? allSorted[0] : null,
+      topLeader: bestLeader && (bestLeader.result?.convert || 0) > 0 ? bestLeader : null,
+      topTrainer: bestTrainer && (bestTrainer.result?.convert || 0) > 0 ? bestTrainer : null,
+      topOverall: bestOverall && (bestOverall.result?.convert || 0) > 0 ? bestOverall : null,
       sortedLeaders: sortedL,
       sortedTrainers: sortedT,
       sortedLeaderRanking: sortedLR,
@@ -5712,7 +6159,7 @@ export default function App() {
       sortedLeadersByRanking: sortedLR,
       sortedTrainersByRanking: sortedTR
     };
-  }, [members, results, leaderRanking, trainerRanking]);
+  }, [members, approvedUsers, results, leaderRanking, trainerRanking]);
 
   useEffect(() => {
     rankingDataRef.current = {
@@ -5728,7 +6175,15 @@ export default function App() {
 
   const myMember = useMemo(() => {
     if (!currentAuthUser) return null;
-    return members.find(m => m.name.trim().toLowerCase() === currentAuthUser.fullName.trim().toLowerCase());
+    const cleanAuthName = normalizeName(currentAuthUser.fullName);
+    const cleanAuthWa = currentAuthUser.whatsapp ? currentAuthUser.whatsapp.replace(/\s+/g, '') : '';
+    
+    return members.find(m => {
+      const cleanMName = normalizeName(m.name);
+      const cleanMWa = m.whatsapp ? m.whatsapp.replace(/\s+/g, '') : '';
+      return (cleanAuthName && cleanMName && cleanMName === cleanAuthName) ||
+             (cleanAuthWa && cleanMWa && cleanMWa === cleanAuthWa);
+    });
   }, [members, currentAuthUser]);
 
   const myUserStats = useMemo(() => {
@@ -7642,6 +8097,8 @@ export default function App() {
                        onUpdateBalance={adminUpdateBalance}
                        onWaiveFine={adminWaiveFine}
                        onRemoveDayFine={adminRemoveDayFine}
+                       onResetUserFine={adminResetUserFine}
+                       onSetExactFine={adminSetExactFine}
                        onRecalculateFine={adminRecalculateFine}
                        computeUserSubmissionStats={computeUserSubmissionStats}
                      />

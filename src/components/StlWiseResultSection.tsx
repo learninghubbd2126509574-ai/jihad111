@@ -146,15 +146,15 @@ export function resolveTLConvertData(
     }
   }
 
-  // If leaderRanking entry exists, its score is authoritative.
-  // Otherwise, fall back to results collection.
-  const finalConvert = rankingScore !== null ? rankingScore : (resultConvert !== null ? resultConvert : 0);
+  // 3. Resolve final convert count: prioritize direct session result submission (resultConvert)
+  // so that converts update immediately upon submission. Fallback to rankingScore if no session result exists.
+  const finalConvert = resultConvert !== null ? resultConvert : (rankingScore !== null ? rankingScore : 0);
 
   return {
     id: member?.id || targetId,
     name: resolvedName,
     convert: finalConvert,
-    submitted: submitted || finalConvert > 0
+    submitted: submitted || (resultConvert !== null && resultConvert > 0) || finalConvert > 0
   };
 }
 
