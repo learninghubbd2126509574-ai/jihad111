@@ -6712,19 +6712,22 @@ export default function App() {
             </div>
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 mb-10">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
               {[
-                { label: 'Leaders', value: stats.leaders, color: 'text-blue-700', border: 'border-blue-500/30 bg-blue-50/40', icon: <Trophy size={13} /> },
-                { label: 'Trainers', value: stats.trainers, color: 'text-indigo-700', border: 'border-indigo-500/30 bg-indigo-50/40', icon: <GraduationCap size={13} /> },
-                { label: 'Leads', value: stats.todayLeads, color: 'text-emerald-700', border: 'border-emerald-500/30 bg-emerald-50/40', icon: <Send size={13} /> },
-                { label: 'Converts', value: stats.converts, color: 'text-amber-700', border: 'border-amber-500/30 bg-amber-50/40', icon: <CheckCircle2 size={13} /> }
+                { label: 'Leaders', value: stats.leaders, color: 'text-blue-800', iconBg: 'bg-blue-200/60 text-blue-800', icon: <Trophy size={14} /> },
+                { label: 'Trainers', value: stats.trainers, color: 'text-indigo-800', iconBg: 'bg-indigo-200/60 text-indigo-800', icon: <GraduationCap size={14} /> },
+                { label: 'Leads', value: stats.todayLeads, color: 'text-emerald-800', iconBg: 'bg-emerald-200/60 text-emerald-800', icon: <Send size={14} /> },
+                { label: 'Converts', value: stats.converts, color: 'text-amber-800', iconBg: 'bg-amber-200/60 text-amber-800', icon: <CheckCircle2 size={14} /> }
               ].map((stat, i) => (
-                <div key={i} className={`group neu-card rounded-2xl p-4 text-center relative overflow-hidden transition-all hover:scale-[1.02] border ${stat.border} shadow-sm`}>
-                  <div className="flex items-center justify-center gap-1.5 mb-1.5">
-                    <span className={`p-1.5 rounded-lg neu-card-sm ${stat.color}`}>{stat.icon}</span>
-                    <span className="text-[11px] sm:text-xs text-slate-700 tracking-wide uppercase font-black">{stat.label}</span>
+                <div key={i} className="group neu-card p-4 text-center relative overflow-hidden transition-all hover:scale-[1.03]">
+                  {/* Subtle top glare reflection to enhance 3D tactile feeling */}
+                  <div className="absolute top-0 left-0 right-0 h-[1.5px] bg-white/75 z-10" />
+                  
+                  <div className="flex items-center justify-center gap-1.5 mb-2 relative z-10">
+                    <span className={`p-1.5 rounded-xl border border-white/80 shadow-[inset_1px_1px_2px_rgba(255,255,255,0.8)] ${stat.iconBg}`}>{stat.icon}</span>
+                    <span className="text-[11px] sm:text-xs text-slate-700 tracking-wider uppercase font-black">{stat.label}</span>
                   </div>
-                  <div className={`text-2xl sm:text-3xl font-black ${stat.color}`}>{stat.value}</div>
+                  <div className={`text-3xl sm:text-4xl font-black tracking-tight relative z-10 ${stat.color}`}>{stat.value}</div>
                 </div>
               ))}
             </div>
@@ -7016,6 +7019,8 @@ export default function App() {
               }
             }}
             onDeleteAllPosts={handleDeleteAllCommunityPosts}
+            members={members}
+            approvedUsers={approvedUsers}
           />
         )}
 

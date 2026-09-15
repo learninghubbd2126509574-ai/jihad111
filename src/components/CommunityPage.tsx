@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase';
 import { collection, addDoc, onSnapshot, query, orderBy, doc, deleteDoc, updateDoc, arrayUnion, arrayRemove, where, getDocs } from '../lib/supabaseDb';
-import { Send, Image as ImageIcon, Heart, MessageCircle, Trash2, X, Lock, Unlock, ShieldAlert, Sparkles, Mic, MicOff, Play, Pause, Volume2, ExternalLink, AlertCircle } from 'lucide-react';
+import { Send, Image as ImageIcon, Heart, MessageCircle, Trash2, X, Lock, Unlock, ShieldAlert, Sparkles } from 'lucide-react';
 import CartoonAvatar from './CartoonAvatar';
 
 interface User {
@@ -17,7 +17,6 @@ interface Post {
   authorAvatar: string;
   text: string;
   imageUrl?: string;
-  audioUrl?: string;
   likes: string[];
   isAdminPost?: boolean;
   updatedAt: any;
@@ -41,6 +40,8 @@ interface CommunityPageProps {
   communityLocked?: boolean;
   onToggleLock?: () => void;
   onDeleteAllPosts?: () => void;
+  members?: any[];
+  approvedUsers?: any[];
 }
 
 export default function CommunityPage({ 
@@ -49,7 +50,9 @@ export default function CommunityPage({
   showMsg, 
   communityLocked = false, 
   onToggleLock, 
-  onDeleteAllPosts 
+  onDeleteAllPosts,
+  members = [],
+  approvedUsers = []
 }: CommunityPageProps) {
   const [posts, setPosts] = useState<Post[]>([]);
   const [comments, setComments] = useState<Record<string, Comment[]>>({});
@@ -78,120 +81,34 @@ export default function CommunityPage({
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Voice recording states and helpers
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingSeconds, setRecordingSeconds] = useState(0);
-  const [recordedAudio, setRecordedAudio] = useState<string | null>(null); // Base64 Data URL
-  const [showMicPermissionGuide, setShowMicPermissionGuide] = useState(false);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-  const recordingIntervalRef = useRef<any>(null);
-
-  useEffect(() => {
-    return () => {
-      if (recordingIntervalRef.current) {
-        clearInterval(recordingIntervalRef.current);
-      }
-    };
-  }, []);
-
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      audioChunksRef.current = [];
-      const options = { mimeType: 'audio/webm' };
-      let recorder: MediaRecorder;
-      try {
-        recorder = new MediaRecorder(stream, options);
-      } catch (e) {
-        recorder = new MediaRecorder(stream);
-      }
-      
-      mediaRecorderRef.current = recorder;
-      
-      recorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) {
-          audioChunksRef.current.push(e.data);
-        }
-      };
-      
-      recorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
-        
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          setRecordedAudio(reader.result as string);
-        };
-        reader.readAsDataURL(audioBlob);
-        
-        stream.getTracks().forEach(track => track.stop());
-      };
-      
-      recorder.start(250);
-      setIsRecording(true);
-      setRecordingSeconds(0);
-      
-      recordingIntervalRef.current = setInterval(() => {
-        setRecordingSeconds(prev => {
-          if (prev >= 60) { // Limit recording to 60 seconds
-            stopRecording();
-            return prev;
-          }
-          return prev + 1;
-        });
-      }, 1000);
-      
-    } catch (err: any) {
-      console.warn('Audio recording block handled gracefully:', err.message || err);
-      if (err.name === 'NotAllowedError' || err.message?.includes('Permission') || err.message?.includes('denied')) {
-        setShowMicPermissionGuide(true);
-      } else {
-        showMsg("মাইক্রোফোন অ্যাক্সেস করতে সমস্যা হয়েছে। দয়া করে অনুমতি দিন।", "error");
-      }
+  const getAuthorRole = (post: Post): 'admin' | 'leader' | 'trainer' | 'member' => {
+    if (post.isAdminPost || post.authorId === 'admin' || post.authorName === 'ADMINISTRATOR' || post.authorName === 'অ্যাডমিন (Admin)' || post.authorName.toLowerCase().includes('admin')) {
+      return 'admin';
     }
-  };
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
-    }
-    setIsRecording(false);
-    if (recordingIntervalRef.current) {
-      clearInterval(recordingIntervalRef.current);
-    }
-  };
-
-  const deleteRecordedAudio = () => {
-    setRecordedAudio(null);
-    setRecordingSeconds(0);
-  };
-
-  const isPressingRef = useRef(false);
-  const pressStartTimeRef = useRef<number>(0);
-
-  const handlePressStart = async (e: React.MouseEvent | React.TouchEvent) => {
-    e.preventDefault();
-    isPressingRef.current = true;
-    pressStartTimeRef.current = Date.now();
-    await startRecording();
-  };
-
-  const handlePressEnd = (e: React.MouseEvent | React.TouchEvent) => {
-    e.preventDefault();
-    if (!isPressingRef.current) return;
-    isPressingRef.current = false;
     
-    const duration = Date.now() - pressStartTimeRef.current;
-    if (duration < 450) {
-      // Discard short taps
-      stopRecording();
-      setTimeout(() => {
-        setRecordedAudio(null);
-      }, 50);
-      showMsg("ভয়েস রেকর্ড করতে বাটনটি চেপে ধরে রাখুন!", "error");
-    } else {
-      stopRecording();
+    const directRole = (post as any).authorRole;
+    if (directRole === 'leader' || directRole === 'trainer') {
+      return directRole;
     }
+
+    if (members && members.length > 0) {
+      const m = members.find((member: any) => member.name && member.name.trim().toLowerCase() === post.authorName.trim().toLowerCase());
+      if (m) {
+        if (m.type === 'leader') return 'leader';
+        if (m.type === 'trainer') return 'trainer';
+      }
+    }
+
+    if (approvedUsers && approvedUsers.length > 0) {
+      const u = approvedUsers.find((user: any) => user.fullName && user.fullName.trim().toLowerCase() === post.authorName.trim().toLowerCase());
+      if (u) {
+        const pos = (u.position || '').toLowerCase();
+        if (pos.includes('leader') || pos.includes('stl')) return 'leader';
+        if (pos.includes('trainer')) return 'trainer';
+      }
+    }
+
+    return 'member';
   };
 
   useEffect(() => {
@@ -245,10 +162,29 @@ export default function CommunityPage({
 
   const handleCreatePost = async () => {
     if (!currentUser) return showMsg("আপনাকে প্রথমে লগইন করতে হবে", "error");
-    if (!newPostText.trim() && !newPostImage && !recordedAudio) return;
+    if (!newPostText.trim() && !newPostImage) return;
     
     setSubmitting(true);
     try {
+      let userRole = 'member';
+      if (isAdmin || currentUser.id === 'admin') {
+        userRole = 'admin';
+      } else {
+        const userPosition = (currentUser as any).position || '';
+        const lowerPos = userPosition.toLowerCase();
+        if (lowerPos.includes('leader') || lowerPos.includes('stl')) {
+          userRole = 'leader';
+        } else if (lowerPos.includes('trainer')) {
+          userRole = 'trainer';
+        }
+
+        const mMatch = members.find((m: any) => m.name && m.name.trim().toLowerCase() === currentUser.fullName.trim().toLowerCase());
+        if (mMatch) {
+          if (mMatch.type === 'leader') userRole = 'leader';
+          if (mMatch.type === 'trainer') userRole = 'trainer';
+        }
+      }
+
       await addDoc(collection(db, 'fcmTokens'), {
         platform: 'community_post',
         authorId: currentUser.id,
@@ -256,15 +192,13 @@ export default function CommunityPage({
         authorAvatar: currentUser.profilePic || '',
         text: newPostText.trim(),
         imageUrl: newPostImage || null,
-        audioUrl: recordedAudio || null,
         likes: [],
         isAdminPost: isAdmin || currentUser.id === 'admin',
+        authorRole: userRole,
         updatedAt: new Date().toISOString()
       });
       setNewPostText('');
       setNewPostImage(null);
-      setRecordedAudio(null);
-      setRecordingSeconds(0);
       showMsg("পোস্ট সফলভাবে প্রকাশিত হয়েছে!");
     } catch (err) {
       showMsg("পোস্ট করতে সমস্যা হয়েছে", "error");
@@ -474,64 +408,19 @@ export default function CommunityPage({
             </div>
           )}
 
-          {recordedAudio && (
-            <div className="relative ml-14 bg-[#faf5e6] border border-amber-200/50 rounded-2xl p-3 shadow-[inset_2px_2px_5px_rgba(217,119,6,0.06)] flex flex-col xs:flex-row items-start xs:items-center justify-between gap-3 animate-fade-in">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-full bg-amber-500 text-white flex items-center justify-center shadow-sm animate-pulse">
-                  <Volume2 size={15} />
-                </div>
-                <div>
-                  <p className="text-[10px] font-black text-amber-950">ভয়েস রেকর্ড করা হয়েছে</p>
-                  <p className="text-[9px] text-amber-700/80 font-bold">আপলোড করার জন্য প্রস্তুত</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 w-full xs:w-auto justify-between xs:justify-end">
-                <audio src={recordedAudio} controls className="h-8 max-w-[180px] sm:max-w-[210px]" />
-                <button 
-                  onClick={deleteRecordedAudio}
-                  title="ভয়েস ডিলিট করুন"
-                  className="bg-red-100 text-red-600 p-2 rounded-xl hover:bg-red-200 active:scale-90 transition-all shadow-sm border border-red-200 shrink-0"
-                >
-                  <Trash2 size={13} />
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div className="flex justify-between items-center pt-2.5 border-t border-slate-300/40 ml-14 flex-wrap gap-2.5">
-            <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex justify-between items-center pt-2.5 border-t border-slate-300/40 ml-14">
+            <div>
               <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleImagePick} />
               <button 
                 onClick={() => fileInputRef.current?.click()}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#e0e9f4] text-blue-600 hover:text-blue-700 border border-white/80 shadow-[4px_4px_8px_rgba(152,170,194,0.5),-4px_-4px_8px_rgba(255,255,255,0.9)] hover:scale-[1.01] active:scale-95 transition-all text-xs font-black"
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#e0e9f4] text-blue-600 hover:text-blue-700 border border-white/80 shadow-[4px_4px_8px_rgba(152,170,194,0.5),-4px_-4px_8px_rgba(255,255,255,0.9)] hover:scale-[1.01] active:scale-95 transition-all text-xs font-black"
               >
-                <ImageIcon size={14} className="text-blue-500" /> ছবি
-              </button>
-
-              <button 
-                onMouseDown={handlePressStart}
-                onMouseUp={handlePressEnd}
-                onMouseLeave={handlePressEnd}
-                onTouchStart={handlePressStart}
-                onTouchEnd={handlePressEnd}
-                onTouchCancel={handlePressEnd}
-                className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-white/80 shadow-[4px_4px_8px_rgba(152,170,194,0.5),-4px_-4px_8px_rgba(255,255,255,0.9)] hover:scale-[1.01] active:scale-95 transition-all text-xs font-black select-none touch-none ${
-                  isRecording 
-                    ? 'bg-gradient-to-r from-red-500 to-rose-600 text-white shadow-[0_4px_12px_rgba(239,68,68,0.3)] animate-pulse border-rose-400' 
-                    : 'bg-[#e0e9f4] text-emerald-700 hover:text-emerald-800'
-                }`}
-                title="ভয়েস রেকর্ড করতে বাটনটি চেপে ধরে রাখুন"
-              >
-                {isRecording ? (
-                  <><MicOff size={13} className="text-white animate-bounce" /> ছেড়ে দিন ({60 - recordingSeconds}s)</>
-                ) : (
-                  <><Mic size={13} className="text-emerald-600 animate-pulse" /> চেপে ধরে ভয়েস দিন</>
-                )}
+                <ImageIcon size={14} className="text-blue-500" /> ছবি যোগ করুন
               </button>
             </div>
             <button
               onClick={handleCreatePost}
-              disabled={submitting || (!newPostText.trim() && !newPostImage && !recordedAudio)}
+              disabled={submitting || (!newPostText.trim() && !newPostImage)}
               className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black rounded-xl shadow-[4px_4px_10px_rgba(37,99,235,0.3)] hover:scale-[1.01] active:scale-95 transition-all flex items-center gap-1.5 text-xs disabled:opacity-50"
             >
               {submitting ? 'পোস্ট হচ্ছে...' : <><Send size={13} /> পোস্ট করুন</>}
@@ -552,44 +441,77 @@ export default function CommunityPage({
             const canDelete = isAdmin || isAuthor;
             const postComments = comments[post.id] || [];
             const showComments = activeCommentPost === post.id;
-            const isPostByAdmin = post.isAdminPost || post.authorId === 'admin' || post.authorName === 'ADMINISTRATOR' || post.authorName === 'অ্যাডমিন (Admin)' || post.authorName.toLowerCase().includes('admin');
+            
+            const role = getAuthorRole(post);
+            const isPostByAdmin = role === 'admin';
+
+            let cardBgClass = "";
+            let watermarkComponent = null;
+            let avatarWrapperClass = "";
+            let nameTextClass = "";
+            let badgeComponent = null;
+            let textBlockClass = "";
+            let textContentColor = "";
+
+            if (isPostByAdmin) {
+              cardBgClass = "bg-gradient-to-br from-[#fffdec] to-[#f5f1de] border-2 border-amber-400/80 shadow-[0_8px_32px_rgba(217,119,6,0.12),12px_12px_24px_rgba(152,170,194,0.45),-12px_-12px_24px_rgba(255,255,255,0.95)]";
+              watermarkComponent = (
+                <div className="absolute -top-3 -right-3 w-16 h-16 text-amber-500/10 pointer-events-none transform rotate-12 select-none">
+                  <Sparkles size={64} />
+                </div>
+              );
+              avatarWrapperClass = "bg-gradient-to-br from-amber-500 to-yellow-400 border-2 border-amber-300 shadow-[0_0_10px_rgba(245,158,11,0.35)]";
+              nameTextClass = "text-amber-950 font-black";
+              badgeComponent = (
+                <span className="bg-gradient-to-r from-amber-500 via-orange-500 to-yellow-600 text-white text-[8px] sm:text-[9px] font-black px-2 py-0.5 rounded-full flex items-center gap-0.5 shadow-sm border border-amber-400/50 animate-pulse">
+                  <Sparkles size={9} className="text-yellow-100" />
+                  অফিশিয়াল অ্যাডমিন
+                </span>
+              );
+              textBlockClass = "bg-[#faf5e6] border border-amber-200/60 rounded-2xl p-3.5 shadow-[inset_2px_2px_5px_rgba(217,119,6,0.06)]";
+              textContentColor = "text-amber-950 font-black";
+            } else {
+              cardBgClass = "bg-gradient-to-br from-[#f1f5f9] via-[#e5edf7] to-[#d6e4f3] border-2 border-blue-300/80 shadow-[0_8px_24px_rgba(37,99,235,0.06),12px_12px_24px_rgba(152,170,194,0.45),-12px_-12px_24px_rgba(255,255,255,0.95)]";
+              avatarWrapperClass = "bg-[#e0e9f4] shadow-[inset_2px_2px_4px_rgba(152,170,194,0.4)] border-2 border-blue-300";
+              nameTextClass = "text-blue-950 font-black";
+              
+              if (role === 'leader' || role === 'trainer') {
+                badgeComponent = (
+                  <span className="bg-blue-100 text-blue-900 text-[8px] sm:text-[9px] font-black px-2 py-0.5 rounded-full border border-blue-300/60 flex items-center gap-0.5 shadow-sm">
+                    👑 {role === 'leader' ? 'টিম লিডার' : 'টিম ট্রেইনার'}
+                  </span>
+                );
+              } else {
+                badgeComponent = (
+                  <span className="bg-blue-50 text-blue-700 text-[8px] sm:text-[9px] font-black px-2 py-0.5 rounded-full border border-blue-300/40">
+                    👤 মেম্বার
+                  </span>
+                );
+              }
+              
+              textBlockClass = "bg-[#ebf2f8] border border-blue-200/50 rounded-2xl p-3.5 shadow-[inset_2px_2px_5px_rgba(37,99,235,0.04)]";
+              textContentColor = "text-blue-950 font-bold";
+            }
 
             return (
               <div 
                 key={post.id} 
-                className={isPostByAdmin 
-                  ? "bg-gradient-to-br from-[#fffdec] to-[#f5f1de] rounded-[2rem] p-4.5 sm:p-5 shadow-[0_8px_32px_rgba(217,119,6,0.12),12px_12px_24px_rgba(152,170,194,0.45),-12px_-12px_24px_rgba(255,255,255,0.95)] border-2 border-amber-400/80 overflow-hidden relative"
-                  : "bg-[#e0e9f4] rounded-[2rem] p-4.5 sm:p-5 shadow-[12px_12px_24px_rgba(152,170,194,0.55),-12px_-12px_24px_rgba(255,255,255,0.95)] border border-white/80 overflow-hidden relative"
-                }
+                className={`${cardBgClass} rounded-[2rem] p-4.5 sm:p-5 overflow-hidden relative`}
               >
-                {/* Gold Crown/Sparkle Watermark for Admin posts */}
-                {isPostByAdmin && (
-                  <div className="absolute -top-3 -right-3 w-16 h-16 text-amber-500/10 pointer-events-none transform rotate-12 select-none">
-                    <Sparkles size={64} />
-                  </div>
-                )}
+                {watermarkComponent}
 
                 {/* Post Header */}
                 <div className="flex justify-between items-start mb-3 relative z-10">
                   <div className="flex items-center gap-3">
-                    <div className={`w-11 h-11 rounded-xl flex-shrink-0 overflow-hidden flex justify-center items-center ${
-                      isPostByAdmin 
-                        ? 'bg-gradient-to-br from-amber-500 to-yellow-400 border-2 border-amber-300 shadow-[0_0_10px_rgba(245,158,11,0.35)]'
-                        : 'bg-[#e0e9f4] shadow-[inset_2px_2px_4px_rgba(152,170,194,0.4),inset_-2px_-2px_4px_rgba(255,255,255,0.8)] border border-white/40'
-                    }`}>
+                    <div className={`w-11 h-11 rounded-xl flex-shrink-0 overflow-hidden flex justify-center items-center ${avatarWrapperClass}`}>
                       <CartoonAvatar src={isPostByAdmin ? 'admin_crown' : post.authorAvatar} name={post.authorName} />
                     </div>
                     <div>
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <h4 className={`text-xs sm:text-sm leading-tight ${isPostByAdmin ? 'text-amber-950 font-black' : 'text-slate-900 font-extrabold'}`}>{post.authorName}</h4>
-                        {isPostByAdmin && (
-                          <span className="bg-gradient-to-r from-amber-500 via-orange-500 to-yellow-600 text-white text-[8px] sm:text-[9px] font-black px-2 py-0.5 rounded-full flex items-center gap-0.5 shadow-sm border border-amber-400/50 animate-pulse">
-                            <Sparkles size={9} className="text-yellow-100" />
-                            অফিশিয়াল অ্যাডমিন
-                          </span>
-                        )}
+                        <h4 className={`text-xs sm:text-sm leading-tight ${nameTextClass}`}>{post.authorName}</h4>
+                        {badgeComponent}
                       </div>
-                      <p className={`text-[9px] font-bold mt-0.5 ${isPostByAdmin ? 'text-amber-700/80' : 'text-slate-400'}`}>{formatTime(post.updatedAt)}</p>
+                      <p className={`text-[9px] font-bold mt-0.5 ${isPostByAdmin ? 'text-amber-700/80' : 'text-blue-700/80'}`}>{formatTime(post.updatedAt)}</p>
                     </div>
                   </div>
 
@@ -607,11 +529,8 @@ export default function CommunityPage({
 
                 {/* Post Text */}
                 {post.text && (
-                  <div className={isPostByAdmin 
-                    ? "bg-[#faf5e6] border border-amber-200/60 rounded-2xl p-3.5 shadow-[inset_2px_2px_5px_rgba(217,119,6,0.06)] mb-3 relative z-10"
-                    : "bg-[#e0e9f4]/60 rounded-2xl p-3.5 shadow-[inset_3px_3px_6px_rgba(152,170,194,0.25),inset_-3px_-3px_6px_rgba(255,255,255,0.7)] border border-white/40 mb-3 relative z-10"
-                  }>
-                    <p className={`text-xs sm:text-sm whitespace-pre-wrap leading-relaxed break-words ${isPostByAdmin ? 'text-amber-950 font-black' : 'text-slate-800 font-bold'}`}>{post.text}</p>
+                  <div className={`${textBlockClass} mb-3 relative z-10`}>
+                    <p className={`text-xs sm:text-sm whitespace-pre-wrap leading-relaxed break-words ${textContentColor}`}>{post.text}</p>
                   </div>
                 )}
                 
@@ -619,30 +538,6 @@ export default function CommunityPage({
                 {post.imageUrl && (
                   <div className="mb-3 rounded-2xl overflow-hidden border border-white/80 bg-[#e0e9f4] p-1 shadow-[inset_2px_2px_5px_rgba(152,170,194,0.3)] flex justify-center relative z-10">
                     <img src={post.imageUrl} alt="Post attachment" className="max-h-80 w-full object-contain rounded-xl" />
-                  </div>
-                )}
-
-                {/* Post Voice Message Player */}
-                {post.audioUrl && (
-                  <div className={`mb-3 rounded-2xl p-3 border relative z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 ${
-                    isPostByAdmin 
-                      ? 'bg-[#faf5e6] border-amber-200/60 shadow-[inset_2px_2px_5px_rgba(217,119,6,0.06)]' 
-                      : 'bg-[#e0e9f4]/80 border-white/60 shadow-[inset_2px_2px_5px_rgba(152,170,194,0.25)]'
-                  }`}>
-                    <div className="flex items-center gap-2">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center shadow-sm ${
-                        isPostByAdmin ? 'bg-amber-500 text-white' : 'bg-blue-500 text-white'
-                      }`}>
-                        <Volume2 size={15} />
-                      </div>
-                      <div>
-                        <p className={`text-[10px] font-black ${isPostByAdmin ? 'text-amber-950' : 'text-slate-800'}`}>ভয়েস মেসেজ</p>
-                        <p className={`text-[9px] font-bold ${isPostByAdmin ? 'text-amber-700/80' : 'text-slate-500'}`}>কমিউনিটি বার্তা</p>
-                      </div>
-                    </div>
-                    <div className="w-full sm:w-auto flex justify-end">
-                      <audio src={post.audioUrl} controls className="h-8 max-w-full sm:max-w-[240px]" />
-                    </div>
                   </div>
                 )}
 
@@ -688,7 +583,11 @@ export default function CommunityPage({
                               <CartoonAvatar src={comment.authorAvatar} name={comment.authorName} />
                             </div>
                             <div className="flex-1 min-w-0">
-                              <div className="bg-[#e0e9f4] border border-white/60 rounded-2xl p-3 inline-block max-w-full shadow-[3px_3px_6px_rgba(152,170,194,0.4),-3px_-3px_6px_rgba(255,255,255,0.9)]">
+                              <div className={`border rounded-2xl p-3 inline-block max-w-full shadow-[3px_3px_6px_rgba(152,170,194,0.25),-3px_-3px_6px_rgba(255,255,255,0.85)] ${
+                                isPostByAdmin 
+                                  ? "bg-[#faf5e6] border-amber-200" 
+                                  : "bg-[#e8eff7] border-blue-200/50"
+                              }`}>
                                 <div className="flex items-center justify-between gap-3 mb-1">
                                   <h6 className="font-extrabold text-[10px] text-slate-900 truncate">{comment.authorName}</h6>
                                   <span className="text-[8px] text-slate-400 font-bold shrink-0">{formatTime(comment.updatedAt)}</span>
@@ -803,55 +702,6 @@ export default function CommunityPage({
                 className="flex-1 py-3 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-extrabold text-xs tracking-wider uppercase shadow-md hover:scale-[1.01] transition-all"
               >
                 হ্যাঁ, ডিলিট
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showMicPermissionGuide && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[9999] flex items-center justify-center p-4 animate-fade-in">
-          <div className="w-full max-w-sm bg-[#e0e9f4] rounded-[2rem] p-6 shadow-[15px_15px_35px_rgba(152,170,194,0.7),-15px_-15px_35px_rgba(255,255,255,0.9)] border border-white/80 text-center relative overflow-hidden">
-            <div className="absolute top-0 left-1/4 w-32 h-32 bg-amber-500/5 rounded-full blur-2xl pointer-events-none" />
-            
-            {/* Warning Icon */}
-            <div className="w-14 h-14 bg-amber-50 border border-amber-200 text-amber-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm">
-              <AlertCircle size={24} />
-            </div>
-
-            {/* Content */}
-            <h3 className="text-sm sm:text-base font-black text-slate-900 tracking-tight mb-2">
-              মাইক্রোফোন অনুমতি প্রয়োজন
-            </h3>
-            <p className="text-slate-600 text-[11px] font-bold leading-relaxed mb-5 text-left bg-white/60 p-3.5 rounded-2xl border border-white/40">
-              যেহেতু অ্যাপ্লিকেশনটি একটি প্রিভিউ ফ্রেমের (iFrame) ভেতরে চলছে, তাই আপনার ব্রাউজার হয়তো ভয়েস রেকর্ড করা ব্লক করেছে। 
-              <br /><br />
-              <strong className="text-blue-600">সহজে ভয়েস ব্যবহার করতে নিচের নিয়মটি অনুসরণ করুন:</strong>
-              <br />
-              ১. নিচে থাকা <strong className="text-indigo-600">"নতুন ট্যাবে খুলুন"</strong> বোতামে ক্লিক করুন।
-              <br />
-              ২. নতুন ট্যাবে অ্যাপটি ওপেন হওয়ার পর মাইক বাটনে চাপ দিলে ব্রাউজার থেকে মাইক্রোফোন এলাও করার অপশন আসবে, সেখানে <strong className="text-emerald-600">"Allow"</strong> বা অনুমতি দিন।
-            </p>
-
-            {/* Action Buttons */}
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={() => setShowMicPermissionGuide(false)}
-                className="flex-1 py-2.5 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-extrabold text-xs tracking-wider transition-all"
-              >
-                বন্ধ করুন
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  window.open(window.location.href, '_blank');
-                  setShowMicPermissionGuide(false);
-                }}
-                className="flex-1 py-2.5 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold text-xs tracking-wider transition-all flex items-center justify-center gap-1 shadow-md hover:scale-[1.01]"
-              >
-                <span>নতুন ট্যাবে খুলুন</span>
-                <ExternalLink size={12} />
               </button>
             </div>
           </div>
