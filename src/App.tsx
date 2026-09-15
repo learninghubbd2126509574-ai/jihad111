@@ -182,8 +182,6 @@ interface Result {
   personalLead: number;
   submitted: boolean;
   updatedAt: any;
-  name?: string;
-  memberName?: string;
 }
 
 interface PickingItem {
@@ -2853,6 +2851,24 @@ export default function App() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [results, setResults] = useState<Record<string, Result>>({});
+
+  const leaderRanking = useMemo(() => {
+    const ranking = members.filter(m => m.type === 'leader').map(m => {
+      const memberResults = (Object.values(results) as Result[]).filter(r => r.memberId === m.id);
+      const score = memberResults.reduce((acc, r) => acc + (r.convert || 0), 0);
+      return { id: m.id, name: m.name, score, createdAt: null } as RankingMember;
+    });
+    return ranking.sort((a, b) => b.score - a.score);
+  }, [members, results]);
+
+  const trainerRanking = useMemo(() => {
+    const ranking = members.filter(m => m.type === 'trainer').map(m => {
+      const memberResults = (Object.values(results) as Result[]).filter(r => r.memberId === m.id);
+      const score = memberResults.reduce((acc, r) => acc + (r.convert || 0), 0);
+      return { id: m.id, name: m.name, score, createdAt: null } as RankingMember;
+    });
+    return ranking.sort((a, b) => b.score - a.score);
+  }, [members, results]);
   const [config, setConfig] = useState<Config>({ 
     timerActive: false, 
     timerEndTime: 0, 
@@ -2915,8 +2931,6 @@ export default function App() {
   const [approvedUsers, setApprovedUsers] = useState<UserRegistration[]>([]);
   const [authenticatedUser, setAuthenticatedUser] = useState<UserRegistration | null>(null);
 
-  const [leaderRanking, setLeaderRanking] = useState<RankingMember[]>([]);
-  const [trainerRanking, setTrainerRanking] = useState<RankingMember[]>([]);
   const [showLeaderRankingModal, setShowLeaderRankingModal] = useState(false);
   const [showTrainerRankingModal, setShowTrainerRankingModal] = useState(false);
   const [showOverallStatsModal, setShowOverallStatsModal] = useState(false);
@@ -3148,12 +3162,7 @@ export default function App() {
       const rMap: Record<string, Result> = {};
       snapshot.forEach(d => {
         const data = d.data() as Result;
-        // Use document ID as the primary key for stable lookup
-        rMap[d.id] = { ...data, id: d.id };
-        // Also map by memberId field if it exists and is different, for backward compatibility
-        if (data.memberId && data.memberId !== d.id) {
-          rMap[data.memberId] = { ...data, id: d.id };
-        }
+        rMap[data.memberId] = { id: d.id, ...data };
       });
       setResults(rMap);
     }, async (err) => {
@@ -3163,10 +3172,7 @@ export default function App() {
         const rMap: Record<string, Result> = {};
         cacheSnap.forEach(d => {
           const data = d.data() as Result;
-          rMap[d.id] = { ...data, id: d.id };
-          if (data.memberId && data.memberId !== d.id) {
-            rMap[data.memberId] = { ...data, id: d.id };
-          }
+          rMap[data.memberId] = { id: d.id, ...data };
         });
         setResults(rMap);
       } catch (cacheErr) {
@@ -3191,41 +3197,6 @@ export default function App() {
         console.warn('Failed to fetch picking schedule from cache:', cacheErr);
       }
       handleFirestoreError(err, OperationType.GET, 'pickingSchedule', showMsg);
-    });
-
-    // Listen to Rankings
-    const unsubLeaderRanking = onSnapshot(query(collection(db, 'leaderRanking'), orderBy('score', 'desc')), (snapshot) => {
-      const list: RankingMember[] = [];
-      snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as RankingMember));
-      setLeaderRanking(list);
-    }, async (err) => {
-      console.warn('LeaderRanking Listener Error, attempting cache fallback:', err);
-      try {
-        const cacheSnap = await getDocsFromCache(query(collection(db, 'leaderRanking'), orderBy('score', 'desc')));
-        const list: RankingMember[] = [];
-        cacheSnap.forEach(d => list.push({ id: d.id, ...d.data() } as RankingMember));
-        setLeaderRanking(list);
-      } catch (cacheErr) {
-        console.warn('Failed to fetch leader ranking from cache:', cacheErr);
-      }
-      handleFirestoreError(err, OperationType.GET, 'leaderRanking', showMsg);
-    });
-
-    const unsubTrainerRanking = onSnapshot(query(collection(db, 'trainerRanking'), orderBy('score', 'desc')), (snapshot) => {
-      const list: RankingMember[] = [];
-      snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as RankingMember));
-      setTrainerRanking(list);
-    }, async (err) => {
-      console.warn('TrainerRanking Listener Error, attempting cache fallback:', err);
-      try {
-        const cacheSnap = await getDocsFromCache(query(collection(db, 'trainerRanking'), orderBy('score', 'desc')));
-        const list: RankingMember[] = [];
-        cacheSnap.forEach(d => list.push({ id: d.id, ...d.data() } as RankingMember));
-        setTrainerRanking(list);
-      } catch (cacheErr) {
-        console.warn('Failed to fetch trainer ranking from cache:', cacheErr);
-      }
-      handleFirestoreError(err, OperationType.GET, 'trainerRanking', showMsg);
     });
 
     // Listen to Teachers
@@ -3493,8 +3464,6 @@ export default function App() {
       unsubMembers();
       unsubResults();
       unsubPicking();
-      unsubLeaderRanking();
-      unsubTrainerRanking();
       unsubTeachers();
       unsubStlMembers();
       unsubDemoMembers();
@@ -4952,8 +4921,8 @@ export default function App() {
             updatedAt: serverTimestamp()
           });
         } else {
-          // Auto-create if missing - Use targetId for a stable, deterministic document ID
-          await setDoc(doc(db, coll, targetId), {
+          // Auto-create if missing
+          await addDoc(collection(db, coll), {
             name: targetName,
             whatsapp: targetWhatsapp,
             score: convert,
@@ -5907,25 +5876,21 @@ export default function App() {
     
     // Helper to resolve result for any member/user by ID, whatsapp, or name
     const getResultForMember = (m: { id: string; name: string; whatsapp?: string }) => {
-      // 1. Direct ID match (Best)
       if (results[m.id]) return results[m.id];
-      
-      // 2. Whatsapp match
       const cleanWa = m.whatsapp ? m.whatsapp.replace(/\s+/g, '') : '';
       if (cleanWa && results[cleanWa]) return results[cleanWa];
       if (cleanWa && results[`user-${cleanWa}`]) return results[`user-${cleanWa}`];
       
-      // 3. Name match (Fuzzy)
       const cleanMName = normalizeName(m.name);
-      if (cleanMName) {
-        const foundByName = Object.values(results).find((r: any) => {
-          const rName = r.name || r.memberName;
-          return rName && normalizeName(rName) === cleanMName;
-        });
-        if (foundByName) return foundByName;
-      }
-      
-      return { lead: 0, convert: 0, personalLead: 0, submitted: false };
+      const foundEntry = Object.values(results).find(r => {
+        const resObj = r as any;
+        if (resObj.memberId === m.id) return true;
+        if (cleanWa && resObj.memberId && resObj.memberId.replace(/\s+/g, '') === cleanWa) return true;
+        const rName = resObj.name || resObj.memberName;
+        if (cleanMName && rName && normalizeName(rName) === cleanMName) return true;
+        return false;
+      });
+      return foundEntry || { lead: 0, convert: 0, personalLead: 0, submitted: false };
     };
 
     // 1. Build comprehensive Leaders list (members + approvedUsers + leaderRanking)
@@ -6175,15 +6140,7 @@ export default function App() {
 
   const myMember = useMemo(() => {
     if (!currentAuthUser) return null;
-    const cleanAuthName = normalizeName(currentAuthUser.fullName);
-    const cleanAuthWa = currentAuthUser.whatsapp ? currentAuthUser.whatsapp.replace(/\s+/g, '') : '';
-    
-    return members.find(m => {
-      const cleanMName = normalizeName(m.name);
-      const cleanMWa = m.whatsapp ? m.whatsapp.replace(/\s+/g, '') : '';
-      return (cleanAuthName && cleanMName && cleanMName === cleanAuthName) ||
-             (cleanAuthWa && cleanMWa && cleanMWa === cleanAuthWa);
-    });
+    return members.find(m => m.name.trim().toLowerCase() === currentAuthUser.fullName.trim().toLowerCase());
   }, [members, currentAuthUser]);
 
   const myUserStats = useMemo(() => {
