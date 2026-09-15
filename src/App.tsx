@@ -4890,7 +4890,8 @@ export default function App() {
         updatedAt: serverTimestamp()
       };
       
-      await updateDoc(resultDocRef, {
+      // Use setDoc with merge: true to ensure it works whether the document exists or not
+      await setDoc(resultDocRef, {
         memberId: targetId,
         memberName: targetName,
         whatsapp: targetWhatsapp,
@@ -4899,9 +4900,9 @@ export default function App() {
         personalLead: increment(personalLead - (dbResult.personalLead || 0)),
         submitted: true,
         updatedAt: serverTimestamp()
-      });
+      }, { merge: true });
       if (memberId && memberId !== targetId) {
-        await updateDoc(doc(db, 'results', memberId), {
+        await setDoc(doc(db, 'results', memberId), {
           memberId: targetId,
           memberName: targetName,
           whatsapp: targetWhatsapp,
@@ -4910,7 +4911,7 @@ export default function App() {
           personalLead: increment(personalLead - (dbResult.personalLead || 0)),
           submitted: true,
           updatedAt: serverTimestamp()
-        });
+        }, { merge: true });
       }
 
       // Optimistic local update
