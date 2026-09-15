@@ -362,6 +362,39 @@ function GirlAvatar4() {
   );
 }
 
+// Admin/Owner crown avatar
+export function AdminAvatar() {
+  return (
+    <svg viewBox="0 0 100 100" className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="adminGoldGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#fbbf24" />
+          <stop offset="50%" stopColor="#f59e0b" />
+          <stop offset="100%" stopColor="#d97706" />
+        </linearGradient>
+        <radialGradient id="crownGlowEffect" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.8" />
+          <stop offset="100%" stopColor="#f59e0b" stopOpacity="0" />
+        </radialGradient>
+      </defs>
+      <circle cx="50" cy="50" r="50" fill="url(#adminGoldGradient)" />
+      <circle cx="50" cy="50" r="35" fill="url(#crownGlowEffect)" opacity="0.4" />
+      <path d="M25 73 L30 43 L42 56 L50 32 L58 56 L70 43 L75 73 Z" fill="#ffffff" />
+      <rect x="30" y="68" width="40" height="5" rx="2" fill="#b45309" />
+      <circle cx="35" cy="70.5" r="1.5" fill="#ef4444" />
+      <circle cx="42" cy="70.5" r="1.5" fill="#3b82f6" />
+      <circle cx="50" cy="70.5" r="1.5" fill="#10b981" />
+      <circle cx="58" cy="70.5" r="1.5" fill="#3b82f6" />
+      <circle cx="65" cy="70.5" r="1.5" fill="#ef4444" />
+      <circle cx="25" cy="43" r="3" fill="#ffffff" />
+      <circle cx="42" cy="56" r="2.5" fill="#ffffff" />
+      <circle cx="50" cy="32" r="3.5" fill="#ffffff" />
+      <circle cx="58" cy="56" r="2.5" fill="#ffffff" />
+      <circle cx="70" cy="43" r="3" fill="#ffffff" />
+    </svg>
+  );
+}
+
 export const CARTOON_AVATAR_LIST = [
   { id: 'boy-1', label: 'স্মার্ট বয় ১', gender: 'male', component: BoyAvatar1 },
   { id: 'boy-2', label: 'কুল চশমা বয়', gender: 'male', component: BoyAvatar2 },
@@ -410,6 +443,15 @@ export const CartoonAvatar: React.FC<CartoonAvatarProps> = ({
   alt = 'Avatar'
 }) => {
   const [loadError, setLoadError] = useState(false);
+
+  // If Admin avatar is specified
+  if (src === 'admin' || src === 'admin_crown') {
+    return (
+      <div className={`w-full h-full flex items-center justify-center select-none overflow-hidden ${className}`}>
+        <AdminAvatar />
+      </div>
+    );
+  }
 
   // If a cartoon avatar ID was explicitly selected (e.g. "cartoon:boy-1")
   if (src && src.startsWith('cartoon:')) {

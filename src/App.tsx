@@ -7002,7 +7002,7 @@ export default function App() {
 
         {userTab === 'community' && (
           <CommunityPage
-            currentUser={currentAuthUser}
+            currentUser={currentAuthUser || (isAdmin ? { id: 'admin', fullName: 'অ্যাডমিন (Admin)', profilePic: 'admin' } : null)}
             isAdmin={isAdmin}
             showMsg={showMsg}
             communityLocked={config.communityLocked || false}
