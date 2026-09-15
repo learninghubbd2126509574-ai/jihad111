@@ -24,8 +24,9 @@ import {
   getDocFromServer,
   getDocsFromCache,
   getDocFromCache,
-  increment
-} from 'firebase/firestore';
+  increment,
+  clearCollection
+} from './lib/supabaseDb';
 import { 
   signInWithPopup, 
   signInWithRedirect,
@@ -115,8 +116,10 @@ import {
   Share2,
   Target,
   Save,
-  KeyRound
+  KeyRound,
+  Database
 } from 'lucide-react';
+import { SupabaseSettings } from './components/SupabaseSettings';
 
 import { 
   format, 
@@ -1916,7 +1919,7 @@ const BalanceManagementSection = ({
           key: m.id, 
           name: m.name, 
           position: m.type === 'leader' ? 'Team Leader' : m.type === 'trainer' ? 'Team Trainer' : 'Team Member', 
-          whatsapp: '', 
+          whatsapp: m.whatsapp || '', 
           memberId: m.id 
         });
       }
@@ -2099,7 +2102,7 @@ const BalanceManagementSection = ({
                           onClick={() => {
                             setSelectedUserKey(item.key);
                             setQuickUser({ key: item.key, name: item.name, type: 'add' });
-                            setQuickAmount('');
+                            setQuickAmount('10');
                             setQuickReason('');
                           }}
                           className="px-2.5 py-1 rounded-lg bg-red-accent/10 hover:bg-red-accent text-red-accent hover:text-white border border-red-accent/30 text-[10px] font-black transition-all"
@@ -2111,7 +2114,7 @@ const BalanceManagementSection = ({
                           onClick={() => {
                             setSelectedUserKey(item.key);
                             setQuickUser({ key: item.key, name: item.name, type: 'deduct' });
-                            setQuickAmount('');
+                            setQuickAmount('10');
                             setQuickReason('');
                           }}
                           className="px-2.5 py-1 rounded-lg bg-green-accent/10 hover:bg-green-accent text-green-accent hover:text-bg border border-green-accent/30 text-[10px] font-black transition-all"
@@ -2123,7 +2126,7 @@ const BalanceManagementSection = ({
                           onClick={() => {
                             setSelectedUserKey(item.key);
                             setQuickUser({ key: item.key, name: item.name, type: 'waive' });
-                            setQuickAmount('');
+                            setQuickAmount(stats.totalFine > 0 ? String(stats.totalFine) : '10');
                             setQuickReason('');
                           }}
                           className="px-2.5 py-1 rounded-lg bg-gold/10 hover:bg-gold text-gold hover:text-bg border border-gold/30 text-[10px] font-black transition-all"
@@ -2346,31 +2349,44 @@ const BalanceManagementSection = ({
       {/* Quick Action Modal Dialog */}
       <AnimatePresence>
         {quickUser && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              className="absolute inset-0 bg-black/80 backdrop-blur-md"
               onClick={() => setQuickUser(null)}
             />
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="relative w-full max-w-sm bg-surface border border-gold/30 p-5 rounded-2xl shadow-2xl space-y-4"
+              className="relative w-full max-w-sm bg-surface border border-gold/40 p-5 sm:p-6 rounded-3xl shadow-2xl space-y-4 z-10"
             >
               <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                <h3 className="text-sm font-black text-white">
-                  {quickUser.type === 'add' ? '➕ ফাইন বাড়ান' : quickUser.type === 'deduct' ? '➖ ফাইন কমান' : quickUser.type === 'waive' ? '🛡️ জরিমানা মওকুফ করুন' : '📅 মিসড দিন রিমুভ করুন'}
+                <h3 className="text-sm sm:text-base font-black text-white flex items-center gap-2">
+                  <span>{quickUser.type === 'add' ? '➕ ফাইন বাড়ান' : quickUser.type === 'deduct' ? '➖ ফাইন কমান' : quickUser.type === 'waive' ? '🛡️ জরিমানা মওকুফ করুন' : '📅 মিসড দিন রিমুভ করুন'}</span>
                 </h3>
-                <button type="button" onClick={() => setQuickUser(null)} className="w-6 h-6 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 text-muted-main hover:text-white transition-colors">
+                <button type="button" onClick={() => setQuickUser(null)} className="w-7 h-7 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 text-muted-main hover:text-white transition-colors">
                   ✕
                 </button>
               </div>
               
-              <div className="text-xs text-muted-main mb-2">
-                User: <span className="text-white font-bold">{quickUser.name}</span>
+              <div className="p-3 bg-white/5 rounded-xl border border-white/5 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] text-muted-main uppercase font-bold block">মেম্বার</span>
+                  <span className="text-sm text-white font-bold">{quickUser.name}</span>
+                </div>
+                {(() => {
+                  const qUser = userOptions.find(u => u.key === quickUser.key);
+                  const qStats = qUser && computeUserSubmissionStats ? computeUserSubmissionStats(qUser.whatsapp, qUser.memberId) : null;
+                  return qStats ? (
+                    <div className="text-right">
+                      <span className="text-[10px] text-muted-main uppercase font-bold block">বর্তমান জরিমানা</span>
+                      <span className="text-xs font-black text-gold">৳{qStats.totalFine}</span>
+                    </div>
+                  ) : null;
+                })()}
               </div>
 
               <div className="space-y-3">
@@ -2391,18 +2407,36 @@ const BalanceManagementSection = ({
                       type="number"
                       value={quickAmount}
                       onChange={(e) => setQuickAmount(e.target.value)}
-                      placeholder="Enter amount..."
-                      className="w-full bg-bg border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-gold transition-colors"
+                      placeholder="টাকার পরিমাণ লিখুন..."
+                      className="w-full bg-bg border border-white/10 rounded-xl p-3 text-sm font-bold text-white outline-none focus:border-gold transition-colors"
                     />
+                    {/* Preset Amount Chips */}
+                    <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                      <span className="text-[10px] text-muted-main font-bold">কুইক সিলেক্ট:</span>
+                      {[10, 20, 30, 50, 100].map(val => (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => setQuickAmount(String(val))}
+                          className={`px-2 py-1 rounded-lg text-xs font-bold transition-all border ${
+                            quickAmount === String(val)
+                              ? 'bg-gold text-bg border-gold shadow-sm'
+                              : 'bg-white/5 text-muted-main hover:text-white border-white/10 hover:border-white/20'
+                          }`}
+                        >
+                          ৳{val}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
                 <div>
-                  <label className="block text-[10px] text-muted-main font-bold uppercase mb-1">কারণ / নোট (Optional)</label>
+                  <label className="block text-[10px] text-muted-main font-bold uppercase mb-1">কারণ / নোট (ঐচ্ছিক)</label>
                   <input
                     type="text"
                     value={quickReason}
                     onChange={(e) => setQuickReason(e.target.value)}
-                    placeholder="Enter reason..."
+                    placeholder="কারণ লিখুন (যেমন: বিলম্ব ফি, বিশেষ ছাড়)..."
                     className="w-full bg-bg border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-gold transition-colors"
                   />
                 </div>
@@ -2412,7 +2446,7 @@ const BalanceManagementSection = ({
                 type="button"
                 disabled={busy}
                 onClick={handleQuickSubmit}
-                className="w-full py-3 rounded-xl bg-gold text-bg font-black text-sm uppercase tracking-wider hover:bg-gold/90 transition-all shadow-[0_0_15px_rgba(245,197,66,0.3)] disabled:opacity-50 disabled:cursor-not-allowed mt-2"
+                className="w-full py-3 rounded-xl bg-gold text-bg font-black text-sm uppercase tracking-wider hover:bg-gold/90 transition-all shadow-[0_0_15px_rgba(245,197,66,0.3)] disabled:opacity-50 disabled:cursor-not-allowed mt-2 active:scale-95"
               >
                 {busy ? 'প্রসেসিং...' : 'কনফার্ম করুন'}
               </button>
@@ -3129,6 +3163,56 @@ export default function App() {
       handleFirestoreError(err, OperationType.GET, 'quickLinks', showMsg);
     });
 
+    // Listen to User Balances (Always real-time)
+    const unsubBalances = onSnapshot(collection(db, 'userBalances'), (snapshot) => {
+      const bMap: Record<string, UserBalance> = {};
+      snapshot.forEach(d => {
+        bMap[d.id] = { id: d.id, ...d.data() } as UserBalance;
+      });
+      setUserBalances(bMap);
+    }, async (err) => {
+      console.warn('Balances Listener Error, attempting cache fallback:', err);
+      try {
+        const cacheSnap = await getDocsFromCache(collection(db, 'userBalances'));
+        const bMap: Record<string, UserBalance> = {};
+        cacheSnap.forEach(d => {
+          bMap[d.id] = { id: d.id, ...d.data() } as UserBalance;
+        });
+        setUserBalances(bMap);
+      } catch (cacheErr) {
+        console.warn('Failed to fetch balances from cache:', cacheErr);
+      }
+      handleFirestoreError(err, OperationType.GET, 'userBalances', showMsg);
+    });
+
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+    const safeYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+    const safeMonth = currentMonth === 0 ? 12 : currentMonth; // previous month (1-indexed)
+    const startOfPrevMonthStr = `${safeYear}-${String(safeMonth).padStart(2, '0')}-01`;
+
+    const unsubSubmissionLogs = onSnapshot(query(collection(db, 'submissionLogs'), where('date', '>=', startOfPrevMonthStr)), (snapshot) => {
+      const logs: SubmissionLog[] = [];
+      snapshot.forEach(d => {
+        logs.push({ id: d.id, ...d.data() } as SubmissionLog);
+      });
+      setSubmissionLogs(logs);
+    }, async (err) => {
+      console.warn('SubmissionLogs Listener Error, attempting cache fallback:', err);
+      try {
+        const cacheSnap = await getDocsFromCache(query(collection(db, 'submissionLogs'), where('date', '>=', startOfPrevMonthStr)));
+        const logs: SubmissionLog[] = [];
+        cacheSnap.forEach(d => {
+          logs.push({ id: d.id, ...d.data() } as SubmissionLog);
+        });
+        setSubmissionLogs(logs);
+      } catch (cacheErr) {
+        console.warn('Failed to fetch submission logs from cache:', cacheErr);
+      }
+      handleFirestoreError(err, OperationType.GET, 'submissionLogs', showMsg);
+    });
+
     // ---------------------------------------------------------
     // AUTH DEPENDENT LISTENERS (Admin / Authed only)
     // ---------------------------------------------------------
@@ -3138,62 +3222,11 @@ export default function App() {
     let unsubDemoAttendance = () => {};
     let unsubPending = () => {};
     let unsubApproved = () => {};
-    let unsubBalances = () => {};
-    let unsubSubmissionLogs = () => {};
     let unsubAuditLogs = () => {};
 
-    if (isAuthReady && user) {
-      // Authenticated Users Listeners
-      unsubBalances = onSnapshot(collection(db, 'userBalances'), (snapshot) => {
-        const bMap: Record<string, UserBalance> = {};
-        snapshot.forEach(d => {
-          bMap[d.id] = { id: d.id, ...d.data() } as UserBalance;
-        });
-        setUserBalances(bMap);
-      }, async (err) => {
-        console.warn('Balances Listener Error, attempting cache fallback:', err);
-        try {
-          const cacheSnap = await getDocsFromCache(collection(db, 'userBalances'));
-          const bMap: Record<string, UserBalance> = {};
-          cacheSnap.forEach(d => {
-            bMap[d.id] = { id: d.id, ...d.data() } as UserBalance;
-          });
-          setUserBalances(bMap);
-        } catch (cacheErr) {
-          console.warn('Failed to fetch balances from cache:', cacheErr);
-        }
-        handleFirestoreError(err, OperationType.GET, 'userBalances', showMsg);
-      });
+    const isActuallyAdmin = (user && (user.email === adminEmail || user.email === devEmail || user.isAnonymous)) || isAdmin;
 
-      const now = new Date();
-      const currentYear = now.getFullYear();
-      const currentMonth = now.getMonth();
-      const safeYear = currentMonth === 0 ? currentYear - 1 : currentYear;
-      const safeMonth = currentMonth === 0 ? 12 : currentMonth; // previous month (1-indexed)
-      const startOfPrevMonthStr = `${safeYear}-${String(safeMonth).padStart(2, '0')}-01`;
-
-      unsubSubmissionLogs = onSnapshot(query(collection(db, 'submissionLogs'), where('date', '>=', startOfPrevMonthStr)), (snapshot) => {
-        const logs: SubmissionLog[] = [];
-        snapshot.forEach(d => {
-          logs.push({ id: d.id, ...d.data() } as SubmissionLog);
-        });
-        setSubmissionLogs(logs);
-      }, async (err) => {
-        console.warn('SubmissionLogs Listener Error, attempting cache fallback:', err);
-        try {
-          const cacheSnap = await getDocsFromCache(query(collection(db, 'submissionLogs'), where('date', '>=', startOfPrevMonthStr)));
-          const logs: SubmissionLog[] = [];
-          cacheSnap.forEach(d => {
-            logs.push({ id: d.id, ...d.data() } as SubmissionLog);
-          });
-          setSubmissionLogs(logs);
-        } catch (cacheErr) {
-          console.warn('Failed to fetch submission logs from cache:', cacheErr);
-        }
-        handleFirestoreError(err, OperationType.GET, 'submissionLogs', showMsg);
-      });
-
-      const isActuallyAdmin = user.email === adminEmail || user.email === devEmail || user.isAnonymous || isAdmin;
+    if (isActuallyAdmin || (isAuthReady && user)) {
       
       // If signed in via Firebase Auth with admin email
       if (isActuallyAdmin) {
@@ -4653,38 +4686,19 @@ export default function App() {
       title: 'Clear ALL submitted results?',
       onConfirm: async () => {
         try {
-          const resultsSnap = await getDocs(collection(db, 'results'));
-          let batch = writeBatch(db);
-          let count = 0;
-          let updateCount = 0;
-
-          // First update all existing result docs
-          for (const resDoc of resultsSnap.docs) {
-            const data = resDoc.data();
-            // Only update if they actually have data to clear
-            if (data.submitted === true || data.lead > 0 || data.convert > 0 || data.personalLead > 0) {
-              batch.set(resDoc.ref, {
-                memberId: resDoc.id,
-                lead: 0,
-                convert: 0,
-                personalLead: 0,
-                submitted: false,
-                updatedAt: serverTimestamp()
-              });
-              count++;
-              updateCount++;
-              if (count >= 490) {
-                await batch.commit();
-                batch = writeBatch(db);
-                count = 0;
-              }
-            }
-          }
-          if (count > 0) {
-            await batch.commit();
+          // 1. Reset global converts counter in config
+          try {
+            await updateDoc(doc(db, 'config', 'global'), {
+              totalConverts: 0
+            });
+          } catch (configErr) {
+            console.warn('Failed to update config global converts, continuing:', configErr);
           }
 
-          showMsg(`All results cleared! (${updateCount} records reset)`);
+          // 2. Perform lightning-fast bulk delete on the entire 'results' table
+          await clearCollection('results');
+
+          showMsg('All results cleared successfully!');
           setShowConfirm(null);
         } catch (err) {
           console.error('Error in clearResults:', err);
@@ -4966,26 +4980,58 @@ export default function App() {
   const adminUpdateBalance = async (userKey: string, userName: string, amount: number, isDeduct: boolean, reason: string) => {
     try {
       const cleanName = userName.trim().toLowerCase();
-      const matchedUser = approvedUsers.find(u => u.fullName.trim().toLowerCase() === cleanName) ||
-                          members.find(m => m.name.trim().toLowerCase() === cleanName);
-      
-      const primaryKey = (matchedUser && 'whatsapp' in matchedUser && matchedUser.whatsapp) ? matchedUser.whatsapp : userKey;
+      const cleanKey = (userKey || '').replace(/\s+/g, '');
+      const matchedApproved = approvedUsers.find(u => 
+        (u.whatsapp && u.whatsapp.replace(/\s+/g, '') === cleanKey) ||
+        u.fullName.trim().toLowerCase() === cleanName
+      );
+      const matchedMember = members.find(m => 
+        m.id === userKey ||
+        (m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanKey) ||
+        m.name.trim().toLowerCase() === cleanName
+      );
+
+      const targetWhatsapp = matchedApproved?.whatsapp || matchedMember?.whatsapp || (userKey.startsWith('01') || userKey.startsWith('+') ? userKey : '');
+      const targetMemberId = matchedMember?.id || (userKey.startsWith('01') || userKey.startsWith('+') ? '' : userKey);
+      const primaryKey = targetWhatsapp || targetMemberId || userKey;
       const userBalRef = doc(db, 'userBalances', primaryKey);
       
-      const existing = userBalances[primaryKey] || 
-                       userBalances[userKey] || 
-                       Object.values(userBalances).find(b => (b as UserBalance).userName?.trim().toLowerCase() === cleanName) || 
-                       { whatsapp: primaryKey, userName, balance: 1500, waivedFines: 0, manualAdjustments: 0 };
+      const existing = (primaryKey && userBalances[primaryKey]) ||
+                       (targetWhatsapp && userBalances[targetWhatsapp]) ||
+                       (targetMemberId && userBalances[targetMemberId]) ||
+                       (userKey && userBalances[userKey]) ||
+                       Object.values(userBalances).find(b => {
+                         const bal = b as UserBalance;
+                         return (targetWhatsapp && bal.whatsapp === targetWhatsapp) ||
+                                (targetMemberId && bal.id === targetMemberId) ||
+                                (bal.userName && bal.userName.trim().toLowerCase() === cleanName);
+                       }) ||
+                       { whatsapp: targetWhatsapp || primaryKey, id: targetMemberId, userName, balance: 1500, waivedFines: 0, manualAdjustments: 0, waivedDays: [] };
       
       const currentManual = existing.manualAdjustments || 0;
       const diff = isDeduct ? -amount : amount;
       const newManual = currentManual + diff;
 
-      await setDoc(userBalRef, {
+      const updatedBalance: UserBalance = {
         ...existing,
-        whatsapp: primaryKey,
-        userName,
+        id: targetMemberId || existing.id,
+        whatsapp: targetWhatsapp || existing.whatsapp || primaryKey,
+        userName: userName || existing.userName,
         manualAdjustments: newManual,
+        updatedAt: new Date().toISOString()
+      };
+
+      // Immediate optimistic update in state so UI updates in 0ms!
+      setUserBalances(prev => {
+        const next = { ...prev, [primaryKey]: updatedBalance };
+        if (targetWhatsapp && targetWhatsapp !== primaryKey) next[targetWhatsapp] = updatedBalance;
+        if (targetMemberId && targetMemberId !== primaryKey) next[targetMemberId] = updatedBalance;
+        if (userKey && userKey !== primaryKey) next[userKey] = updatedBalance;
+        return next;
+      });
+
+      await setDoc(userBalRef, {
+        ...updatedBalance,
         updatedAt: serverTimestamp()
       }, { merge: true });
 
@@ -5122,25 +5168,57 @@ export default function App() {
   const adminWaiveFine = async (userKey: string, userName: string, amount: number, reason: string) => {
     try {
       const cleanName = userName.trim().toLowerCase();
-      const matchedUser = approvedUsers.find(u => u.fullName.trim().toLowerCase() === cleanName) ||
-                          members.find(m => m.name.trim().toLowerCase() === cleanName);
-      
-      const primaryKey = (matchedUser && 'whatsapp' in matchedUser && matchedUser.whatsapp) ? matchedUser.whatsapp : userKey;
+      const cleanKey = (userKey || '').replace(/\s+/g, '');
+      const matchedApproved = approvedUsers.find(u => 
+        (u.whatsapp && u.whatsapp.replace(/\s+/g, '') === cleanKey) ||
+        u.fullName.trim().toLowerCase() === cleanName
+      );
+      const matchedMember = members.find(m => 
+        m.id === userKey ||
+        (m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanKey) ||
+        m.name.trim().toLowerCase() === cleanName
+      );
+
+      const targetWhatsapp = matchedApproved?.whatsapp || matchedMember?.whatsapp || (userKey.startsWith('01') || userKey.startsWith('+') ? userKey : '');
+      const targetMemberId = matchedMember?.id || (userKey.startsWith('01') || userKey.startsWith('+') ? '' : userKey);
+      const primaryKey = targetWhatsapp || targetMemberId || userKey;
       const userBalRef = doc(db, 'userBalances', primaryKey);
       
-      const existing = userBalances[primaryKey] || 
-                       userBalances[userKey] || 
-                       Object.values(userBalances).find(b => (b as UserBalance).userName?.trim().toLowerCase() === cleanName) || 
-                       { whatsapp: primaryKey, userName, balance: 1500, waivedFines: 0, manualAdjustments: 0 };
+      const existing = (primaryKey && userBalances[primaryKey]) ||
+                       (targetWhatsapp && userBalances[targetWhatsapp]) ||
+                       (targetMemberId && userBalances[targetMemberId]) ||
+                       (userKey && userBalances[userKey]) ||
+                       Object.values(userBalances).find(b => {
+                         const bal = b as UserBalance;
+                         return (targetWhatsapp && bal.whatsapp === targetWhatsapp) ||
+                                (targetMemberId && bal.id === targetMemberId) ||
+                                (bal.userName && bal.userName.trim().toLowerCase() === cleanName);
+                       }) ||
+                       { whatsapp: targetWhatsapp || primaryKey, id: targetMemberId, userName, balance: 1500, waivedFines: 0, manualAdjustments: 0, waivedDays: [] };
       
       const currentWaived = existing.waivedFines || 0;
       const newWaived = currentWaived + amount;
 
-      await setDoc(userBalRef, {
+      const updatedBalance: UserBalance = {
         ...existing,
-        whatsapp: primaryKey,
-        userName,
+        id: targetMemberId || existing.id,
+        whatsapp: targetWhatsapp || existing.whatsapp || primaryKey,
+        userName: userName || existing.userName,
         waivedFines: newWaived,
+        updatedAt: new Date().toISOString()
+      };
+
+      // Immediate optimistic update
+      setUserBalances(prev => {
+        const next = { ...prev, [primaryKey]: updatedBalance };
+        if (targetWhatsapp && targetWhatsapp !== primaryKey) next[targetWhatsapp] = updatedBalance;
+        if (targetMemberId && targetMemberId !== primaryKey) next[targetMemberId] = updatedBalance;
+        if (userKey && userKey !== primaryKey) next[userKey] = updatedBalance;
+        return next;
+      });
+
+      await setDoc(userBalRef, {
+        ...updatedBalance,
         updatedAt: serverTimestamp()
       }, { merge: true });
 
@@ -5154,16 +5232,33 @@ export default function App() {
   const adminRemoveDayFine = async (userKey: string, userName: string, dateStr: string, reason: string) => {
     try {
       const cleanName = userName.trim().toLowerCase();
-      const matchedUser = approvedUsers.find(u => u.fullName.trim().toLowerCase() === cleanName) ||
-                          members.find(m => m.name.trim().toLowerCase() === cleanName);
-      
-      const primaryKey = (matchedUser && 'whatsapp' in matchedUser && matchedUser.whatsapp) ? matchedUser.whatsapp : userKey;
+      const cleanKey = (userKey || '').replace(/\s+/g, '');
+      const matchedApproved = approvedUsers.find(u => 
+        (u.whatsapp && u.whatsapp.replace(/\s+/g, '') === cleanKey) ||
+        u.fullName.trim().toLowerCase() === cleanName
+      );
+      const matchedMember = members.find(m => 
+        m.id === userKey ||
+        (m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanKey) ||
+        m.name.trim().toLowerCase() === cleanName
+      );
+
+      const targetWhatsapp = matchedApproved?.whatsapp || matchedMember?.whatsapp || (userKey.startsWith('01') || userKey.startsWith('+') ? userKey : '');
+      const targetMemberId = matchedMember?.id || (userKey.startsWith('01') || userKey.startsWith('+') ? '' : userKey);
+      const primaryKey = targetWhatsapp || targetMemberId || userKey;
       const userBalRef = doc(db, 'userBalances', primaryKey);
       
-      const existing = userBalances[primaryKey] || 
-                       userBalances[userKey] || 
-                       Object.values(userBalances).find(b => (b as UserBalance).userName?.trim().toLowerCase() === cleanName) || 
-                       { whatsapp: primaryKey, userName, balance: 1500, waivedFines: 0, manualAdjustments: 0, waivedDays: [] };
+      const existing = (primaryKey && userBalances[primaryKey]) ||
+                       (targetWhatsapp && userBalances[targetWhatsapp]) ||
+                       (targetMemberId && userBalances[targetMemberId]) ||
+                       (userKey && userBalances[userKey]) ||
+                       Object.values(userBalances).find(b => {
+                         const bal = b as UserBalance;
+                         return (targetWhatsapp && bal.whatsapp === targetWhatsapp) ||
+                                (targetMemberId && bal.id === targetMemberId) ||
+                                (bal.userName && bal.userName.trim().toLowerCase() === cleanName);
+                       }) ||
+                       { whatsapp: targetWhatsapp || primaryKey, id: targetMemberId, userName, balance: 1500, waivedFines: 0, manualAdjustments: 0, waivedDays: [] };
       
       const currentWaivedDays = [...(existing.waivedDays || [])];
 
@@ -5173,11 +5268,26 @@ export default function App() {
 
       const fineRate = config.fineAmount !== undefined ? config.fineAmount : 10;
 
-      await setDoc(userBalRef, {
+      const updatedBalance: UserBalance = {
         ...existing,
-        whatsapp: primaryKey,
-        userName,
+        id: targetMemberId || existing.id,
+        whatsapp: targetWhatsapp || existing.whatsapp || primaryKey,
+        userName: userName || existing.userName,
         waivedDays: currentWaivedDays,
+        updatedAt: new Date().toISOString()
+      };
+
+      // Immediate optimistic update
+      setUserBalances(prev => {
+        const next = { ...prev, [primaryKey]: updatedBalance };
+        if (targetWhatsapp && targetWhatsapp !== primaryKey) next[targetWhatsapp] = updatedBalance;
+        if (targetMemberId && targetMemberId !== primaryKey) next[targetMemberId] = updatedBalance;
+        if (userKey && userKey !== primaryKey) next[userKey] = updatedBalance;
+        return next;
+      });
+
+      await setDoc(userBalRef, {
+        ...updatedBalance,
         updatedAt: serverTimestamp()
       }, { merge: true });
 
@@ -5555,8 +5665,17 @@ export default function App() {
       return a.name.localeCompare(b.name);
     };
 
-    // 3. Calculate Global Stats
+    // 3. Calculate Global Stats (Team Leaders + Team Trainers)
     allLeaders.forEach(m => {
+      if (m.result.submitted) {
+        totalLeads += m.result.lead;
+        todayConverts += m.result.convert;
+        todayLeads += m.result.lead;
+        totalSubmittedConverts += m.result.convert || 0;
+      }
+    });
+
+    allTrainers.forEach(m => {
       if (m.result.submitted) {
         totalLeads += m.result.lead;
         todayConverts += m.result.convert;
@@ -7099,6 +7218,11 @@ export default function App() {
               {/* Admin Navigation "Slots" (Three-line style alternative) */}
               <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 custom-scrollbar space-y-4">
                 
+                {/* Supabase Database & Realtime Migration */}
+                <AdminAccordion title="Supabase Database & Migration" icon={<Database size={16} />} colorClass="text-emerald-400">
+                  <SupabaseSettings showMsg={showMsg} />
+                </AdminAccordion>
+
                 {/* 1. Website Branding & Logo */}
                                       <AdminAccordion title="Push Notifications & Broadcasts" icon={<Bell size={16} />} colorClass="text-blue-400">
                          <div className="bg-surface/40 border border-white/5 p-4 sm:p-6 rounded-2xl sm:rounded-3xl relative overflow-hidden group mb-4">
