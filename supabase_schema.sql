@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS "config" (
   "fineSystemActive" BOOLEAN DEFAULT FALSE,
   "fineAmount" NUMERIC DEFAULT 10,
   "fineStartDate" TEXT,
-  "finesResetAt" BIGINT,
+  "finesResetAt" TEXT,
   "giftBoxActive" BOOLEAN DEFAULT FALSE,
   "giftBoxTitle" TEXT,
   "giftBoxContent" TEXT,
@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS "config" (
   "demoActive" BOOLEAN DEFAULT TRUE,
   "stlLoginActive" BOOLEAN DEFAULT TRUE,
   "counsellingSchedules" JSONB DEFAULT '[]'::jsonb,
-  "lastAutoStartTime" BIGINT DEFAULT 0,
+  "lastAutoStartTime" TEXT,
   "updatedAt" TIMESTAMPTZ DEFAULT NOW(),
   data JSONB DEFAULT '{}'::jsonb
 );
@@ -295,3 +295,34 @@ ALTER PUBLICATION supabase_realtime ADD TABLE
   "demoMembers", "demoAttendance", "leaderRanking", "trainerRanking",
   "quickLinks", "pendingRegistrations", "registeredUsers", "userBalances",
   "submissionLogs", "auditLogs", "notifications", "systemConfig", "fcmTokens";
+
+-- 23. community_posts
+CREATE TABLE IF NOT EXISTS "community_posts" (
+  id TEXT PRIMARY KEY,
+  data JSONB DEFAULT '{}'::jsonb
+);
+
+-- 24. community_comments
+CREATE TABLE IF NOT EXISTS "community_comments" (
+  id TEXT PRIMARY KEY,
+  data JSONB DEFAULT '{}'::jsonb
+);
+
+DO $$
+DECLARE
+  tbl TEXT;
+BEGIN
+  FOR tbl IN
+    SELECT tablename FROM pg_tables
+    WHERE schemaname = 'public'
+    AND tablename IN (
+      'community_posts', 'community_comments'
+    )
+  LOOP
+    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY;', tbl);
+    EXECUTE format('DROP POLICY IF EXISTS "Allow public full access" ON public.%I;', tbl);
+    EXECUTE format('CREATE POLICY "Allow public full access" ON public.%I FOR ALL USING (true) WITH CHECK (true);', tbl);
+  END LOOP;
+END $$;
+
+ALTER PUBLICATION supabase_realtime ADD TABLE "community_posts", "community_comments";

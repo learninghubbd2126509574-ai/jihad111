@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import * as htmlToImage from "html-to-image";
 import { 
   collection, 
   doc, 
@@ -28,6 +29,10 @@ import {
   clearCollection
 } from './lib/supabaseDb';
 import { 
+  db, 
+  auth, 
+  storage, 
+  messaging,
   signInWithPopup, 
   signInWithRedirect,
   getRedirectResult,
@@ -35,11 +40,14 @@ import {
   onAuthStateChanged, 
   signOut,
   signInAnonymously,
-  type User as FirebaseUser
-} from 'firebase/auth';
-import { getToken, onMessage } from 'firebase/messaging';
-import { db, auth, storage, messaging } from './firebase';
-import { ref, uploadBytes, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
+  ref, 
+  uploadBytes, 
+  getDownloadURL, 
+  uploadBytesResumable,
+  getToken, 
+  onMessage,
+  type FirebaseUser
+} from './firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   User,
@@ -117,7 +125,8 @@ import {
   Target,
   Save,
   KeyRound,
-  Database
+  Database,
+  TrendingUp
 } from 'lucide-react';
 import { SupabaseSettings } from './components/SupabaseSettings';
 
@@ -143,6 +152,12 @@ import StlAdminManager from './components/StlAdminManager';
 import UserQuickSubmitCard from './components/UserQuickSubmitCard';
 import { PhoneKeypad, PasswordKeyboard } from './components/VirtualAuthKeypad';
 import { NotificationManager, sendNotification, triggerNativeNotification } from './components/NotificationManager';
+import ResultAppreciationModal, { AppreciationData } from './components/ResultAppreciationModal';
+import PerformancePage from './components/PerformancePage';
+import CommunityPage from './components/CommunityPage';
+import QuickLinksModal from './components/QuickLinksModal';
+import { PushNotificationSettings } from './components/PushNotificationSettings';
+import LoginStatsModal from './components/LoginStatsModal';
 
 // --- Types ---
 interface Member {
@@ -354,6 +369,7 @@ interface Config {
   announcementActive?: boolean;
   securityPassword?: string;
   isLocked?: boolean;
+  communityLocked?: boolean;
   stlActive?: boolean;
   demoActive?: boolean;
   teacherActive?: boolean;
@@ -467,81 +483,11 @@ const Toast = ({ message, type, onClose }: { message: string, type: 'success' | 
   );
 };
 
-const QuickLinksModal = ({ links, onClose }: { links: QuickLink[], onClose: () => void }) => {
-  return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6">
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} onClick={onClose} className="absolute inset-0 bg-black/95 backdrop-blur-2xl" />
-      <motion.div 
-        initial={{ y: 50, opacity: 0, scale: 0.9 }} 
-        animate={{ y: 0, opacity: 1, scale: 1 }} 
-        className="relative bg-surface border border-white/10 rounded-[32px] p-8 max-w-xl w-full shadow-[0_0_80px_rgba(37,99,235,0.2)] overflow-hidden"
-      >
-        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500" />
-        
-        <div className="flex justify-between items-center mb-8">
-          <div className="flex items-center gap-3">
-             <div className="p-2.5 rounded-2xl bg-blue-accent/20 text-blue-accent">
-               <Home size={24} />
-             </div>
-             <div>
-               <h3 className="text-2xl font-black text-white tracking-tight">Quick Resources</h3>
-               <p className="text-[10px] text-muted-main uppercase tracking-[2px] font-bold">Important Links & Tools</p>
-             </div>
-          </div>
-          <button onClick={onClose} className="p-3 bg-white/5 rounded-2xl text-muted-main hover:text-white hover:bg-white/10 transition-all">
-            <X size={20} />
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 max-h-[60vh] overflow-y-auto pr-2 pb-4 custom-scrollbar">
-          {links.length === 0 ? (
-            <div className="text-center py-12 bg-white/[0.03] rounded-2xl border border-white/5 italic text-muted-main2 mx-2">
-              No quick links available yet...
-            </div>
-          ) : (
-            links.map((link, idx) => (
-              <motion.a
-                key={link.id}
-                href={link.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: idx * 0.05 }}
-                className="group flex items-center justify-between p-4 rounded-xl bg-white/[0.03] border border-white/5 hover:border-blue-accent/50 hover:bg-white/[0.06] transition-all"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-blue-accent/10 flex items-center justify-center text-blue-accent">
-                    <Link size={18} />
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-white text-sm">{link.name}</h4>
-                    <p className="text-[10px] text-muted-main/60 font-mono truncate max-w-[140px]">{link.url.replace(/^https?:\/\//, '')}</p>
-                  </div>
-                </div>
-                <div className="p-2 rounded-lg bg-white/5 text-muted-main group-hover:text-blue-accent group-hover:bg-blue-accent/10 transition-all">
-                  <ExternalLink size={16} />
-                </div>
-              </motion.a>
-            ))
-          )}
-        </div>
-
-        <button 
-          onClick={onClose}
-          className="w-full mt-8 py-4 bg-white text-bg font-black rounded-2xl uppercase tracking-[2px] text-sm hover:opacity-90 transition-all shadow-xl"
-        >
-          Close
-        </button>
-      </motion.div>
-    </div>
-  );
-};
-
-const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: { 
+const AuthContainer = ({ onLogin, onRegister, onAdminLogin, customLogo }: { 
   onLogin: (w: string, p: string) => Promise<boolean>, 
   onRegister: (d: any) => Promise<boolean>,
-  onAdminLogin: (pass: string) => void 
+  onAdminLogin: (pass: string) => void,
+  customLogo?: string 
 }) => {
   const [mode, setMode] = useState<'login' | 'admin' | 'register'>('login');
   const [whatsapp, setWhatsapp] = useState('');
@@ -552,6 +498,19 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: {
   const [loading, setLoading] = useState(false);
   const [activeKeypad, setActiveKeypad] = useState<'phone' | 'password' | 'admin' | null>(null);
   const [rememberMe, setRememberMe] = useState(true);
+
+  const [logoSrc, setLogoSrc] = useState<string | null>(() => {
+    return customLogo || (typeof window !== 'undefined' ? localStorage.getItem('unity_custom_logo') : null);
+  });
+
+  useEffect(() => {
+    if (customLogo) {
+      setLogoSrc(customLogo);
+    } else if (typeof window !== 'undefined') {
+      const cached = localStorage.getItem('unity_custom_logo');
+      if (cached) setLogoSrc(cached);
+    }
+  }, [customLogo]);
 
   const [savedAccounts, setSavedAccounts] = useState<{ whatsapp: string, password: string }[]>(() => {
     try {
@@ -642,15 +601,26 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: {
 
         {/* Header - Brand Logo & Titles */}
         <div className="flex flex-col items-center text-center mb-5 pt-1">
-          {/* Circular Blue Emblem Logo */}
+          {/* Circular Blue Emblem Logo / Uploaded Company Logo */}
           <div className="relative mb-2.5">
-            <div className="w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/25">
-              <svg viewBox="0 0 40 40" className="w-8 h-8 sm:w-9 sm:h-9">
-                <circle cx="20" cy="20" r="18" stroke="rgba(255,255,255,0.4)" strokeWidth="1.5" fill="none" />
-                <path d="M13 11V22C13 25.866 16.134 29 20 29C23.866 29 27 25.866 27 22V11" stroke="#ffffff" strokeWidth="3.5" strokeLinecap="round" fill="none" />
-                <circle cx="20" cy="8" r="2.5" fill="#ffffff" />
-              </svg>
-            </div>
+            {logoSrc ? (
+              <div className="w-16 h-16 sm:w-20 sm:h-20 bg-white rounded-2xl flex items-center justify-center p-2 shadow-xl shadow-blue-500/20 border-2 border-blue-100 overflow-hidden transition-all duration-300 hover:scale-105">
+                <img 
+                  src={logoSrc} 
+                  alt="Unity Earning Logo" 
+                  className="w-full h-full object-contain rounded-xl"
+                  onError={() => setLogoSrc(null)}
+                />
+              </div>
+            ) : (
+              <div className="w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/25">
+                <svg viewBox="0 0 40 40" className="w-8 h-8 sm:w-9 sm:h-9">
+                  <circle cx="20" cy="20" r="18" stroke="rgba(255,255,255,0.4)" strokeWidth="1.5" fill="none" />
+                  <path d="M13 11V22C13 25.866 16.134 29 20 29C23.866 29 27 25.866 27 22V11" stroke="#ffffff" strokeWidth="3.5" strokeLinecap="round" fill="none" />
+                  <circle cx="20" cy="8" r="2.5" fill="#ffffff" />
+                </svg>
+              </div>
+            )}
           </div>
           
           <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight flex items-center gap-1.5 justify-center">
@@ -831,7 +801,6 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: {
                   <Smartphone className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                   <input 
                     required
-                    readOnly
                     type="tel"
                     inputMode="none"
                     autoComplete="off"
@@ -839,6 +808,12 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: {
                     spellCheck={false}
                     placeholder="Enter WhatsApp number (017...)"
                     value={whatsapp}
+                    onPaste={(e) => {
+                      e.preventDefault();
+                      const text = e.clipboardData.getData('text');
+                      const cleaned = text.replace(/[^0-9+]/g, '');
+                      if (cleaned) setWhatsapp((whatsapp + cleaned).slice(0, 15));
+                    }}
                     onFocus={(e) => {
                       e.target.blur();
                       setActiveKeypad('phone');
@@ -897,7 +872,6 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: {
                   <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                   <input 
                     required
-                    readOnly
                     type={showPass ? "text" : "password"}
                     inputMode="none"
                     autoComplete="off"
@@ -905,6 +879,11 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: {
                     spellCheck={false}
                     placeholder="Enter password..."
                     value={password}
+                    onPaste={(e) => {
+                      e.preventDefault();
+                      const text = e.clipboardData.getData('text');
+                      if (text) setPassword(password + text);
+                    }}
                     onFocus={(e) => {
                       e.target.blur();
                       setActiveKeypad('password');
@@ -2593,12 +2572,25 @@ function GiftBoxOverlay({ config }: { config: Config }) {
 
   return (
     <>
-      <div className="fixed bottom-16 left-4 z-[250] w-12 h-12">
+      <motion.div 
+        className="fixed bottom-20 left-6 z-[350]"
+        animate={{
+          y: [0, -12, 0],
+          rotate: [0, -6, 6, -6, 0]
+        }}
+        transition={{
+          duration: 3,
+          repeat: Infinity,
+          ease: "easeInOut"
+        }}
+      >
         <button
           onClick={() => setIsOpen(true)}
-          className="w-full h-full bg-gradient-to-tr from-pink-600 to-orange-500 rounded-full shadow-[0_0_20px_rgba(236,72,153,0.5)] flex items-center justify-center text-white hover:scale-110 active:scale-95 transition-all overflow-visible group"
+          className="w-14 h-14 bg-gradient-to-br from-red-600 via-rose-500 to-amber-500 rounded-full shadow-[0_10px_25px_rgba(239,68,68,0.45),inset_0_3px_6px_rgba(255,255,255,0.4),inset_0_-3px_6px_rgba(0,0,0,0.25)] border-2 border-amber-300 flex items-center justify-center text-white hover:scale-110 active:scale-95 transition-all overflow-visible group relative"
         >
-          <Gift size={22} className="animate-bounce" />
+          {/* Pulsing Gold Glow Behind */}
+          <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-amber-400 to-rose-500 blur-md opacity-60 animate-pulse scale-105 -z-10" />
+          <Gift size={24} className="text-amber-100 filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)] transform group-hover:scale-110 transition-transform" />
         </button>
         <button 
           onClick={(e) => {
@@ -2606,11 +2598,11 @@ function GiftBoxOverlay({ config }: { config: Config }) {
             e.stopPropagation();
             setIsDismissed(true);
           }}
-          className="absolute -top-1 -right-1 flex h-4 w-4 bg-red-500 border border-white rounded-full items-center justify-center text-white hover:scale-110 active:scale-95 transition-all z-10 shadow-md cursor-pointer"
+          className="absolute -top-1.5 -right-1.5 flex h-5 w-5 bg-red-600 border border-white/90 rounded-full items-center justify-center text-white hover:scale-110 active:scale-95 transition-all z-20 shadow-lg cursor-pointer hover:bg-red-700"
         >
-          <X size={10} strokeWidth={4} />
+          <X size={11} strokeWidth={4} />
         </button>
-      </div>
+      </motion.div>
 
       <AnimatePresence>
         {isOpen && (
@@ -2619,27 +2611,43 @@ function GiftBoxOverlay({ config }: { config: Config }) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              className="absolute inset-0 bg-slate-950/60 backdrop-blur-md"
               onClick={() => setIsOpen(false)}
             />
             <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="relative w-full max-w-sm bg-surface border border-pink-500/30 p-6 rounded-3xl shadow-2xl flex flex-col items-center text-center"
+              className="relative w-full max-w-xs bg-[#e0e9f4] rounded-[2.25rem] p-6 shadow-[20px_20px_40px_rgba(152,170,194,0.7),-20px_-20px_40px_rgba(255,255,255,0.95)] border border-white/80 flex flex-col items-center text-center overflow-hidden"
             >
-              <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-pink-500 to-orange-400 flex items-center justify-center text-white shadow-lg mb-4">
-                <Gift size={32} />
+              {/* Subtle Ambient Light */}
+              <div className="absolute top-0 left-1/4 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
+
+              {/* 3D Gift Box Header Avatar (shifted slightly lower inside with mt-6) */}
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-red-600 via-rose-500 to-amber-500 border-2 border-amber-300 flex items-center justify-center text-white shadow-[6px_6px_12px_rgba(152,170,194,0.4),-6px_-6px_12px_rgba(255,255,255,0.85),inset_0_2px_4px_rgba(255,255,255,0.4)] mt-6 mb-4 animate-bounce">
+                <Gift size={32} className="text-amber-100 filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)]" />
               </div>
-              <h3 className="text-xl font-black text-white mb-2">{config.giftBoxTitle || 'Surprise Gift!'}</h3>
-              <p className="text-sm text-muted-main mb-6 whitespace-pre-wrap">
-                {config.giftBoxContent || 'No details available right now.'}
-              </p>
+
+              {/* Styled Title */}
+              <h3 className="text-base font-black tracking-tight mb-3 text-slate-900 flex items-center gap-1.5 justify-center">
+                <span className="bg-gradient-to-r from-red-600 to-amber-600 bg-clip-text text-transparent">
+                  {config.giftBoxTitle || 'সারপ্রাইজ উপহার! 🎁'}
+                </span>
+              </h3>
+
+              {/* Neumorphic text box for content */}
+              <div className="w-full p-4 bg-[#e0e9f4]/70 rounded-2xl shadow-[inset_3px_3px_6px_rgba(152,170,194,0.25),inset_-3px_-3px_6px_rgba(255,255,255,0.75)] border border-white/50 mb-5 text-center flex items-center justify-center min-h-[90px]">
+                <p className="text-[11px] font-bold leading-relaxed text-slate-700 whitespace-pre-wrap">
+                  {config.giftBoxContent || 'আপনার জন্য এখন কোনো বিশেষ অফার নেই। পরে আবার দেখুন!'}
+                </p>
+              </div>
+
+              {/* Sleek OK button */}
               <button
                 onClick={() => setIsOpen(false)}
-                className="w-full py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-sm transition-colors"
+                className="w-full py-2.5 bg-[#e0e9f4] hover:bg-slate-50 text-slate-800 font-black text-xs uppercase tracking-wider rounded-xl shadow-[4px_4px_8px_rgba(152,170,194,0.6),-4px_-4px_8px_rgba(255,255,255,0.9)] border border-white/50 hover:scale-[1.01] active:scale-95 active:shadow-[inset_2px_2px_4px_rgba(152,170,194,0.3)] transition-all"
               >
-                Close
+                ঠিক আছে
               </button>
             </motion.div>
           </div>
@@ -2869,14 +2877,29 @@ export default function App() {
     });
     return ranking.sort((a, b) => b.score - a.score);
   }, [members, results]);
-  const [config, setConfig] = useState<Config>({ 
-    timerActive: false, 
-    timerEndTime: 0, 
-    timerDuration: 1800,
-    isLocked: true, 
-    securityPassword: 'unity2024'
+  const [config, setConfig] = useState<Config>(() => {
+    const cachedLogo = typeof window !== 'undefined' ? localStorage.getItem('unity_custom_logo') || '' : '';
+    return { 
+      timerActive: false, 
+      timerEndTime: 0, 
+      timerDuration: 1800,
+      isLocked: true, 
+      securityPassword: 'unity2024',
+      customLogo: cachedLogo
+    };
   });
   const [timeLeft, setTimeLeft] = useState(0);
+  const handleDeleteAllCommunityPosts = async () => {
+    try {
+      const snap = await getDocs(query(collection(db, 'fcmTokens'), where('platform', 'in', ['community_post', 'community_comment'])));
+      for (const d of snap.docs) {
+        await deleteDoc(doc(db, 'fcmTokens', d.id));
+      }
+      showMsg("কমিউনিটির সকল পোস্ট ও কমেন্ট সফলভাবে মুছে ফেলা হয়েছে।", "success");
+    } catch (err) {
+      showMsg("পোস্টগুলো মুছতে সমস্যা হয়েছে", "error");
+    }
+  };
   const [timerDurationSelect, setTimerDurationSelect] = useState<number>(1800); // 30 minutes default
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [isConfigReady, setIsConfigReady] = useState(false);
@@ -2929,7 +2952,14 @@ export default function App() {
 
   const [pendingUsers, setPendingUsers] = useState<UserRegistration[]>([]);
   const [approvedUsers, setApprovedUsers] = useState<UserRegistration[]>([]);
-  const [authenticatedUser, setAuthenticatedUser] = useState<UserRegistration | null>(null);
+  const [authenticatedUser, setAuthenticatedUser] = useState<UserRegistration | null>(() => {
+    try {
+      const saved = localStorage.getItem('unity_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
+  });
 
   const [showLeaderRankingModal, setShowLeaderRankingModal] = useState(false);
   const [showTrainerRankingModal, setShowTrainerRankingModal] = useState(false);
@@ -2937,7 +2967,10 @@ export default function App() {
   const [showSocialsModal, setShowSocialsModal] = useState(false);
   const [showNoticeModal, setShowNoticeModal] = useState(false);
   const [showCounsellingModal, setShowCounsellingModal] = useState(false);
-  const [userTab, setUserTab] = useState<'home' | 'submit' | 'sheet' | 'links' | 'profile'>('home');
+  const [showLoginStatsPopup, setShowLoginStatsPopup] = useState(false);
+  const [userTab, setUserTab] = useState<'home' | 'community' | 'submit' | 'sheet' | 'links' | 'profile'>(() => {
+    return 'home';
+  });
   const [savingPic, setSavingPic] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
@@ -2987,6 +3020,7 @@ export default function App() {
   
   const [showConfirm, setShowConfirm] = useState<{ title: string, onConfirm: () => void } | null>(null);
   const [showCalendarUser, setShowCalendarUser] = useState<{ whatsapp: string, name: string, memberId?: string } | null>(null);
+  const [appreciationData, setAppreciationData] = useState<AppreciationData | null>(null);
   const [siteAuthenticated, setSiteAuthenticated] = useState(false);
   const [stlAuthenticated, setStlAuthenticated] = useState(false);
   const [showStlLoginModal, setShowStlLoginModal] = useState(false);
@@ -3009,6 +3043,12 @@ export default function App() {
     }, 1000);
     return () => clearTimeout(timer);
   }, []);
+
+  useEffect(() => {
+    if (authenticatedUser) {
+      setShowLoginStatsPopup(true);
+    }
+  }, [authenticatedUser]);
 
   const COURSES = [
     "Photo Edit",
@@ -3116,6 +3156,11 @@ export default function App() {
       console.log('Config Snapshot received');
       if (snapshot.exists()) {
         const newConfig = snapshot.data() as Config;
+        if (newConfig.customLogo) {
+          try {
+            localStorage.setItem('unity_custom_logo', newConfig.customLogo);
+          } catch (e) {}
+        }
         setConfig(prev => {
           if (newConfig.announcement !== prev.announcement || (newConfig.announcementActive && !prev.announcementActive)) {
             setAnnouncementDismissed(false);
@@ -3810,6 +3855,7 @@ export default function App() {
 
       setAuthenticatedUser(user);
       localStorage.setItem('unity_user', JSON.stringify(user));
+      setUserTab('home');
       showMsg(`Welcome back, ${user.fullName}!`);
       return true;
     } catch (err) {
@@ -4341,6 +4387,11 @@ export default function App() {
       await updateDoc(doc(db, 'config', 'global'), {
         customLogo: logoUrl || ''
       });
+      if (logoUrl) {
+        localStorage.setItem('unity_custom_logo', logoUrl);
+      } else {
+        localStorage.removeItem('unity_custom_logo');
+      }
       showMsg(logoUrl ? 'ওয়েবসাইট লোগো সফলভাবে আপডেট হয়েছে!' : 'ডিফল্ট লোগোতে রিসেট করা হয়েছে', 'success');
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'config/global', showMsg);
@@ -4934,6 +4985,17 @@ export default function App() {
       }
 
       showMsg('Result submitted successfully!', 'success');
+
+      // Trigger Animated Appreciation Popup for both Trainer & Team Leader
+      const displayRole = isLeader ? 'Team Leader' : (isTrainer ? 'Trainer' : (member?.type === 'trainer' ? 'Trainer' : 'Team Leader'));
+      setAppreciationData({
+        isOpen: true,
+        convert,
+        personalLead,
+        lead,
+        memberName: targetName,
+        role: displayRole
+      });
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'results', showMsg);
     }
@@ -6066,17 +6128,8 @@ export default function App() {
       return a.name.localeCompare(b.name);
     };
 
-    // 4. Calculate Global Stats
+    // 4. Calculate Global Stats (Team Leaders only)
     allLeaders.forEach(m => {
-      if (m.result.submitted || (m.result.convert || 0) > 0) {
-        totalLeads += m.result.lead || 0;
-        todayConverts += m.result.convert || 0;
-        todayLeads += m.result.lead || 0;
-        totalSubmittedConverts += m.result.convert || 0;
-      }
-    });
-
-    allTrainers.forEach(m => {
       if (m.result.submitted || (m.result.convert || 0) > 0) {
         totalLeads += m.result.lead || 0;
         todayConverts += m.result.convert || 0;
@@ -6198,6 +6251,7 @@ export default function App() {
         onLogin={loginUser}
         onRegister={registerUser}
         onAdminLogin={(pass) => login(false, pass)}
+        customLogo={config.customLogo}
       />
     );
   }
@@ -6383,6 +6437,22 @@ export default function App() {
                     <ChevronRight size={18} className="text-blue-600" />
                   </button>
                 )}
+
+                <button 
+                  onClick={() => { setShowMenu(false); setUserTab('community'); }}
+                  className="w-full flex items-center justify-between p-3.5 rounded-2xl neu-card-sm hover:scale-[1.01] transition-all border border-blue-200/80"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl neu-btn-primary flex items-center justify-center text-white">
+                      <Users size={18} />
+                    </div>
+                    <div className="text-left">
+                      <span className="block text-sm font-bold text-slate-900">Community</span>
+                      <span className="block text-[10px] text-blue-700 uppercase font-bold tracking-wider">সকলের সাথে যুক্ত হোন</span>
+                    </div>
+                  </div>
+                  <ChevronRight size={18} className="text-blue-600" />
+                </button>
 
                 <button 
                   onClick={() => { setShowMenu(false); setShowApplyModal(true); }}
@@ -6644,15 +6714,15 @@ export default function App() {
             {/* Stats Grid */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 mb-10">
               {[
-                { label: 'Leaders', value: stats.leaders, color: 'text-blue-700', icon: <Trophy size={13} /> },
-                { label: 'Trainers', value: stats.trainers, color: 'text-indigo-700', icon: <GraduationCap size={13} /> },
-                { label: 'Leads', value: stats.todayLeads, color: 'text-emerald-700', icon: <Send size={13} /> },
-                { label: 'Converts', value: stats.converts, color: 'text-amber-700', icon: <CheckCircle2 size={13} /> }
+                { label: 'Leaders', value: stats.leaders, color: 'text-blue-700', border: 'border-blue-500/30 bg-blue-50/40', icon: <Trophy size={13} /> },
+                { label: 'Trainers', value: stats.trainers, color: 'text-indigo-700', border: 'border-indigo-500/30 bg-indigo-50/40', icon: <GraduationCap size={13} /> },
+                { label: 'Leads', value: stats.todayLeads, color: 'text-emerald-700', border: 'border-emerald-500/30 bg-emerald-50/40', icon: <Send size={13} /> },
+                { label: 'Converts', value: stats.converts, color: 'text-amber-700', border: 'border-amber-500/30 bg-amber-50/40', icon: <CheckCircle2 size={13} /> }
               ].map((stat, i) => (
-                <div key={i} className="group neu-card rounded-2xl p-4 text-center relative overflow-hidden transition-all hover:scale-[1.02]">
+                <div key={i} className={`group neu-card rounded-2xl p-4 text-center relative overflow-hidden transition-all hover:scale-[1.02] border ${stat.border} shadow-sm`}>
                   <div className="flex items-center justify-center gap-1.5 mb-1.5">
                     <span className={`p-1.5 rounded-lg neu-card-sm ${stat.color}`}>{stat.icon}</span>
-                    <span className="text-[10px] sm:text-xs text-slate-600 tracking-wider uppercase font-bold">{stat.label}</span>
+                    <span className="text-[11px] sm:text-xs text-slate-700 tracking-wide uppercase font-black">{stat.label}</span>
                   </div>
                   <div className={`text-2xl sm:text-3xl font-black ${stat.color}`}>{stat.value}</div>
                 </div>
@@ -6672,46 +6742,56 @@ export default function App() {
                   </div>
                   <div className="flex-1 h-[2px] neu-inset ml-4" />
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
                   {topLeader && (
-                    <div className="relative group">
-                      <div className="relative neu-card rounded-2xl p-4 sm:p-5 flex items-center gap-4 sm:gap-5">
-                        <div className="relative flex-shrink-0">
-                          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl neu-card-sm flex items-center justify-center overflow-hidden border border-blue-200/80 shadow-sm">
+                    <div className="relative group overflow-hidden rounded-3xl p-[1px] bg-gradient-to-b from-amber-500/50 to-slate-800">
+                      <div className="relative bg-slate-800 rounded-[23px] p-4 sm:p-5 flex items-center gap-4 sm:gap-5 h-full overflow-hidden">
+                        {/* Glow effect */}
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/40 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none animate-[pulse_2s_ease-in-out_infinite]"></div>
+                        
+                        <div className="relative flex-shrink-0 z-10">
+                          <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-slate-700/50 flex items-center justify-center overflow-hidden border border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.2)]">
                             <CartoonAvatar 
                               src={approvedUsers.find(u => u.fullName.trim().toLowerCase() === topLeader.name.trim().toLowerCase())?.profilePic} 
                               name={topLeader.name} 
                             />
                           </div>
-                          <div className="absolute -bottom-1 -right-1 neu-btn-primary text-white text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase shadow-xs">Top</div>
+                          <div className="absolute -bottom-1.5 -right-1.5 bg-gradient-to-r from-amber-400 to-amber-600 text-slate-900 text-[8px] sm:text-[9px] font-black px-2 py-0.5 rounded-full uppercase shadow-lg border border-amber-200/50">Top</div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between mb-0.5">
-                            <div className="text-[9px] sm:text-[10px] text-blue-700 font-bold uppercase tracking-wider mr-2">Best Leader</div>
-                            <span className={`text-[8px] sm:text-[9px] px-2 py-0.5 rounded-full font-black uppercase whitespace-nowrap ${topOverall?.id === topLeader.id ? 'neu-btn-primary text-white' : 'neu-card-sm text-blue-700'}`}>
-                              {topOverall?.id === topLeader.id ? 'Overall Best' : 'Elite'}
+                        
+                        <div className="flex-1 min-w-0 z-10">
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="text-[9px] sm:text-[10px] text-amber-400 font-black uppercase tracking-wider mr-2">Best Leader</div>
+                            <span className="text-[8px] sm:text-[9px] px-2.5 py-0.5 rounded-full font-black uppercase whitespace-nowrap bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                              {topOverall?.id === topLeader.id ? 'Overall Best' : '১ম ইলাইট'}
                             </span>
                           </div>
-                          <div className="text-lg sm:text-2xl font-black text-[#090d16] truncate flex items-center gap-1.5 tracking-tight">
+                          <div className="text-lg sm:text-2xl font-black text-amber-50 truncate flex items-center gap-1.5 tracking-tight">
                             <span className="truncate">{topLeader.name}</span>
-                            <span className="text-blue-600 text-sm flex-shrink-0" title="Top Leader">👑</span>
+                            <span className="text-amber-500 text-sm flex-shrink-0" title="Top Leader">👑</span>
                           </div>
-                          <div className="flex items-center gap-3 sm:gap-4 mt-2">
+                          <div className="flex items-center gap-3 sm:gap-4 mt-2.5">
                             <div className="flex flex-col">
-                              <span className="text-[8px] sm:text-[9px] text-slate-500 uppercase font-bold">Conv</span>
-                              <span className="text-xs sm:text-sm font-black text-emerald-700">{topLeader.result.convert}</span>
+                              <span className="text-[8px] sm:text-[9px] text-slate-400 uppercase font-bold tracking-wider">Conv</span>
+                              <span className="text-xs sm:text-sm font-black text-white">{topLeader.result.convert}</span>
                             </div>
                             
-                            <div className="w-[2px] h-5 sm:h-6 neu-inset" />
+                            <div className="w-[1px] h-5 sm:h-6 bg-slate-600" />
                             <div className="flex flex-col">
-                              <span className="text-[8px] sm:text-[9px] text-slate-500 uppercase font-bold">Pers</span>
-                              <span className="text-xs sm:text-sm font-black text-purple-700">{topLeader.result.personalLead}</span>
+                              <span className="text-[8px] sm:text-[9px] text-slate-400 uppercase font-bold tracking-wider">Pers</span>
+                              <span className="text-xs sm:text-sm font-black text-white">{topLeader.result.personalLead}</span>
                             </div>
 
-                            <div className="w-[2px] h-5 sm:h-6 neu-inset" />
+                            <div className="w-[1px] h-5 sm:h-6 bg-slate-600" />
                             <div className="flex flex-col">
-                              <span className="text-[8px] sm:text-[9px] text-slate-500 uppercase font-bold">Total</span>
-                              <span className="text-xs sm:text-sm font-black text-blue-700">{topLeader.score || 0}</span>
+                              <span className="text-[8px] sm:text-[9px] text-slate-400 uppercase font-bold tracking-wider">আয় (৬০৳)</span>
+                              <span className="text-xs sm:text-sm font-black text-amber-400">৳{((topLeader.result.convert || 0) * 60).toLocaleString('en-IN')}</span>
+                            </div>
+
+                            <div className="w-[1px] h-5 sm:h-6 bg-slate-600" />
+                            <div className="flex flex-col">
+                              <span className="text-[8px] sm:text-[9px] text-slate-400 uppercase font-bold tracking-wider">Total</span>
+                              <span className="text-xs sm:text-sm font-black text-white">{topLeader.score || 0}</span>
                             </div>
                           </div>
                         </div>
@@ -6719,44 +6799,54 @@ export default function App() {
                     </div>
                   )}
                   {topTrainer && (
-                    <div className="relative group">
-                      <div className="relative neu-card rounded-2xl p-4 sm:p-5 flex items-center gap-4 sm:gap-5">
-                        <div className="relative flex-shrink-0">
-                          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl neu-card-sm flex items-center justify-center overflow-hidden border border-emerald-200/80 shadow-sm">
+                    <div className="relative group overflow-hidden rounded-3xl p-[1px] bg-gradient-to-b from-emerald-500/50 to-slate-800">
+                      <div className="relative bg-slate-800 rounded-[23px] p-4 sm:p-5 flex items-center gap-4 sm:gap-5 h-full overflow-hidden">
+                        {/* Glow effect */}
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/40 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none animate-[pulse_2s_ease-in-out_infinite]"></div>
+                        
+                        <div className="relative flex-shrink-0 z-10">
+                          <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-slate-700/50 flex items-center justify-center overflow-hidden border border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.2)]">
                             <CartoonAvatar 
                               src={approvedUsers.find(u => u.fullName.trim().toLowerCase() === topTrainer.name.trim().toLowerCase())?.profilePic} 
                               name={topTrainer.name} 
                             />
                           </div>
-                          <div className="absolute -bottom-1 -right-1 neu-btn-emerald text-white text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase shadow-xs">Top</div>
+                          <div className="absolute -bottom-1.5 -right-1.5 bg-gradient-to-r from-emerald-400 to-emerald-600 text-slate-900 text-[8px] sm:text-[9px] font-black px-2 py-0.5 rounded-full uppercase shadow-lg border border-emerald-200/50">Top</div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between mb-0.5">
-                            <div className="text-[9px] sm:text-[10px] text-indigo-700 font-bold uppercase tracking-wider mr-2">Best Trainer</div>
-                            <span className={`text-[8px] sm:text-[9px] px-2 py-0.5 rounded-full font-black uppercase whitespace-nowrap ${topOverall?.id === topTrainer.id ? 'neu-btn-emerald text-white' : 'neu-card-sm text-indigo-700'}`}>
-                              {topOverall?.id === topTrainer.id ? 'Overall Best' : 'Elite'}
+                        
+                        <div className="flex-1 min-w-0 z-10">
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="text-[9px] sm:text-[10px] text-emerald-400 font-black uppercase tracking-wider mr-2">Best Trainer</div>
+                            <span className="text-[8px] sm:text-[9px] px-2.5 py-0.5 rounded-full font-black uppercase whitespace-nowrap bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                              {topOverall?.id === topTrainer.id ? 'Overall Best' : '২য় ইলাইট'}
                             </span>
                           </div>
-                          <div className="text-lg sm:text-2xl font-black text-[#090d16] truncate flex items-center gap-1.5 tracking-tight">
+                          <div className="text-lg sm:text-2xl font-black text-emerald-50 truncate flex items-center gap-1.5 tracking-tight">
                             <span className="truncate">{topTrainer.name}</span>
-                            <span className="text-emerald-600 text-sm flex-shrink-0" title="Top Trainer">🎓</span>
+                            <span className="text-emerald-500 text-sm flex-shrink-0" title="Top Trainer">🎓</span>
                           </div>
-                          <div className="flex items-center gap-3 sm:gap-4 mt-2">
+                          <div className="flex items-center gap-3 sm:gap-4 mt-2.5">
                             <div className="flex flex-col">
-                              <span className="text-[8px] sm:text-[9px] text-slate-500 uppercase font-bold">Conv</span>
-                              <span className="text-xs sm:text-sm font-black text-emerald-700">{topTrainer.result.convert}</span>
+                              <span className="text-[8px] sm:text-[9px] text-slate-400 uppercase font-bold tracking-wider">Conv</span>
+                              <span className="text-xs sm:text-sm font-black text-white">{topTrainer.result.convert}</span>
                             </div>
                             
-                            <div className="w-[2px] h-5 sm:h-6 neu-inset" />
+                            <div className="w-[1px] h-5 sm:h-6 bg-slate-600" />
                             <div className="flex flex-col">
-                              <span className="text-[8px] sm:text-[9px] text-slate-500 uppercase font-bold">Pers</span>
-                              <span className="text-xs sm:text-sm font-black text-purple-700">{topTrainer.result.personalLead}</span>
+                              <span className="text-[8px] sm:text-[9px] text-slate-400 uppercase font-bold tracking-wider">Pers</span>
+                              <span className="text-xs sm:text-sm font-black text-white">{topTrainer.result.personalLead}</span>
                             </div>
 
-                            <div className="w-[2px] h-5 sm:h-6 neu-inset" />
+                            <div className="w-[1px] h-5 sm:h-6 bg-slate-600" />
                             <div className="flex flex-col">
-                              <span className="text-[8px] sm:text-[9px] text-slate-500 uppercase font-bold">Total</span>
-                              <span className="text-xs sm:text-sm font-black text-indigo-700">{topTrainer.score || 0}</span>
+                              <span className="text-[8px] sm:text-[9px] text-slate-400 uppercase font-bold tracking-wider">আয় (৫০৳)</span>
+                              <span className="text-xs sm:text-sm font-black text-emerald-400">৳{((topTrainer.result.convert || 0) * 50).toLocaleString('en-IN')}</span>
+                            </div>
+
+                            <div className="w-[1px] h-5 sm:h-6 bg-slate-600" />
+                            <div className="flex flex-col">
+                              <span className="text-[8px] sm:text-[9px] text-slate-400 uppercase font-bold tracking-wider">Total</span>
+                              <span className="text-xs sm:text-sm font-black text-white">{topTrainer.score || 0}</span>
                             </div>
                           </div>
                         </div>
@@ -6910,6 +7000,25 @@ export default function App() {
           </div>
         )}
 
+        {userTab === 'community' && (
+          <CommunityPage
+            currentUser={currentAuthUser}
+            isAdmin={isAdmin}
+            showMsg={showMsg}
+            communityLocked={config.communityLocked || false}
+            onToggleLock={async () => {
+              const nextLocked = !(config.communityLocked || false);
+              try {
+                await updateDoc(doc(db, 'config', 'global'), { communityLocked: nextLocked });
+                showMsg(`কমিউনিটি সফলভাবে ${nextLocked ? 'লক' : 'আনলক'} করা হয়েছে`, 'success');
+              } catch (e) {
+                showMsg('লক পরিবর্তন ব্যর্থ হয়েছে', 'error');
+              }
+            }}
+            onDeleteAllPosts={handleDeleteAllCommunityPosts}
+          />
+        )}
+
         {userTab === 'submit' && (
           <div className="space-y-8">
             {/* Top Priority: Self Result Submission Box */}
@@ -7006,6 +7115,24 @@ export default function App() {
                     className="px-3 py-2 neu-btn text-slate-700 font-bold rounded-xl text-[9px] sm:text-[10px] uppercase tracking-wider transition-all"
                   >
                     সেটিংস ও প্রিভিউ
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAppreciationData({
+                        isOpen: true,
+                        convert: 6,
+                        personalLead: 10,
+                        lead: 15,
+                        memberName: currentAuthUser?.fullName || 'Superstar',
+                        role: 'Team Leader'
+                      });
+                    }}
+                    className="px-3 py-2 neu-btn text-amber-600 font-bold rounded-xl text-[9px] sm:text-[10px] uppercase tracking-wider transition-all flex items-center gap-1 active:scale-95"
+                    title="রেজাল্ট সাবমিট পপআপ প্রিভিউ দেখুন"
+                  >
+                    🎉 পপআপ প্রিভিউ
                   </button>
                 </div>
               </div>
@@ -7187,6 +7314,15 @@ export default function App() {
                     লগইন স্ক্রিন-এ যান
                   </button>
                 )}
+
+                {/* Push Notification Controls for Guest / Admin in Profile */}
+                <div className="mt-6 w-full max-w-lg text-left">
+                  <PushNotificationSettings 
+                    theme="light" 
+                    customLogo={config.customLogo} 
+                    showMsg={showMsg} 
+                  />
+                </div>
               </div>
             ) : (
               /* Authenticated Profile Content */
@@ -7311,6 +7447,15 @@ export default function App() {
                       );
                     })}
                   </div>
+                </div>
+
+                {/* Push Notification Settings (পুশ নোটিফিকেশন অন/অফ) */}
+                <div className="p-6 sm:p-8 border-b border-[#cbd9e8]">
+                  <PushNotificationSettings 
+                    theme="light" 
+                    customLogo={config.customLogo} 
+                    showMsg={showMsg} 
+                  />
                 </div>
 
                 {/* Profile Information Cards */}
@@ -7444,6 +7589,23 @@ export default function App() {
                 </div>
               </div>
             )}
+            
+            {currentAuthUser && (
+              <div className="mt-8">
+                <div className="text-center mb-6">
+                  <div className="inline-flex items-center gap-2 neu-card-sm text-blue-700 px-3.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-3">
+                    <TrendingUp size={13} className="text-blue-600" /> আয় ও পারফরম্যান্স
+                  </div>
+                </div>
+                <PerformancePage
+                  currentAuthUser={currentAuthUser}
+                  myMember={myMember}
+                  members={members}
+                  results={results}
+                  onNavigateToSubmit={() => setUserTab('submit')}
+                />
+              </div>
+            )}
           </div>
         )}
       </main>
@@ -7452,13 +7614,13 @@ export default function App() {
       <nav 
         id="bottom-navigation-bar"
         aria-label="Bottom Navigation"
-        className="fixed bottom-0 sm:bottom-3 inset-x-0 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 w-full sm:w-[96%] sm:max-w-[640px] neu-nav sm:rounded-2xl px-1 sm:px-2.5 py-1.5 sm:py-2 z-[300]"
+        className="fixed bottom-0 sm:bottom-3 inset-x-0 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 w-full sm:w-[98%] sm:max-w-[720px] neu-nav sm:rounded-2xl px-1 sm:px-2.5 py-1.5 sm:py-2 z-[300] shadow-xl"
       >
-        <div className="flex items-center justify-between sm:justify-around w-full gap-0.5 sm:gap-1">
+        <div className="flex items-center justify-between sm:justify-around w-full gap-0.5 sm:gap-1 overflow-x-auto no-scrollbar">
           {[
             { 
               id: 'home', 
-              label: 'হোম', 
+              label: 'Home', 
               icon: <Home size={18} className="sm:w-5 sm:h-5" />, 
               isExternal: false,
               labelColor: 'text-slate-600 font-bold',
@@ -7468,8 +7630,19 @@ export default function App() {
               indicatorColor: 'bg-blue-600'
             },
             { 
+              id: 'community', 
+              label: 'Community', 
+              icon: <Users size={18} className="sm:w-5 sm:h-5" />, 
+              isExternal: false,
+              labelColor: 'text-slate-600 font-bold',
+              activeLabelColor: 'text-blue-600 font-black',
+              boxDefault: 'neu-card-sm text-slate-700 hover:text-blue-600',
+              boxActive: 'neu-btn-primary text-white scale-105 font-bold',
+              indicatorColor: 'bg-blue-600'
+            },
+            { 
               id: 'submit', 
-              label: 'রেজাল্ট', 
+              label: 'Results', 
               icon: <CheckSquare size={18} className="sm:w-5 sm:h-5" />, 
               isExternal: false,
               labelColor: 'text-slate-600 font-bold',
@@ -7480,7 +7653,7 @@ export default function App() {
             },
             { 
               id: 'seat_booking', 
-              label: 'সিট বুকিং', 
+              label: 'Seat Booking', 
               icon: <Ticket size={18} className="sm:w-5 sm:h-5" />, 
               isExternal: true,
               url: 'https://seat-booking-unity.vercel.app/',
@@ -7490,7 +7663,7 @@ export default function App() {
             },
             { 
               id: 'withdraw_request', 
-              label: 'উইথড্র রিকুয়েষ্ট', 
+              label: 'Withdraw', 
               icon: <Wallet size={18} className="sm:w-5 sm:h-5" />, 
               isExternal: true,
               url: 'https://withdraw-request.vercel.app/',
@@ -7500,29 +7673,18 @@ export default function App() {
             },
             { 
               id: 'sheet', 
-              label: 'শিট / হিসাব', 
+              label: 'Ledger', 
               icon: <FileText size={18} className="sm:w-5 sm:h-5" />, 
               isExternal: false,
               labelColor: 'text-slate-600 font-bold',
-              activeLabelColor: 'text-blue-600 font-black',
-              boxDefault: 'neu-card-sm text-slate-700 hover:text-blue-600',
+              activeLabelColor: 'text-indigo-600 font-black',
+              boxDefault: 'neu-card-sm text-slate-700 hover:text-indigo-600',
               boxActive: 'neu-btn-primary text-white scale-105 font-bold',
-              indicatorColor: 'bg-blue-600'
-            },
-            { 
-              id: 'links', 
-              label: 'লিংক সমূহ', 
-              icon: <Link size={18} className="sm:w-5 sm:h-5" />, 
-              isExternal: false,
-              labelColor: 'text-slate-600 font-bold',
-              activeLabelColor: 'text-blue-600 font-black',
-              boxDefault: 'neu-card-sm text-slate-700 hover:text-blue-600',
-              boxActive: 'neu-btn-primary text-white scale-105 font-bold',
-              indicatorColor: 'bg-blue-600'
+              indicatorColor: 'bg-indigo-600'
             },
             { 
               id: 'profile', 
-              label: 'প্রোফাইল', 
+              label: 'Profile', 
               icon: <User size={18} className="sm:w-5 sm:h-5" />, 
               isExternal: false,
               labelColor: 'text-slate-600 font-bold',
@@ -7542,14 +7704,14 @@ export default function App() {
                   href={tab.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="group relative flex flex-col items-center justify-center flex-1 py-1 px-0.5 rounded-2xl transition-all duration-300 active:scale-90"
+                  className="group relative flex flex-col items-center justify-center flex-1 min-w-[48px] py-1 px-0.5 rounded-2xl transition-all duration-200 active:scale-90"
                 >
-                  <div className={`relative w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center border transition-all duration-300 ${tab.boxDefault}`}>
+                  <div className={`relative w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center border transition-all duration-200 ${tab.boxDefault}`}>
                     {tab.icon}
                     {/* Micro External Spark Indicator */}
                     <span className={`absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full ${tab.beaconColor} shadow-[0_0_8px_currentColor] animate-pulse`} />
                   </div>
-                  <span className={`text-[8px] sm:text-[9.5px] tracking-tight mt-1 text-center whitespace-nowrap leading-none transition-colors duration-300 ${tab.labelColor}`}>
+                  <span className={`text-[8px] sm:text-[9.5px] tracking-tight mt-1 text-center whitespace-nowrap leading-none transition-colors duration-200 ${tab.labelColor}`}>
                     {tab.label}
                   </span>
                 </a>
@@ -7561,15 +7723,19 @@ export default function App() {
                 key={tab.id}
                 id={`bottom-nav-${tab.id}`}
                 onClick={() => setUserTab(tab.id as any)}
-                className={`group relative flex flex-col items-center justify-center flex-1 py-1 px-0.5 rounded-2xl transition-all duration-300 active:scale-90 ${isActive ? 'translate-y-[-2px]' : ''}`}
+                className={`group relative flex flex-col items-center justify-center flex-1 min-w-[48px] py-1 px-0.5 rounded-2xl transition-all duration-200 active:scale-90 ${isActive ? 'translate-y-[-2px]' : ''}`}
               >
-                <div className={`relative w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center border transition-all duration-300 ${isActive ? tab.boxActive : tab.boxDefault}`}>
-                  {tab.icon}
+                <div className={`relative w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center border overflow-hidden transition-all duration-200 ${isActive ? tab.boxActive : tab.boxDefault}`}>
+                  {tab.id === 'profile' && currentAuthUser ? (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <CartoonAvatar src={currentAuthUser.profilePic} name={currentAuthUser.fullName} />
+                    </div>
+                  ) : tab.icon}
                   {isActive && (
                     <span className={`absolute -bottom-1 inset-x-2 h-[2.5px] rounded-full ${tab.indicatorColor} shadow-[0_0_8px_currentColor]`} />
                   )}
                 </div>
-                <span className={`text-[8px] sm:text-[9.5px] tracking-tight mt-1 text-center whitespace-nowrap leading-none transition-colors duration-300 ${isActive ? tab.activeLabelColor : tab.labelColor}`}>
+                <span className={`text-[8px] sm:text-[9.5px] tracking-tight mt-1 text-center whitespace-nowrap leading-none transition-colors duration-200 ${isActive ? tab.activeLabelColor : tab.labelColor}`}>
                   {tab.label}
                 </span>
               </button>
@@ -7635,102 +7801,53 @@ export default function App() {
                   <SupabaseSettings showMsg={showMsg} />
                 </AdminAccordion>
 
-                {/* 1. Website Branding & Logo */}
-                                      <AdminAccordion title="Push Notifications & Broadcasts" icon={<Bell size={16} />} colorClass="text-blue-400">
-                         <div className="bg-surface/40 border border-white/5 p-4 sm:p-6 rounded-2xl sm:rounded-3xl relative overflow-hidden group mb-4">
-                           <h4 className="text-[9px] sm:text-xs font-black text-white uppercase tracking-widest mb-4">Send Broadcast</h4>
-                           <form onSubmit={async (e: React.FormEvent<HTMLFormElement>) => {
-                             e.preventDefault();
-                             const form = e.currentTarget;
-                             const fd = new FormData(form);
-                             const title = fd.get('title');
-                             const body = fd.get('body');
-                             const audience = fd.get('audience');
-                             if(title && body) {
-                               try {
-                                 await sendNotification(title.toString(), body.toString(), audience.toString(), 'admin');
-                                 showMsg('ব্রডকাস্ট নোটিফিকেশন সকল ইউজারের কাছে পাঠানো হয়েছে! 🚀', 'success');
-                                 form.reset();
-                               } catch(err) {
-                                 showMsg('Error sending broadcast', 'error');
-                               }
-                             }
-                           }} className="space-y-3">
-                             <input required name="title" placeholder="Notification Title..." className="w-full bg-bg/50 border border-white/10 rounded-xl p-3 text-sm text-white" />
-                             <textarea required name="body" placeholder="Notification Message..." rows="3" className="w-full bg-bg/50 border border-white/10 rounded-xl p-3 text-sm text-white resize-y custom-scrollbar" />
-                             <select name="audience" className="w-full bg-bg/50 border border-white/10 rounded-xl p-3 text-sm text-white">
-                               <option value="all">Everyone (All Users)</option>
-                               <option value="Counsellor">All Counsellors</option>
-                               <option value="Team Leader">All Team Leaders</option>
-                               <option value="STL">All STLs</option>
-                             </select>
-                             <button type="submit" className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-sm transition-all shadow-lg flex items-center justify-center gap-2">
-                               <Send size={16} /> Send Broadcast
-                             </button>
-                           </form>
-                         </div>
-                         <div className="bg-surface/40 border border-white/5 p-4 sm:p-6 rounded-2xl sm:rounded-3xl">
-                           <h4 className="text-[9px] sm:text-xs font-black text-white uppercase tracking-widest mb-4">Timer Notifications (System Push)</h4>
-                           <div className="flex items-center justify-between bg-bg p-3 sm:p-4 rounded-xl sm:rounded-2xl border border-white/5 mb-3 sm:mb-4">
-                              <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-widest ${config.timerNotificationsActive !== false ? 'text-green-accent' : 'text-muted-main'}`}>
-                                 {config.timerNotificationsActive !== false ? 'Timer Push Active (চালু আছে)' : 'Timer Push Off (বন্ধ)'}
-                              </span>
-                              <div
-                                onClick={async () => {
-                                  try {
-                                    const currentVal = config.timerNotificationsActive !== false;
-                                    await updateDoc(doc(db, 'config', 'global'), { timerNotificationsActive: !currentVal });
-                                  } catch (e) {
-                                    console.error(e);
-                                  }
-                                }}
-                                className={`w-10 h-5 sm:w-12 sm:h-6 rounded-full relative cursor-pointer transition-all ${config.timerNotificationsActive !== false ? 'bg-green-accent' : 'bg-muted-main2'}`}
-                              >
-                                <div className={`absolute top-0.5 sm:top-1 w-4 h-4 rounded-full bg-bg transition-all ${config.timerNotificationsActive !== false ? 'left-5.5 sm:left-7' : 'left-0.5 sm:left-1'}`} />
-                              </div>
-                           </div>
-                           <p className="text-xs text-muted-main mb-4">When enabled, starting the timer sends a notification to everyone. A 5-minute warning notification is also automatically triggered.</p>
-                           
-                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                             <button
-                               type="button"
-                               onClick={async () => {
-                                 try {
-                                   await triggerNativeNotification('Unity Earning 🔔 টেস্ট নোটিফিকেশন', 'আপনার ফোনে ক্রোম পুশ নোটিফিকেশন সফলভাবে কাজ করছে! 🚀✨');
-                                   showMsg('Test notification triggered!', 'success');
-                                 } catch (err) {
-                                   showMsg('Failed to trigger notification', 'error');
-                                 }
-                               }}
-                               className="w-full py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white font-semibold rounded-xl text-xs flex items-center justify-center gap-2 transition-all"
-                             >
-                               <Bell size={14} /> Send Test Push
-                             </button>
-
-                             <button
-                               type="button"
-                               onClick={async () => {
-                                 try {
-                                   const { title, body } = generateTimerPerformanceSummary();
-                                   await triggerNativeNotification(title, body);
-                                   showMsg('Performance summary preview triggered!', 'success');
-                                 } catch (err) {
-                                   showMsg('Failed to trigger preview', 'error');
-                                 }
-                               }}
-                               className="w-full py-2.5 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-400 font-semibold rounded-xl text-xs flex items-center justify-center gap-2 transition-all"
-                             >
-                               <Trophy size={14} /> Preview Summary
-                             </button>
-                           </div>
-                         </div>
-                      </AdminAccordion>
-                      <AdminAccordion title="Website Logo & Branding (লোগো পরিবর্তন)" icon={<Upload size={16} />} colorClass="text-blue-accent" defaultOpen={false}>
+                 {/* 1. Website Branding & Logo */}
+                 <AdminAccordion title="Website Logo & Branding (লোগো পরিবর্তন)" icon={<Upload size={16} />} colorClass="text-blue-accent" defaultOpen={false}>
                    <BrandLogoManager 
                      config={config} 
                      onUpdateLogo={updateWebsiteLogo} 
                      showMsg={showMsg} 
                    />
+                </AdminAccordion>
+
+                {/* Push Notifications & Alerts Control */}
+                <AdminAccordion title="Push Notifications & Alerts (পুশ নোটিফিকেশন)" icon={<Bell size={16} />} colorClass="text-indigo-400" defaultOpen={false}>
+                  <div className="space-y-4">
+                    <PushNotificationSettings 
+                      theme="dark" 
+                      customLogo={config.customLogo} 
+                      showMsg={showMsg} 
+                    />
+                    
+                    {/* Admin Global Timer Push Alerts Control */}
+                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <h4 className="text-sm font-bold text-white">গ্লোবাল টাইমার নোটিফিকেশন</h4>
+                        <p className="text-xs text-slate-400 mt-0.5">সব মেম্বারদের কাছে টাইমার সতর্কতা ও শেষ হওয়ার পুশ নোটিফিকেশন পাঠানো</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const nextState = !(config.timerNotificationsActive !== false);
+                          try {
+                            await updateDoc(doc(db, 'config', 'global'), {
+                              timerNotificationsActive: nextState
+                            });
+                            showMsg(`গ্লোবাল টাইমার নোটিফিকেশন ${nextState ? 'চালু' : 'বন্ধ'} করা হয়েছে`, 'success');
+                          } catch (e) {
+                            showMsg('আপডেট ব্যর্থ হয়েছে', 'error');
+                          }
+                        }}
+                        className={`px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                          config.timerNotificationsActive !== false
+                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                            : 'bg-red-500/20 text-red-400 border border-red-500/30'
+                        }`}
+                      >
+                        {config.timerNotificationsActive !== false ? 'Active (চালু)' : 'Silenced (বন্ধ)'}
+                      </button>
+                    </div>
+                  </div>
                 </AdminAccordion>
 
                 {/* 2. Operations Slot (Timer & Results) */}
@@ -7998,6 +8115,8 @@ export default function App() {
                 {/* 8. Leaderboard & Achievement Slot */}
                 <AdminAccordion title="Leaderboard & Ranking Management" icon={<Crown size={16} />} colorClass="text-gold">
                    <div className="space-y-6">
+                      <RankingDownloadPanel leaderRanking={leaderRanking} trainerRanking={trainerRanking} />
+                      
                       <RankingSection 
                         title="Leader Ranking Management" 
                         icon={Crown} 
@@ -8343,6 +8462,28 @@ export default function App() {
       </AnimatePresence>
 
       <AnimatePresence>
+        {showLoginStatsPopup && (
+          <LoginStatsModal
+            isOpen={showLoginStatsPopup}
+            onClose={() => setShowLoginStatsPopup(false)}
+            currentUser={currentAuthUser}
+            myMember={myMember}
+            members={members}
+            results={results}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showQuickLinksModal && (
+          <QuickLinksModal 
+            links={quickLinks}
+            onClose={() => setShowQuickLinksModal(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
         {showStlLoginModal && (
           <StlLoginModal 
             onClose={() => setShowStlLoginModal(false)}
@@ -8429,6 +8570,12 @@ export default function App() {
           />
         )}
       </AnimatePresence>
+
+      {/* Animated Appreciation Popup for Result Submission */}
+      <ResultAppreciationModal 
+        data={appreciationData} 
+        onClose={() => setAppreciationData(null)} 
+      />
     </div>
   );
 }
@@ -9339,6 +9486,174 @@ function PickingScheduleManager({ items, onAdd, onDelete, onToggle }: {
   );
 }
 
+function RankingDownloadPanel({ leaderRanking, trainerRanking }: { leaderRanking: RankingMember[], trainerRanking: RankingMember[] }) {
+  const captureRef = useRef<HTMLDivElement>(null);
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownload = async () => {
+    if (!captureRef.current) return;
+    setDownloading(true);
+    try {
+      const dataUrl = await htmlToImage.toPng(captureRef.current, {
+        pixelRatio: 2,
+        backgroundColor: '#d8e2ee',
+      });
+      const link = document.createElement('a');
+      link.download = `Ranking_${new Date().toISOString().slice(0, 10)}.png`;
+      link.href = dataUrl;
+      link.click();
+    } catch (error) {
+      console.error("Error capturing ranking:", error);
+      alert("Failed to generate image. Please try again.");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const currentDate = new Date();
+  const formattedDate = currentDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  const formattedTime = currentDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-slate-400">টিম লিডার এবং ট্রেনারদের বর্তমান র্যাংকিং এর একটি প্রিমিয়াম (Neumorphic) ছবি ডাউনলোড করুন।</p>
+      <button 
+        onClick={handleDownload}
+        disabled={downloading}
+        className="neu-btn-primary flex items-center justify-center gap-2 font-bold py-3 px-4 rounded-xl shadow-lg transition-all disabled:opacity-50"
+      >
+        <Download size={20} />
+        {downloading ? "Generating Image..." : "Download Professional Ranking Image"}
+      </button>
+
+      <div className="absolute left-[-9999px] top-[-9999px] opacity-0 pointer-events-none">
+        <div ref={captureRef} className="bg-bg w-[1080px] p-10 flex flex-col gap-6 relative overflow-hidden" style={{ backgroundColor: '#d8e2ee' }}>
+           
+           {/* Decorative Background Elements */}
+           <div className="absolute top-[-100px] left-[-100px] w-[400px] h-[400px] rounded-full bg-blue-600/5 blur-[80px]"></div>
+           <div className="absolute bottom-[-100px] right-[-100px] w-[400px] h-[400px] rounded-full bg-emerald-600/5 blur-[80px]"></div>
+
+           {/* Header / Brand */}
+           <div className="w-full flex justify-between items-center border-b-2 border-border/50 pb-6 relative z-10 flex-shrink-0">
+             <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-2xl neu-raised flex items-center justify-center bg-gradient-to-br from-blue-600 to-blue-800 text-white font-black text-2xl shadow-[0_8px_16px_rgba(37,99,235,0.2)]">
+                  UN
+                </div>
+                <div>
+                  <h1 className="text-3xl font-black text-slate-800 tracking-tight">Unity <span className="text-blue-accent">Earning</span></h1>
+                  <p className="text-slate-500 font-bold tracking-[0.2em] uppercase text-xs mt-0.5">E-Learning Platform</p>
+                </div>
+             </div>
+             <div className="text-right neu-inset px-5 py-2.5 rounded-xl">
+               <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.3em] mb-0.5">Official Document</p>
+               <p className="text-slate-800 font-black text-base uppercase tracking-wider">Performance Ranking</p>
+             </div>
+           </div>
+           
+           {/* Title Section */}
+           <div className="text-center my-2 w-full relative z-10 flex-shrink-0">
+             <h2 className="text-3xl font-black text-slate-800 mb-2 drop-shadow-sm">Team Leader & Trainer Ranking</h2>
+             <div className="inline-flex items-center justify-center gap-2.5 neu-inset px-5 py-2 rounded-full border border-white/60">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></span>
+                <span className="text-emerald-700 font-black tracking-[0.2em] uppercase text-xs">Live Convert Analytics</span>
+             </div>
+           </div>
+           
+           {/* Rankings Layout - Extremely compact slim rows to fit all leaders and trainers */}
+           <div className="grid grid-cols-2 gap-6 w-full relative z-10">
+             
+             {/* Team Leaders */}
+             <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-center gap-2 mb-2 flex-shrink-0">
+                  <Crown size={20} className="text-blue-accent drop-shadow-sm" />
+                  <h3 className="text-lg font-black text-slate-800 uppercase tracking-widest">Team Leaders</h3>
+                </div>
+                <div className="flex flex-col gap-1">
+                  {leaderRanking.map((leader, index) => {
+                    const isTop3 = index < 3;
+                    const medalColors = ['text-yellow-600', 'text-slate-500', 'text-amber-800'];
+                    return (
+                      <div key={leader.id} className={`flex items-center justify-between px-3 py-1.5 ${isTop3 ? 'neu-raised relative overflow-hidden bg-white/50' : 'neu-inset border border-white/60 bg-white/20'} rounded-lg`}>
+                        {isTop3 && <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-accent shadow-[0_0_8px_rgba(37,99,235,0.5)]"></div>}
+                        <div className="flex items-center gap-2.5 z-10 pl-1">
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center font-black text-xs ${isTop3 ? 'neu-inset ' + medalColors[index] : 'neu-inset text-slate-700'}`}>
+                            #{index + 1}
+                          </div>
+                          <span className={`font-extrabold text-sm truncate max-w-[220px] ${isTop3 ? 'text-slate-900 drop-shadow-sm' : 'text-slate-800'}`}>{leader.name}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 z-10">
+                          <div className="text-right">
+                             <p className={`font-black text-sm ${isTop3 ? 'text-blue-700 drop-shadow-sm' : 'text-slate-800'}`}>{leader.score}</p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+             </div>
+
+             {/* Team Trainers */}
+             <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-center gap-2 mb-2 flex-shrink-0">
+                  <Target size={20} className="text-emerald-600 drop-shadow-sm" />
+                  <h3 className="text-lg font-black text-slate-800 uppercase tracking-widest">Team Trainers</h3>
+                </div>
+                <div className="flex flex-col gap-1">
+                  {trainerRanking.map((trainer, index) => {
+                    const isTop3 = index < 3;
+                    const medalColors = ['text-yellow-600', 'text-slate-500', 'text-amber-800'];
+                    return (
+                      <div key={trainer.id} className={`flex items-center justify-between px-3 py-1.5 ${isTop3 ? 'neu-raised relative overflow-hidden bg-white/50' : 'neu-inset border border-white/60 bg-white/20'} rounded-lg`}>
+                        {isTop3 && <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>}
+                        <div className="flex items-center gap-2.5 z-10 pl-1">
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center font-black text-xs ${isTop3 ? 'neu-inset ' + medalColors[index] : 'neu-inset text-slate-700'}`}>
+                            #{index + 1}
+                          </div>
+                          <span className={`font-extrabold text-sm truncate max-w-[220px] ${isTop3 ? 'text-slate-900 drop-shadow-sm' : 'text-slate-800'}`}>{trainer.name}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 z-10">
+                          <div className="text-right">
+                             <p className={`font-black text-sm ${isTop3 ? 'text-emerald-700 drop-shadow-sm' : 'text-slate-800'}`}>{trainer.score}</p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+             </div>
+           </div>
+
+           {/* Professional Footer */}
+           <div className="mt-4 w-full pt-4 border-t-2 border-border/50 flex justify-between items-end relative z-10 flex-shrink-0">
+             <div className="flex flex-col gap-1">
+               <p className="text-slate-800 font-bold flex items-center gap-1.5 text-sm">
+                 <CheckCheck size={16} className="text-emerald-600" />
+                 Verified System Report
+               </p>
+               <p className="text-slate-500 text-xs font-medium">Generated on: <span className="font-bold text-slate-700">{formattedDate}</span> at <span className="font-bold text-slate-700">{formattedTime}</span></p>
+             </div>
+             
+             <div className="flex flex-col items-center gap-1.5">
+               <div className="w-48 h-10 flex items-center justify-center relative">
+                  {/* Fake Signature */}
+                  <span className="font-[cursive] text-3xl text-slate-800/70 -rotate-3 tracking-widest drop-shadow-sm">Jihadul Islam</span>
+               </div>
+               <div className="w-full h-[2px] bg-slate-300 mb-0.5"></div>
+               <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.2em]">Authorized Signature</p>
+             </div>
+
+             <div className="text-right">
+               <p className="text-slate-800 font-bold text-base mb-0.5">www.unityearning.com</p>
+               <p className="text-slate-500 text-xs font-medium">support@unityearning.com</p>
+             </div>
+           </div>
+
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AdminSection({ title, onAdd, members, onDelete, onUpdateTarget }: {
   title: string,
   onAdd: (name: string, target?: number) => void,
@@ -10159,17 +10474,17 @@ function AdminAccordion({ title, icon, colorClass, defaultOpen = false, children
   const [isOpen, setIsOpen] = useState(defaultOpen);
   
   return (
-    <div className="bg-bg/40 border border-white/5 rounded-2xl overflow-hidden mb-4 transition-all">
+    <div className="bg-white/80 border border-slate-200 rounded-2xl overflow-hidden mb-4 transition-all shadow-sm">
       <button 
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full p-4 flex items-center justify-between hover:bg-surface/50 transition-colors"
+        className="w-full p-4 sm:p-5 flex items-center justify-between hover:bg-slate-50 transition-colors"
       >
-        <div className={`flex items-center gap-3 ${colorClass}`}>
-          {icon}
-          <span className="text-[12px] font-black uppercase tracking-[2px]">{title}</span>
+        <div className={`flex items-center gap-3.5 ${colorClass}`}>
+          <div className="p-2 rounded-xl bg-slate-100 border border-slate-200">{icon}</div>
+          <span className="text-sm sm:text-base font-extrabold text-slate-900 tracking-wide">{title}</span>
         </div>
-        <ChevronRight size={16} className={`text-muted-main transition-transform ${isOpen ? 'rotate-90 text-white' : ''}`} />
+        <ChevronRight size={18} className={`text-slate-500 transition-transform ${isOpen ? 'rotate-90 text-slate-900' : ''}`} />
       </button>
       
       <AnimatePresence>
@@ -10178,7 +10493,7 @@ function AdminAccordion({ title, icon, colorClass, defaultOpen = false, children
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            className="border-t border-white/5 bg-surface/20 overflow-hidden"
+            className="border-t border-slate-200 bg-white/50 overflow-hidden"
           >
             <div className="p-4 sm:p-6 space-y-6">
               {children}

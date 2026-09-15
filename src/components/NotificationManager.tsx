@@ -28,6 +28,20 @@ export const getNotificationMillis = (createdAt: any): number => {
   return Date.now();
 };
 
+export const isPushNotificationsEnabled = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  if (!('Notification' in window)) return false;
+  const pref = localStorage.getItem('unity_push_enabled');
+  if (pref === 'false') return false;
+  return Notification.permission === 'granted';
+};
+
+export const setPushNotificationsEnabled = (enabled: boolean) => {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem('unity_push_enabled', enabled ? 'true' : 'false');
+  window.dispatchEvent(new CustomEvent('unity_push_pref_changed', { detail: { enabled } }));
+};
+
 export const requestNotificationPermission = async (): Promise<NotificationPermission> => {
   if (!('Notification' in window)) return 'denied';
   try {
@@ -48,14 +62,22 @@ export const formatNotificationTitle = (rawTitle: string): string => {
   return title;
 };
 
-export const triggerNativeNotification = async (title: string, body: string, iconUrl: string = '/icon.jpg') => {
+export const triggerNativeNotification = async (title: string, body: string, iconUrl?: string) => {
   if (typeof window === 'undefined' || !('Notification' in window)) return;
+
+  // Check if push notifications are turned off by user in Profile or Settings
+  const pushPref = localStorage.getItem('unity_push_enabled');
+  if (pushPref === 'false') {
+    return;
+  }
 
   if (Notification.permission !== 'granted') {
     return;
   }
 
   const finalTitle = formatNotificationTitle(title);
+  const cachedLogo = localStorage.getItem('unity_custom_logo');
+  const finalIcon = iconUrl || cachedLogo || '/icon.jpg';
 
   // Vibration for mobile devices
   if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
@@ -68,8 +90,8 @@ export const triggerNativeNotification = async (title: string, body: string, ico
 
   const notifOptions: any = {
     body,
-    icon: iconUrl,
-    badge: iconUrl,
+    icon: finalIcon,
+    badge: finalIcon,
     tag: `unity-${Date.now()}`,
     renotify: true,
     requireInteraction: true,
@@ -160,6 +182,9 @@ export const NotificationManager = ({
           (user && (recipient === user.uid || recipient === user.whatsapp)) ||
           (position && recipient === position)
         ) {
+          const pushPref = typeof window !== 'undefined' ? localStorage.getItem('unity_push_enabled') : null;
+          if (pushPref === 'false') return;
+
           if (audioRef.current) {
             audioRef.current.play().catch(e => console.log('Audio error:', e));
           }
@@ -222,10 +247,13 @@ export const NotificationManager = ({
           
           // Trigger if notification is recent (within last 3 minutes) or incoming live
           if (timeDiff < 180000 && !isFirstLoadRef.current) {
-            if (audioRef.current) {
-              audioRef.current.play().catch(e => console.log('Audio play error:', e));
+            const pushPref = typeof window !== 'undefined' ? localStorage.getItem('unity_push_enabled') : null;
+            if (pushPref !== 'false') {
+              if (audioRef.current) {
+                audioRef.current.play().catch(e => console.log('Audio play error:', e));
+              }
+              triggerNativeNotification(n.title, n.body);
             }
-            triggerNativeNotification(n.title, n.body);
           }
         }
       });
@@ -259,79 +287,8 @@ export const NotificationManager = ({
     return () => unsubscribe();
   }, [user?.uid, user?.whatsapp, position]);
 
-  const handleEnableNotifications = async () => {
-    const perm = await requestNotificationPermission();
-    setPermission(perm);
-    if (perm === 'granted') {
-      try {
-        localStorage.setItem('unity_notif_enabled', 'true');
-      } catch {
-        // ignore
-      }
-      await triggerNativeNotification('Unity Earning 🔔 নোটিফিকেশন সক্রিয় হয়েছে!', 'আপনার ফোনে ক্রোম পুশ নোটিফিকেশন সফলভাবে চালু করা হয়েছে। 🚀✨');
-    }
-  };
-
-  // If permission is already granted or not supported on this platform, do not show any prompt
-  if (permission === 'granted' || permission === 'unsupported') {
-    return null;
-  }
-
-  return (
-    <AnimatePresence>
-      <motion.div 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[99999] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 sm:p-6"
-      >
-        <motion.div 
-          initial={{ scale: 0.9, opacity: 0, y: 20 }}
-          animate={{ scale: 1, opacity: 1, y: 0 }}
-          exit={{ scale: 0.9, opacity: 0, y: 20 }}
-          className="w-full max-w-md bg-slate-900 border border-amber-500/30 text-white p-6 sm:p-7 rounded-3xl shadow-2xl flex flex-col items-center text-center relative overflow-hidden"
-        >
-          {/* Ambient glow */}
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-24 bg-amber-500/20 blur-3xl rounded-full pointer-events-none" />
-
-          {/* Icon */}
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 text-slate-950 flex items-center justify-center mb-5 shadow-lg shadow-amber-500/30 animate-pulse">
-            <Bell size={32} className="stroke-[2.5]" />
-          </div>
-
-          <span className="text-[10px] font-black uppercase tracking-widest text-amber-400 bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/20 mb-2">
-            Unity Earning Alert System
-          </span>
-
-          <h3 className="text-lg sm:text-xl font-black text-white mb-2">
-            ফোনে ক্রোম নোটিফিকেশন চালু করুন
-          </h3>
-
-          <p className="text-xs sm:text-sm text-slate-300 leading-relaxed mb-6">
-            টাইমার শুরু, ৫ মিনিটের সতর্কতা অ্যালার্ম এবং লাইভ রেজাল্ট সরাসরি আপনার ফোনের স্ক্রিনে পেতে নোটিফিকেশন পারমিশন চালু করুন।
-          </p>
-
-          <div className="w-full space-y-3">
-            <button
-              onClick={handleEnableNotifications}
-              className="w-full py-3.5 px-4 bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-600 hover:to-amber-600 text-slate-950 font-black rounded-2xl text-sm flex items-center justify-center gap-2 shadow-xl shadow-amber-500/25 active:scale-[0.98] transition-all cursor-pointer"
-            >
-              <Check size={18} className="stroke-[3]" /> নোটিফিকেশন চালু করুন (Allow)
-            </button>
-            
-            {isInIframe && (
-              <button
-                onClick={() => window.open(window.location.href, '_blank')}
-                className="w-full py-2.5 px-4 bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 font-semibold rounded-2xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
-              >
-                <ExternalLink size={14} /> ক্রোম ফুল স্ক্রিন ট্যাবে ওপেন করুন
-              </button>
-            )}
-          </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
-  );
+  // Notification permission prompt disabled by user request
+  return null;
 };
 
 export const sendNotification = async (title: string, body: string, recipient: string = 'all', sender: string = 'system') => {

@@ -5,88 +5,84 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+const tableAllowedColumns: Record<string, string[]> = {
+  members: ['name', 'type', 'profilePic', 'target', 'whatsapp', 'createdAt'],
+  results: ['memberId', 'lead', 'convert', 'personalLead', 'submitted', 'updatedAt'],
+  config: [
+    'timerActive', 'timerEndTime', 'timerDuration', 'timerStartedAt', 'timerNotificationsActive',
+    'announcement', 'announcementActive', 'isLocked', 'securityPassword', 'stlPassword',
+    'autoTimerEnabled', 'autoTimerTime', 'fineSystemActive', 'fineAmount', 'fineStartDate',
+    'giftBoxActive', 'giftBoxTitle', 'giftBoxContent', 'paymentMethods',
+    'socialLinks', 'noticeText', 'customLogo', 'appTheme', 'totalConverts',
+    'leaderRankingActive', 'trainerRankingActive', 'stlActive', 'demoActive', 'stlLoginActive',
+    'counsellingSchedules', 'updatedAt'
+  ],
+  pickingSchedule: ['name', 'isSelected', 'createdAt'],
+  applications: ['fullName', 'mobileNumber', 'email', 'createdAt'],
+  teachers: ['name', 'createdAt'],
+  teacherAttendance: ['teacherId', 'teacherName', 'course', 'date', 'submittedAt'],
+  stlMembers: ['name', 'target', 'assignedTLs', 'createdAt'],
+  stlAttendance: ['memberId', 'memberName', 'submittedAt'],
+  demoMembers: ['name', 'createdAt'],
+  demoAttendance: ['memberId', 'memberName', 'submittedAt'],
+  leaderRanking: ['name', 'score', 'leads', 'whatsapp', 'createdAt'],
+  trainerRanking: ['name', 'score', 'leads', 'createdAt'],
+  quickLinks: ['name', 'url', 'createdAt'],
+  pendingRegistrations: ['fullName', 'whatsapp', 'position', 'password', 'status', 'profilePic', 'createdAt'],
+  registeredUsers: ['fullName', 'whatsapp', 'position', 'password', 'status', 'profilePic', 'createdAt'],
+  userBalances: ['whatsapp', 'userName', 'balance', 'waivedFines', 'manualAdjustments', 'updatedAt'],
+  submissionLogs: ['memberId', 'memberName', 'whatsapp', 'lead', 'convert', 'personalLead', 'date', 'submittedAt'],
+  auditLogs: ['action', 'amount', 'userName', 'whatsapp', 'performedBy', 'reason', 'date', 'createdAt'],
+  notifications: ['title', 'body', 'recipient', 'sender', 'createdMillis', 'readBy', 'isSystem', 'createdAt'],
+  systemConfig: ['updatedAt'],
+  fcmTokens: ['whatsapp', 'platform', 'updatedAt']
+};
+
 // Helper to sanitize row for Supabase
 function sanitizeRow(tableName: string, doc: any) {
   const { id, ...rest } = doc;
   
-  // Base sanitized row
   const row: any = {
     id: String(id),
-    data: rest
+    data: { ...rest }
   };
 
-  // Extract known columns for direct SQL indexing and sorting
-  if (rest.name !== undefined) row.name = rest.name;
-  if (rest.type !== undefined) row.type = rest.type;
-  if (rest.profilePic !== undefined) row.profilePic = rest.profilePic;
-  if (rest.target !== undefined) row.target = Number(rest.target) || 0;
-  if (rest.whatsapp !== undefined) row.whatsapp = String(rest.whatsapp);
-  if (rest.memberId !== undefined) row.memberId = String(rest.memberId);
-  if (rest.memberName !== undefined) row.memberName = String(rest.memberName);
-  if (rest.lead !== undefined) row.lead = Number(rest.lead) || 0;
-  if (rest.convert !== undefined) row.convert = Number(rest.convert) || 0;
-  if (rest.personalLead !== undefined) row.personalLead = Number(rest.personalLead) || 0;
-  if (rest.submitted !== undefined) row.submitted = Boolean(rest.submitted);
-  if (rest.score !== undefined) row.score = Number(rest.score) || 0;
-  if (rest.leads !== undefined) row.leads = Number(rest.leads) || 0;
-  if (rest.url !== undefined) row.url = String(rest.url);
-  if (rest.fullName !== undefined) row.fullName = String(rest.fullName);
-  if (rest.position !== undefined) row.position = String(rest.position);
-  if (rest.password !== undefined) row.password = String(rest.password);
-  if (rest.status !== undefined) row.status = String(rest.status);
-  if (rest.userName !== undefined) row.userName = String(rest.userName);
-  if (rest.balance !== undefined) row.balance = Number(rest.balance) || 0;
-  if (rest.action !== undefined) row.action = String(rest.action);
-  if (rest.amount !== undefined) row.amount = Number(rest.amount) || 0;
-  if (rest.performedBy !== undefined) row.performedBy = String(rest.performedBy);
-  if (rest.reason !== undefined) row.reason = String(rest.reason);
-  if (rest.date !== undefined) row.date = String(rest.date);
-  if (rest.title !== undefined) row.title = String(rest.title);
-  if (rest.body !== undefined) row.body = String(rest.body);
-  if (rest.recipient !== undefined) row.recipient = String(rest.recipient);
-  if (rest.sender !== undefined) row.sender = String(rest.sender);
-  if (rest.isSystem !== undefined) row.isSystem = Boolean(rest.isSystem);
-  if (rest.isSelected !== undefined) row.isSelected = Boolean(rest.isSelected);
-  if (rest.course !== undefined) row.course = String(rest.course);
-
-  // Timestamps
-  if (rest.createdAt) {
-    if (typeof rest.createdAt === 'string') row.createdAt = rest.createdAt;
-    else if (rest.createdAt?.seconds) row.createdAt = new Date(rest.createdAt.seconds * 1000).toISOString();
-  }
-  if (rest.updatedAt) {
-    if (typeof rest.updatedAt === 'string') row.updatedAt = rest.updatedAt;
-    else if (rest.updatedAt?.seconds) row.updatedAt = new Date(rest.updatedAt.seconds * 1000).toISOString();
-  }
-  if (rest.submittedAt) {
-    if (typeof rest.submittedAt === 'string') row.submittedAt = rest.submittedAt;
-    else if (rest.submittedAt?.seconds) row.submittedAt = new Date(rest.submittedAt.seconds * 1000).toISOString();
-  }
-
-  // Config specific
-  if (tableName === 'config') {
-    if (rest.timerActive !== undefined) row.timerActive = Boolean(rest.timerActive);
-    if (rest.timerEndTime !== undefined) row.timerEndTime = Number(rest.timerEndTime) || 0;
-    if (rest.timerDuration !== undefined) row.timerDuration = Number(rest.timerDuration) || 1800;
-    if (rest.announcement !== undefined) row.announcement = String(rest.announcement);
-    if (rest.announcementActive !== undefined) row.announcementActive = Boolean(rest.announcementActive);
+  const allowed = tableAllowedColumns[tableName] || [];
+  for (const field of allowed) {
+    if (rest[field] !== undefined) {
+      if (field === 'timerEndTime' || field === 'timerStartedAt' || field === 'finesResetAt' || field === 'lastAutoStartTime') {
+        if (typeof rest[field] === 'string') {
+          const parsed = Date.parse(rest[field]);
+          row[field] = isNaN(parsed) ? 0 : parsed;
+        } else {
+          row[field] = Number(rest[field]) || 0;
+        }
+      } else if (field === 'waivedFines' || field === 'manualAdjustments' || field === 'balance' || field === 'target' || field === 'score' || field === 'leads' || field === 'lead' || field === 'convert' || field === 'personalLead' || field === 'amount') {
+        const numVal = Number(rest[field]);
+        row[field] = isNaN(numVal) ? 0 : numVal;
+      } else if (field === 'createdAt' || field === 'updatedAt' || field === 'submittedAt') {
+        if (typeof rest[field] === 'string') row[field] = rest[field];
+        else if (rest[field]?.seconds) row[field] = new Date(rest[field].seconds * 1000).toISOString();
+      } else {
+        row[field] = rest[field];
+      }
+    }
   }
 
   return row;
 }
 
 export async function runMigration(supabaseUrl?: string, supabaseKey?: string) {
-  const url = supabaseUrl || process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-  const key = supabaseKey || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
-
-  if (!url || !key) {
-    throw new Error('Supabase URL এবং Key দেওয়া হয়নি। অনুগ্রহ করে .env ফাইলে VITE_SUPABASE_URL এবং VITE_SUPABASE_ANON_KEY উল্লেখ করুন।');
-  }
+  const url = supabaseUrl || process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://pybarkjpvxchnllwtweo.supabase.co';
+  const key = supabaseKey || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5YmFya2pwdnhjaG5sbHd0d2VvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkzODgxMzAsImV4cCI6MjEwNDk2NDEzMH0.U8gFSq-SJM3y0eCsJx3tV6vUaCSBVWcfVyqLX5mMQVg';
 
   console.log(`Connecting to Supabase at: ${url}`);
   const client = createClient(url, key);
 
-  const backupPath = path.resolve(process.cwd(), 'firestore_backup.json');
+  let backupPath = path.resolve(process.cwd(), 'firestore_backup.json');
+  if (!fs.existsSync(backupPath)) {
+    backupPath = path.resolve(process.cwd(), 'public', 'firestore_backup.json');
+  }
   if (!fs.existsSync(backupPath)) {
     throw new Error('firestore_backup.json পাওয়া যায়নি।');
   }
@@ -102,13 +98,20 @@ export async function runMigration(supabaseUrl?: string, supabaseKey?: string) {
       continue;
     }
 
-    console.log(`[${table}] Migrating ${docList.length} documents...`);
-    results[table] = { total: docList.length, success: 0, errors: 0 };
+    // Deduplicate docList by id
+    const uniqueMap = new Map<string, any>();
+    for (const d of docList) {
+      if (d && d.id) uniqueMap.set(String(d.id), d);
+    }
+    const uniqueDocs = Array.from(uniqueMap.values());
+
+    console.log(`[${table}] Migrating ${uniqueDocs.length} unique documents...`);
+    results[table] = { total: uniqueDocs.length, success: 0, errors: 0 };
 
     // Batch in chunks of 50
     const chunkSize = 50;
-    for (let i = 0; i < docList.length; i += chunkSize) {
-      const chunk = docList.slice(i, i + chunkSize);
+    for (let i = 0; i < uniqueDocs.length; i += chunkSize) {
+      const chunk = uniqueDocs.slice(i, i + chunkSize);
       const rows = chunk.map(d => sanitizeRow(table, d));
 
       const { error } = await client.from(table).upsert(rows, { onConflict: 'id' });

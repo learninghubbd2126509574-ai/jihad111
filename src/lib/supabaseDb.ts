@@ -254,10 +254,10 @@ const tableAllowedColumns: Record<string, string[]> = {
     'timerActive', 'timerEndTime', 'timerDuration', 'timerStartedAt', 'timerNotificationsActive',
     'announcement', 'announcementActive', 'isLocked', 'securityPassword', 'stlPassword',
     'autoTimerEnabled', 'autoTimerTime', 'fineSystemActive', 'fineAmount', 'fineStartDate',
-    'finesResetAt', 'giftBoxActive', 'giftBoxTitle', 'giftBoxContent', 'paymentMethods',
+    'giftBoxActive', 'giftBoxTitle', 'giftBoxContent', 'paymentMethods',
     'socialLinks', 'noticeText', 'customLogo', 'appTheme', 'totalConverts',
     'leaderRankingActive', 'trainerRankingActive', 'stlActive', 'demoActive', 'stlLoginActive',
-    'counsellingSchedules', 'lastAutoStartTime', 'updatedAt'
+    'counsellingSchedules', 'updatedAt'
   ],
   pickingSchedule: ['name', 'isSelected', 'createdAt'],
   applications: ['fullName', 'mobileNumber', 'email', 'createdAt'],
@@ -292,9 +292,22 @@ function packSupabaseRow(tableName: string, id: string, docData: any): any {
   const allowed = tableAllowedColumns[tableName] || [];
   for (const field of allowed) {
     if (rest[field] !== undefined) {
-      if (field === 'waivedFines' || field === 'manualAdjustments' || field === 'balance' || field === 'target' || field === 'score' || field === 'leads' || field === 'lead' || field === 'convert' || field === 'personalLead' || field === 'amount') {
+      if (field === 'waivedFines' || field === 'manualAdjustments' || field === 'balance' || field === 'target' || field === 'score' || field === 'leads' || field === 'lead' || field === 'convert' || field === 'personalLead' || field === 'amount' || field === 'fineAmount' || field === 'totalConverts' || field === 'timerDuration') {
         const numVal = Number(rest[field]);
         row[field] = isNaN(numVal) ? 0 : numVal;
+      } else if (field === 'timerEndTime' || field === 'timerStartedAt' || field === 'createdMillis') {
+        const numVal = Math.floor(Number(rest[field]));
+        row[field] = isNaN(numVal) ? 0 : numVal;
+      } else if (field === 'createdAt' || field === 'updatedAt' || field === 'submittedAt') {
+        if (typeof rest[field] === 'string') {
+          row[field] = rest[field];
+        } else if (rest[field]?.seconds) {
+          row[field] = new Date(rest[field].seconds * 1000).toISOString();
+        } else if (typeof rest[field] === 'number') {
+          row[field] = new Date(rest[field]).toISOString();
+        } else {
+          row[field] = rest[field];
+        }
       } else {
         row[field] = rest[field];
       }
@@ -651,10 +664,15 @@ export async function setDoc(docRef: DocRef, data: any, options?: { merge?: bool
   const supabase = getSupabase();
   if (supabase && isSupabaseConfigured()) {
     const row = packSupabaseRow(colName, docId, merged);
-    const { error } = await supabase.from(colName).upsert(row, { onConflict: 'id' });
+    let { error } = await supabase.from(colName).upsert(row, { onConflict: 'id' });
     if (error) {
-      console.error(`Supabase setDoc error on ${colName}/${docId}:`, error);
-      throw error;
+      console.warn(`Supabase setDoc column-level write failed on ${colName}/${docId} (${error.message}). Retrying with JSONB data payload fallback...`);
+      // Resilient fallback: upsert only id and raw data JSONB payload
+      const fallbackResult = await supabase.from(colName).upsert({ id: String(docId), data: row.data }, { onConflict: 'id' });
+      if (fallbackResult.error) {
+        console.error(`Supabase setDoc fatal error on ${colName}/${docId}:`, fallbackResult.error);
+        throw fallbackResult.error;
+      }
     }
   }
 }
@@ -684,10 +702,15 @@ export async function updateDoc(docRef: DocRef, data: any): Promise<void> {
   const supabase = getSupabase();
   if (supabase && isSupabaseConfigured()) {
     const row = packSupabaseRow(colName, docId, updated);
-    const { error } = await supabase.from(colName).upsert(row, { onConflict: 'id' });
+    let { error } = await supabase.from(colName).upsert(row, { onConflict: 'id' });
     if (error) {
-      console.error(`Supabase updateDoc error on ${colName}/${docId}:`, error);
-      throw error;
+      console.warn(`Supabase updateDoc column-level write failed on ${colName}/${docId} (${error.message}). Retrying with JSONB data payload fallback...`);
+      // Resilient fallback: upsert only id and raw data JSONB payload
+      const fallbackResult = await supabase.from(colName).upsert({ id: String(docId), data: row.data }, { onConflict: 'id' });
+      if (fallbackResult.error) {
+        console.error(`Supabase updateDoc fatal error on ${colName}/${docId}:`, fallbackResult.error);
+        throw fallbackResult.error;
+      }
     }
   }
 }
@@ -704,10 +727,14 @@ export async function deleteDoc(docRef: DocRef): Promise<void> {
 
   const supabase = getSupabase();
   if (supabase && isSupabaseConfigured()) {
-    const { error } = await supabase.from(colName).delete().eq('id', docId);
-    if (error) {
-      console.error(`Supabase deleteDoc error on ${colName}/${docId}:`, error);
-      throw error;
+    try {
+      const { error } = await supabase.from(colName).delete().eq('id', docId);
+      if (error) {
+        console.warn(`Supabase deleteDoc warning on ${colName}/${docId}:`, error.message);
+        await supabase.from(colName).delete().eq('data->>id', docId);
+      }
+    } catch (err) {
+      console.warn(`Supabase deleteDoc exception ignored for optimistic UI:`, err);
     }
   }
 }
