@@ -4744,15 +4744,21 @@ export default function App() {
     }
   };
 
-  const updateRankingScore = async (type: 'leader' | 'trainer', id: string, diffScore: number, diffLeads: number) => {
+  const updateRankingScore = async (type: 'leader' | 'trainer', id: string, absoluteScore: number, absoluteLeads: number) => {
     const coll = type === 'leader' ? 'leaderRanking' : 'trainerRanking';
     try {
+      const rankingList = type === 'leader' ? leaderRanking : trainerRanking;
+      const entry = rankingList.find(r => r.id === id);
+      const prevScore = entry ? Number(entry.score || 0) : 0;
+      const diffScore = absoluteScore - prevScore;
+
       const batch = writeBatch(db);
       
-      // Update individual ranking
+      // Update individual ranking with absolute values directly
       batch.update(doc(db, coll, id), { 
-        score: increment(diffScore),
-        leads: increment(diffLeads)
+        score: absoluteScore,
+        leads: absoluteLeads,
+        updatedAt: serverTimestamp()
       });
 
       // Update global total if it's a leader and score changed
@@ -4763,7 +4769,7 @@ export default function App() {
       }
 
       await batch.commit();
-      showMsg('Score updated and synced!');
+      showMsg('Score updated successfully!', 'success');
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `${coll}/${id}`, showMsg);
     }
@@ -4941,13 +4947,16 @@ export default function App() {
         submittedAt: serverTimestamp()
       }, { merge: true });
 
-      // Determine user type
-      const isLeader = member?.type === 'leader' || matchedUser?.position === 'Team Leader' || matchedUser?.position === 'STL' || currentAuthUser?.position === 'Team Leader' || currentAuthUser?.position === 'STL';
-      const isTrainer = member?.type === 'trainer' || matchedUser?.position === 'Team Trainer' || currentAuthUser?.position === 'Team Trainer';
-      const userType = isLeader ? 'leader' : (isTrainer ? 'trainer' : (member?.type || 'leader'));
+      // Determine if STL (STLs are completely excluded from leader/trainer ranking updates)
+      const isSTL = matchedUser?.position === 'STL' || currentAuthUser?.position === 'STL' || targetName.toLowerCase().includes('stl') || (stlMembers && stlMembers.some(s => normalizeName(s.name) === normalizeName(targetName)));
 
-      // Update ranking scores using diff derived from DATABASE values
-      if (diffScore !== 0 || diffLeads !== 0) {
+      // Determine user type (excluding STL from leader/trainer categorization)
+      const isLeader = !isSTL && (member?.type === 'leader' || matchedUser?.position === 'Team Leader' || currentAuthUser?.position === 'Team Leader');
+      const isTrainer = !isSTL && (member?.type === 'trainer' || matchedUser?.position === 'Team Trainer' || currentAuthUser?.position === 'Team Trainer');
+      const userType = isLeader ? 'leader' : (isTrainer ? 'trainer' : null);
+
+      // Update ranking scores using diff derived from DATABASE values (only if NOT an STL and userType is valid)
+      if (!isSTL && userType && (diffScore !== 0 || diffLeads !== 0)) {
         if (userType === 'leader' && diffScore !== 0) {
           await updateDoc(doc(db, 'config', 'global'), {
             totalConverts: increment(diffScore)
@@ -5955,17 +5964,28 @@ export default function App() {
       return foundEntry || { lead: 0, convert: 0, personalLead: 0, submitted: false };
     };
 
-    // 1. Build comprehensive Leaders list (members + approvedUsers + leaderRanking)
+    const isNameSTL = (name: string) => {
+      if (!name) return false;
+      const lower = name.toLowerCase().trim();
+      if (/^stl\b/i.test(lower) || lower.includes('stl')) return true;
+      const cleanN = normalizeName(name);
+      if (stlMembers && stlMembers.some(s => normalizeName(s.name) === cleanN)) return true;
+      const user = approvedUsers.find(u => normalizeName(u.fullName) === cleanN);
+      if (user && user.position === 'STL') return true;
+      return false;
+    };
+
+    // 1. Build comprehensive Leaders list (members + approvedUsers + leaderRanking, excluding STLs)
     const leaderMap = new Map<string, any>();
 
-    // Add leaders from manual members collection
-    members.filter(m => m.type === 'leader').forEach(m => {
+    // Add leaders from manual members collection (excluding STLs)
+    members.filter(m => m.type === 'leader' && !isNameSTL(m.name)).forEach(m => {
       const key = normalizeName(m.name) || m.id;
       leaderMap.set(key, m);
     });
 
-    // Add registered Team Leaders / STLs
-    approvedUsers.filter(u => u.position === 'Team Leader' || u.position === 'STL').forEach(u => {
+    // Add registered Team Leaders (STLs are completely excluded)
+    approvedUsers.filter(u => u.position === 'Team Leader' && !isNameSTL(u.fullName)).forEach(u => {
       const key = normalizeName(u.fullName);
       if (key && !leaderMap.has(key)) {
         leaderMap.set(key, {
@@ -5978,8 +5998,9 @@ export default function App() {
       }
     });
 
-    // Add any standalone leaderRanking entries
+    // Add any standalone leaderRanking entries (excluding STLs)
     leaderRanking.forEach(r => {
+      if (isNameSTL(r.name)) return;
       const cleanRName = normalizeName(r.name);
       const cleanRWa = r.whatsapp ? r.whatsapp.replace(/\s+/g, '') : '';
       const exists = Array.from(leaderMap.values()).some(m => 
@@ -5998,7 +6019,7 @@ export default function App() {
       }
     });
 
-    const allLeaders = Array.from(leaderMap.values()).map((m) => {
+    const allLeaders = Array.from(leaderMap.values()).filter(m => !isNameSTL(m.name)).map((m) => {
       const cleanMName = normalizeName(m.name);
       const cleanWa = m.whatsapp ? m.whatsapp.replace(/\s+/g, '') : '';
       const rankingEntry = leaderRanking.find(r => 
@@ -6177,7 +6198,7 @@ export default function App() {
       sortedLeadersByRanking: sortedLR,
       sortedTrainersByRanking: sortedTR
     };
-  }, [members, approvedUsers, results, leaderRanking, trainerRanking]);
+  }, [members, approvedUsers, results, leaderRanking, trainerRanking, stlMembers]);
 
   useEffect(() => {
     rankingDataRef.current = {
@@ -10883,6 +10904,86 @@ function SimpleManagementSection({
   );
 }
 
+function RankingMemberRow({
+  m,
+  idx,
+  onUpdateScore,
+  onDelete
+}: {
+  m: RankingMember,
+  idx: number,
+  onUpdateScore: (id: string, score: number, leads: number) => void,
+  onDelete: (id: string) => void,
+  key?: string
+}) {
+  const [scoreVal, setScoreVal] = useState<string>(String(m.score || 0));
+  const [leadsVal, setLeadsVal] = useState<string>(String(m.leads || 0));
+
+  useEffect(() => {
+    setScoreVal(String(m.score || 0));
+  }, [m.score]);
+
+  useEffect(() => {
+    setLeadsVal(String(m.leads || 0));
+  }, [m.leads]);
+
+  const handleBlur = () => {
+    const s = Number(scoreVal) || 0;
+    const l = Number(leadsVal) || 0;
+    if (s !== m.score || l !== m.leads) {
+      onUpdateScore(m.id, s, l);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.currentTarget.blur();
+    }
+  };
+
+  return (
+    <div className="flex items-center justify-between bg-surface/50 border border-border rounded-xl p-3 px-4 text-xs group hover:border-gold/30 transition-all animate-fade-in">
+      <div className="flex items-center gap-3 flex-1">
+        <span className={`text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-lg ${idx === 0 ? 'bg-gold text-bg' : 'bg-white/10 text-white/40 font-mono'}`}>{idx + 1}</span>
+        <span className="text-white font-bold">{m.name}</span>
+      </div>
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          <div className="flex flex-col items-center">
+            <span className="text-[6px] uppercase opacity-40 font-black">Conv</span>
+            <input 
+              type="number"
+              value={scoreVal}
+              onChange={(e) => setScoreVal(e.target.value)}
+              onBlur={handleBlur}
+              onKeyDown={handleKeyDown}
+              className="w-10 bg-transparent text-center text-gold font-bold outline-none border-b border-white/5 focus:border-gold"
+            />
+          </div>
+          <div className="flex flex-col items-center">
+            <span className="text-[6px] uppercase opacity-40 font-black">Lead</span>
+            <input 
+              type="number"
+              value={leadsVal}
+              onChange={(e) => setLeadsVal(e.target.value)}
+              onBlur={handleBlur}
+              onKeyDown={handleKeyDown}
+              className="w-10 bg-transparent text-center text-blue-accent font-bold outline-none border-b border-white/5 focus:border-blue-accent"
+            />
+          </div>
+        </div>
+        <button 
+          type="button"
+          onClick={() => onDelete(m.id)}
+          className="p-1 text-muted-main hover:text-red-accent transition-all opacity-0 group-hover:opacity-100"
+        >
+          <Trash2 size={12} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function RankingSection({ 
   title, 
   icon: Icon, 
@@ -10969,43 +11070,13 @@ function RankingSection({
           <div className="text-center text-muted-main2 text-xs py-4 italic">কোনো ডাটা নেই</div>
         ) : (
           members.map((m, idx) => (
-            <div 
-              key={m.id} 
-              className="flex items-center justify-between bg-surface/50 border border-border rounded-xl p-3 px-4 text-xs group hover:border-gold/30 transition-all"
-            >
-              <div className="flex items-center gap-3 flex-1">
-                <span className={`text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-lg ${idx === 0 ? 'bg-gold text-bg' : 'bg-white/10 text-white/40 font-mono'}`}>{idx + 1}</span>
-                <span className="text-white font-bold">{m.name}</span>
-              </div>
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2">
-                  <div className="flex flex-col items-center">
-                    <span className="text-[6px] uppercase opacity-40 font-black">Conv</span>
-                    <input 
-                      type="number"
-                      defaultValue={m.score}
-                      onBlur={(e) => onUpdateScore(m.id, Number(e.target.value) - (m.score || 0), 0)}
-                      className="w-10 bg-transparent text-center text-gold font-bold outline-none border-b border-white/5 focus:border-gold"
-                    />
-                  </div>
-                  <div className="flex flex-col items-center">
-                    <span className="text-[6px] uppercase opacity-40 font-black">Lead</span>
-                    <input 
-                      type="number"
-                      defaultValue={m.leads || 0}
-                      onBlur={(e) => onUpdateScore(m.id, 0, Number(e.target.value) - (m.leads || 0))}
-                      className="w-10 bg-transparent text-center text-blue-accent font-bold outline-none border-b border-white/5 focus:border-blue-accent"
-                    />
-                  </div>
-                </div>
-                <button 
-                  onClick={() => onDelete(m.id)}
-                  className="p-1 text-muted-main hover:text-red-accent transition-all opacity-0 group-hover:opacity-100"
-                >
-                  <Trash2 size={12} />
-                </button>
-              </div>
-            </div>
+            <RankingMemberRow 
+              key={m.id}
+              m={m}
+              idx={idx}
+              onUpdateScore={onUpdateScore}
+              onDelete={onDelete}
+            />
           ))
         )}
       </div>

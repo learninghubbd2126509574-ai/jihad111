@@ -137,7 +137,21 @@ export default function LoginStatsModal({
     };
   }, [target, progressPercentage, totalConvert, convertDue, daysRemaining, activeConvertIncome]);
 
-  if (!isOpen || !currentUser) return null;
+  const isSTL = useMemo(() => {
+    if (!currentUser) return false;
+    const pos = (currentUser.position || currentUser.role || '').toLowerCase();
+    if (pos === 'stl' || pos.includes('stl')) return true;
+    
+    const role = (activeMember?.type || '').toLowerCase();
+    if (role === 'stl' || role.includes('stl')) return true;
+
+    const name = (currentUser.fullName || activeMember?.name || '').toLowerCase();
+    if (name.includes('stl') || /^stl\b/i.test(name)) return true;
+
+    return false;
+  }, [currentUser, activeMember]);
+
+  if (!isOpen || !currentUser || isSTL) return null;
 
   return (
     <AnimatePresence>
