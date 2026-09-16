@@ -1344,16 +1344,17 @@ const AllMembersSubmissionSheet: React.FC<AllMembersSubmissionSheetProps> = ({
     const addedNames = new Set<string>();
 
     approvedUsers.forEach(u => {
-      addedWhatsapp.add(u.whatsapp);
-      addedNames.add(u.fullName.trim().toLowerCase());
+      addedWhatsapp.add(u.whatsapp || '');
+      const uName = (u.fullName || '').trim().toLowerCase();
+      addedNames.add(uName);
       const isLeader = u.position === 'Team Leader';
       const isTrainer = u.position === 'Team Trainer';
-      const matchedMember = members.find(m => m.name.trim().toLowerCase() === u.fullName.trim().toLowerCase());
+      const matchedMember = members.find(m => (m.name || '').trim().toLowerCase() === uName);
       list.push({
-        key: u.whatsapp,
-        name: u.fullName,
+        key: u.whatsapp || '',
+        name: u.fullName || '',
         position: u.position || 'Team Member',
-        whatsapp: u.whatsapp,
+        whatsapp: u.whatsapp || '',
         memberId: matchedMember?.id,
         profilePic: u.profilePic,
         isLeader,
@@ -1362,10 +1363,10 @@ const AllMembersSubmissionSheet: React.FC<AllMembersSubmissionSheetProps> = ({
     });
 
     members.forEach(m => {
-      if (!addedNames.has(m.name.trim().toLowerCase())) {
+      if (!addedNames.has((m.name || '').trim().toLowerCase())) {
         list.push({
           key: m.id,
-          name: m.name,
+          name: m.name || '',
           position: m.type === 'leader' ? 'Team Leader' : m.type === 'trainer' ? 'Team Trainer' : 'Member',
           whatsapp: '',
           memberId: m.id,
@@ -1884,22 +1885,22 @@ const BalanceManagementSection = ({
   const userOptions = useMemo(() => {
     const list: { key: string; name: string; position?: string; whatsapp: string; memberId?: string }[] = [];
     approvedUsers.forEach(u => {
-      const cleanName = u.fullName.trim().toLowerCase();
-      const matchedMember = members.find(m => m.name.trim().toLowerCase() === cleanName);
+      const cleanName = (u.fullName || '').trim().toLowerCase();
+      const matchedMember = members.find(m => (m.name || '').trim().toLowerCase() === cleanName);
       list.push({ 
-        key: u.whatsapp, 
-        name: u.fullName, 
+        key: u.whatsapp || '', 
+        name: u.fullName || '', 
         position: u.position, 
-        whatsapp: u.whatsapp,
+        whatsapp: u.whatsapp || '',
         memberId: matchedMember?.id
       });
     });
     members.forEach(m => {
-      const cleanName = m.name.trim().toLowerCase();
-      if (!list.some(x => x.name.trim().toLowerCase() === cleanName)) {
+      const cleanName = (m.name || '').trim().toLowerCase();
+      if (!list.some(x => (x.name || '').trim().toLowerCase() === cleanName)) {
         list.push({ 
           key: m.id, 
-          name: m.name, 
+          name: m.name || '', 
           position: m.type === 'leader' ? 'Team Leader' : m.type === 'trainer' ? 'Team Trainer' : 'Team Member', 
           whatsapp: m.whatsapp || '', 
           memberId: m.id 
@@ -2860,23 +2861,8 @@ export default function App() {
   const [members, setMembers] = useState<Member[]>([]);
   const [results, setResults] = useState<Record<string, Result>>({});
 
-  const leaderRanking = useMemo(() => {
-    const ranking = members.filter(m => m.type === 'leader').map(m => {
-      const memberResults = (Object.values(results) as Result[]).filter(r => r.memberId === m.id);
-      const score = memberResults.reduce((acc, r) => acc + (r.convert || 0), 0);
-      return { id: m.id, name: m.name, score, createdAt: null } as RankingMember;
-    });
-    return ranking.sort((a, b) => b.score - a.score);
-  }, [members, results]);
-
-  const trainerRanking = useMemo(() => {
-    const ranking = members.filter(m => m.type === 'trainer').map(m => {
-      const memberResults = (Object.values(results) as Result[]).filter(r => r.memberId === m.id);
-      const score = memberResults.reduce((acc, r) => acc + (r.convert || 0), 0);
-      return { id: m.id, name: m.name, score, createdAt: null } as RankingMember;
-    });
-    return ranking.sort((a, b) => b.score - a.score);
-  }, [members, results]);
+  const [leaderRanking, setLeaderRanking] = useState<RankingMember[]>([]);
+  const [trainerRanking, setTrainerRanking] = useState<RankingMember[]>([]);
   const [config, setConfig] = useState<Config>(() => {
     const cachedLogo = typeof window !== 'undefined' ? localStorage.getItem('unity_custom_logo') || '' : '';
     return { 
@@ -3338,6 +3324,54 @@ export default function App() {
       handleFirestoreError(err, OperationType.GET, 'userBalances', showMsg);
     });
 
+    // Listen to Leader Ranking (Always real-time)
+    const unsubLeaderRanking = onSnapshot(collection(db, 'leaderRanking'), (snapshot) => {
+      const list: RankingMember[] = [];
+      snapshot.forEach(d => {
+        list.push({ id: d.id, ...d.data() } as RankingMember);
+      });
+      list.sort((a, b) => (b.score || 0) - (a.score || 0));
+      setLeaderRanking(list);
+    }, async (err) => {
+      console.warn('LeaderRanking Listener Error, attempting cache fallback:', err);
+      try {
+        const cacheSnap = await getDocsFromCache(collection(db, 'leaderRanking'));
+        const list: RankingMember[] = [];
+        cacheSnap.forEach(d => {
+          list.push({ id: d.id, ...d.data() } as RankingMember);
+        });
+        list.sort((a, b) => (b.score || 0) - (a.score || 0));
+        setLeaderRanking(list);
+      } catch (cacheErr) {
+        console.warn('Failed to fetch leader ranking from cache:', cacheErr);
+      }
+      handleFirestoreError(err, OperationType.GET, 'leaderRanking', showMsg);
+    });
+
+    // Listen to Trainer Ranking (Always real-time)
+    const unsubTrainerRanking = onSnapshot(collection(db, 'trainerRanking'), (snapshot) => {
+      const list: RankingMember[] = [];
+      snapshot.forEach(d => {
+        list.push({ id: d.id, ...d.data() } as RankingMember);
+      });
+      list.sort((a, b) => (b.score || 0) - (a.score || 0));
+      setTrainerRanking(list);
+    }, async (err) => {
+      console.warn('TrainerRanking Listener Error, attempting cache fallback:', err);
+      try {
+        const cacheSnap = await getDocsFromCache(collection(db, 'trainerRanking'));
+        const list: RankingMember[] = [];
+        cacheSnap.forEach(d => {
+          list.push({ id: d.id, ...d.data() } as RankingMember);
+        });
+        list.sort((a, b) => (b.score || 0) - (a.score || 0));
+        setTrainerRanking(list);
+      } catch (cacheErr) {
+        console.warn('Failed to fetch trainer ranking from cache:', cacheErr);
+      }
+      handleFirestoreError(err, OperationType.GET, 'trainerRanking', showMsg);
+    });
+
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth();
@@ -3514,6 +3548,8 @@ export default function App() {
       unsubDemoMembers();
       unsubQuickLinks();
       unsubBalances();
+      unsubLeaderRanking();
+      unsubTrainerRanking();
       unsubSubmissionLogs();
       unsubAuditLogs();
       unsubApps();
@@ -4775,6 +4811,43 @@ export default function App() {
     }
   };
 
+  const updateMultipleRankingScores = async (type: 'leader' | 'trainer', updates: Record<string, { score: number; leads: number }>) => {
+    const coll = type === 'leader' ? 'leaderRanking' : 'trainerRanking';
+    try {
+      const rankingList = type === 'leader' ? leaderRanking : trainerRanking;
+      const batch = writeBatch(db);
+      let totalDiffScore = 0;
+
+      Object.entries(updates).forEach(([id, vals]) => {
+        const entry = rankingList.find(r => r.id === id);
+        if (!entry) return;
+        const prevScore = entry ? Number(entry.score || 0) : 0;
+        const diffScore = vals.score - prevScore;
+
+        batch.update(doc(db, coll, id), { 
+          score: vals.score,
+          leads: vals.leads,
+          updatedAt: serverTimestamp()
+        });
+
+        if (type === 'leader') {
+          totalDiffScore += diffScore;
+        }
+      });
+
+      if (type === 'leader' && totalDiffScore !== 0) {
+        batch.update(doc(db, 'config', 'global'), {
+          totalConverts: increment(totalDiffScore)
+        });
+      }
+
+      await batch.commit();
+      showMsg('সব পরিবর্তন সফলভাবে সেভ হয়েছে!', 'success');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `${coll}/multiple-update`, showMsg);
+    }
+  };
+
   const addTeacher = async (name: string) => {
     if (!name.trim()) return;
     try {
@@ -6025,7 +6098,7 @@ export default function App() {
       const rankingEntry = leaderRanking.find(r => 
         r.id === m.id ||
         (cleanWa && r.whatsapp && r.whatsapp.replace(/\s+/g, '') === cleanWa) ||
-        r.name.trim().toLowerCase() === m.name.trim().toLowerCase() ||
+        (r.name || '').trim().toLowerCase() === (m.name || '').trim().toLowerCase() ||
         (cleanMName && normalizeName(r.name) === cleanMName)
       );
       const res = getResultForMember(m);
@@ -6089,7 +6162,7 @@ export default function App() {
       const rankingEntry = trainerRanking.find(r => 
         r.id === m.id ||
         (cleanWa && r.whatsapp && r.whatsapp.replace(/\s+/g, '') === cleanWa) ||
-        r.name.trim().toLowerCase() === m.name.trim().toLowerCase() ||
+        (r.name || '').trim().toLowerCase() === (m.name || '').trim().toLowerCase() ||
         (cleanMName && normalizeName(r.name) === cleanMName)
       );
       const res = getResultForMember(m);
@@ -8151,6 +8224,7 @@ export default function App() {
                         onAdd={(name, score, leads) => addRankingMember('leader', name, score, leads)} 
                         onDelete={(id) => deleteRankingMember('leader', id)} 
                         onUpdateScore={(id, score, leads) => updateRankingScore('leader', id, score, leads)}
+                        onUpdateMultipleScores={(updates) => updateMultipleRankingScores('leader', updates)}
                         isActive={config.leaderRankingActive || false}
                         onToggleActive={(val) => updateAttendanceConfig(undefined, undefined, val, undefined)}
                       />
@@ -8162,6 +8236,7 @@ export default function App() {
                         onAdd={(name, score, leads) => addRankingMember('trainer', name, score, leads)} 
                         onDelete={(id) => deleteRankingMember('trainer', id)} 
                         onUpdateScore={(id, score, leads) => updateRankingScore('trainer', id, score, leads)}
+                        onUpdateMultipleScores={(updates) => updateMultipleRankingScores('trainer', updates)}
                         isActive={config.trainerRankingActive || false}
                         onToggleActive={(val) => updateAttendanceConfig(undefined, undefined, undefined, val)}
                       />
@@ -10907,45 +10982,44 @@ function SimpleManagementSection({
 function RankingMemberRow({
   m,
   idx,
-  onUpdateScore,
-  onDelete
+  scoreVal,
+  leadsVal,
+  onScoreChange,
+  onLeadsChange,
+  onSave,
+  onReset,
+  onDelete,
+  hasChanges
 }: {
   m: RankingMember,
   idx: number,
-  onUpdateScore: (id: string, score: number, leads: number) => void,
+  scoreVal: string,
+  leadsVal: string,
+  onScoreChange: (val: string) => void,
+  onLeadsChange: (val: string) => void,
+  onSave: () => void | Promise<void>,
+  onReset: () => void,
   onDelete: (id: string) => void,
-  key?: string
+  hasChanges: boolean,
+  key?: any
 }) {
-  const [scoreVal, setScoreVal] = useState<string>(String(m.score || 0));
-  const [leadsVal, setLeadsVal] = useState<string>(String(m.leads || 0));
-
-  useEffect(() => {
-    setScoreVal(String(m.score || 0));
-  }, [m.score]);
-
-  useEffect(() => {
-    setLeadsVal(String(m.leads || 0));
-  }, [m.leads]);
-
-  const handleBlur = () => {
-    const s = Number(scoreVal) || 0;
-    const l = Number(leadsVal) || 0;
-    if (s !== m.score || l !== m.leads) {
-      onUpdateScore(m.id, s, l);
-    }
-  };
-
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.currentTarget.blur();
+      onSave();
     }
   };
 
   return (
-    <div className="flex items-center justify-between bg-surface/50 border border-border rounded-xl p-3 px-4 text-xs group hover:border-gold/30 transition-all animate-fade-in">
+    <div className={`flex items-center justify-between bg-surface/50 border rounded-xl p-3 px-4 text-xs group transition-all animate-fade-in ${hasChanges ? 'border-amber-500 bg-amber-500/5 shadow-md shadow-amber-500/5' : 'border-border hover:border-gold/30'}`}>
       <div className="flex items-center gap-3 flex-1">
         <span className={`text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-lg ${idx === 0 ? 'bg-gold text-bg' : 'bg-white/10 text-white/40 font-mono'}`}>{idx + 1}</span>
-        <span className="text-white font-bold">{m.name}</span>
+        <div className="flex flex-col">
+          <span className="text-white font-bold">{m.name}</span>
+          {hasChanges && (
+            <span className="text-[9px] text-amber-400 font-medium">অসংরক্ষিত পরিবর্তন</span>
+          )}
+        </div>
       </div>
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2">
@@ -10954,8 +11028,7 @@ function RankingMemberRow({
             <input 
               type="number"
               value={scoreVal}
-              onChange={(e) => setScoreVal(e.target.value)}
-              onBlur={handleBlur}
+              onChange={(e) => onScoreChange(e.target.value)}
               onKeyDown={handleKeyDown}
               className="w-10 bg-transparent text-center text-gold font-bold outline-none border-b border-white/5 focus:border-gold"
             />
@@ -10965,20 +11038,41 @@ function RankingMemberRow({
             <input 
               type="number"
               value={leadsVal}
-              onChange={(e) => setLeadsVal(e.target.value)}
-              onBlur={handleBlur}
+              onChange={(e) => onLeadsChange(e.target.value)}
               onKeyDown={handleKeyDown}
               className="w-10 bg-transparent text-center text-blue-accent font-bold outline-none border-b border-white/5 focus:border-blue-accent"
             />
           </div>
         </div>
-        <button 
-          type="button"
-          onClick={() => onDelete(m.id)}
-          className="p-1 text-muted-main hover:text-red-accent transition-all opacity-0 group-hover:opacity-100"
-        >
-          <Trash2 size={12} />
-        </button>
+        
+        {hasChanges ? (
+          <div className="flex items-center gap-1">
+            <button 
+              type="button"
+              onClick={onSave}
+              title="সেভ করুন"
+              className="p-1 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-all"
+            >
+              <Check size={10} />
+            </button>
+            <button 
+              type="button"
+              onClick={onReset}
+              title="পুনরায় সেট করুন"
+              className="p-1 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-all"
+            >
+              <X size={10} />
+            </button>
+          </div>
+        ) : (
+          <button 
+            type="button"
+            onClick={() => onDelete(m.id)}
+            className="p-1 text-muted-main hover:text-red-accent transition-all opacity-0 group-hover:opacity-100"
+          >
+            <Trash2 size={12} />
+          </button>
+        )}
       </div>
     </div>
   );
@@ -10992,6 +11086,7 @@ function RankingSection({
   onAdd, 
   onDelete, 
   onUpdateScore,
+  onUpdateMultipleScores,
   isActive, 
   onToggleActive
 }: {
@@ -11002,12 +11097,88 @@ function RankingSection({
   onAdd: (name: string, score: number, leads: number) => void,
   onDelete: (id: string) => void,
   onUpdateScore: (id: string, score: number, leads: number) => void,
+  onUpdateMultipleScores: (updates: Record<string, { score: number, leads: number }>) => Promise<void>,
   isActive: boolean,
   onToggleActive: (val: boolean) => void
 }) {
   const [newName, setNewName] = useState('');
   const [newScore, setNewScore] = useState('');
   const [newLeads, setNewLeads] = useState('');
+
+  const [localEdits, setLocalEdits] = useState<Record<string, { score: number, leads: number }>>({});
+  const [isSavingAll, setIsSavingAll] = useState(false);
+
+  useEffect(() => {
+    setLocalEdits(prev => {
+      const next = { ...prev };
+      let changed = false;
+      Object.entries(next).forEach(([id, val]) => {
+        const entry = val as { score: number, leads: number };
+        const m = members.find(member => member.id === id);
+        if (m && (m.score || 0) === entry.score && (m.leads || 0) === entry.leads) {
+          delete next[id];
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [members]);
+
+  const handleRowScoreChange = (id: string, rawVal: string) => {
+    const score = Number(rawVal) || 0;
+    const currentLeads = localEdits[id]?.leads ?? (members.find(m => m.id === id)?.leads || 0);
+    setLocalEdits(prev => ({
+      ...prev,
+      [id]: { score, leads: currentLeads }
+    }));
+  };
+
+  const handleRowLeadsChange = (id: string, rawVal: string) => {
+    const leads = Number(rawVal) || 0;
+    const currentScore = localEdits[id]?.score ?? (members.find(m => m.id === id)?.score || 0);
+    setLocalEdits(prev => ({
+      ...prev,
+      [id]: { score: currentScore, leads }
+    }));
+  };
+
+  const handleSaveAll = async () => {
+    if (Object.keys(localEdits).length === 0) return;
+    setIsSavingAll(true);
+    try {
+      await onUpdateMultipleScores(localEdits);
+      setLocalEdits({});
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsSavingAll(false);
+    }
+  };
+
+  const handleSaveIndividual = async (id: string) => {
+    const edit = localEdits[id];
+    if (!edit) return;
+    try {
+      await onUpdateScore(id, edit.score, edit.leads);
+      setLocalEdits(prev => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleResetRow = (id: string) => {
+    setLocalEdits(prev => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
+
+  const hasUnsavedChanges = Object.keys(localEdits).length > 0;
 
   return (
     <div className="mb-8 p-5 bg-bg border border-border rounded-2xl relative group overflow-hidden">
@@ -11069,17 +11240,44 @@ function RankingSection({
         {members.length === 0 ? (
           <div className="text-center text-muted-main2 text-xs py-4 italic">কোনো ডাটা নেই</div>
         ) : (
-          members.map((m, idx) => (
-            <RankingMemberRow 
-              key={m.id}
-              m={m}
-              idx={idx}
-              onUpdateScore={onUpdateScore}
-              onDelete={onDelete}
-            />
-          ))
+          members.map((m, idx) => {
+            const hasChanges = m.id in localEdits;
+            const scoreVal = hasChanges ? String(localEdits[m.id].score) : String(m.score || 0);
+            const leadsVal = hasChanges ? String(localEdits[m.id].leads) : String(m.leads || 0);
+
+            return (
+              <RankingMemberRow 
+                key={m.id}
+                m={m}
+                idx={idx}
+                scoreVal={scoreVal}
+                leadsVal={leadsVal}
+                onScoreChange={(val) => handleRowScoreChange(m.id, val)}
+                onLeadsChange={(val) => handleRowLeadsChange(m.id, val)}
+                onSave={() => handleSaveIndividual(m.id)}
+                onReset={() => handleResetRow(m.id)}
+                onDelete={onDelete}
+                hasChanges={hasChanges}
+              />
+            );
+          })
         )}
       </div>
+
+      {hasUnsavedChanges && (
+        <div className="mt-4 p-2 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-center justify-between gap-3 animate-fade-in">
+          <div className="text-[10px] text-amber-400 pl-1">
+            ⚠️ <strong>{Object.keys(localEdits).length}টি</strong> পরিবর্তন সেভ করা হয়নি।
+          </div>
+          <button 
+            onClick={handleSaveAll}
+            disabled={isSavingAll}
+            className="bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 text-[11px] transition-all shadow-md active:scale-95 disabled:opacity-50"
+          >
+            {isSavingAll ? 'সেভ হচ্ছে...' : 'সব পরিবর্তন সেভ করুন'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
