@@ -126,9 +126,30 @@ import {
   Save,
   KeyRound,
   Database,
-  TrendingUp
+  TrendingUp,
+  Keyboard
 } from 'lucide-react';
 import { SupabaseSettings } from './components/SupabaseSettings';
+
+// Global Server Time Synchronization to eliminate device clock skew
+let serverTimeOffset = 0;
+async function fetchServerTime() {
+  try {
+    const t0 = Date.now();
+    const res = await fetch('/api/time', { cache: 'no-store' });
+    if (res.ok) {
+      const data = await res.json();
+      const t1 = Date.now();
+      const latency = Math.round((t1 - t0) / 2);
+      serverTimeOffset = (data.now + latency) - t1;
+    }
+  } catch (err) {
+    // Keep 0 if failed
+  }
+}
+function getSyncedNow(): number {
+  return Date.now() + serverTimeOffset;
+}
 
 import { 
   format, 
@@ -146,7 +167,8 @@ import {
 } from 'date-fns';
 import { bn } from 'date-fns/locale';
 import CartoonAvatar, { CARTOON_AVATAR_LIST } from './components/CartoonAvatar';
-import StlWiseResultSection, { normalizeName } from './components/StlWiseResultSection';
+import StlWiseResultSection, { normalizeName, resolveTLConvertData } from './components/StlWiseResultSection';
+import { toEnglishDigits, normalizePhoneNumber, getCleanDigits, generatePhoneCandidates, comparePasswords } from './lib/authHelpers';
 import StlAssignmentModal from './components/StlAssignmentModal';
 import StlAdminManager from './components/StlAdminManager';
 import UserQuickSubmitCard from './components/UserQuickSubmitCard';
@@ -497,7 +519,7 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin, customLogo }: {
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [activeKeypad, setActiveKeypad] = useState<'phone' | 'password' | 'admin' | null>(null);
-  const [rememberMe, setRememberMe] = useState(true);
+  const [rememberMe, setRememberMe] = useState(false);
 
   const [logoSrc, setLogoSrc] = useState<string | null>(() => {
     return customLogo || (typeof window !== 'undefined' ? localStorage.getItem('unity_custom_logo') : null);
@@ -681,33 +703,54 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin, customLogo }: {
                   <Lock size={12} className="text-blue-600" />
                   ACCESS PASSWORD
                 </label>
-                <div className="relative">
+                <div className="relative" onClick={() => setActiveKeypad('admin')}>
                   <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                   <input 
                     required
-                    readOnly
                     type={showPass ? "text" : "password"}
+                    readOnly
                     inputMode="none"
                     autoComplete="off"
-                    autoCorrect="off"
-                    spellCheck={false}
                     placeholder="Enter admin password..."
                     value={password}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveKeypad('admin');
+                    }}
                     onFocus={(e) => {
                       e.target.blur();
                       setActiveKeypad('admin');
                     }}
-                    onClick={() => setActiveKeypad('admin')}
-                    onChange={e => setPassword(e.target.value)}
-                    className="w-full bg-slate-50/80 border border-slate-200 rounded-xl py-2.5 pl-10 pr-10 text-slate-900 text-sm outline-none focus:bg-white focus:border-blue-600 focus:ring-4 focus:ring-blue-100 transition-all font-mono cursor-pointer select-none"
+                    onPaste={(e) => {
+                      e.preventDefault();
+                      const text = e.clipboardData.getData('text');
+                      if (text) setPassword(password + text);
+                    }}
+                    className="w-full bg-slate-50/80 border border-slate-200 rounded-xl py-2.5 pl-10 pr-20 text-slate-900 text-sm outline-none focus:bg-white focus:border-blue-600 focus:ring-4 focus:ring-blue-100 transition-all font-mono cursor-pointer select-none"
                   />
-                  <button 
-                    type="button"
-                    onClick={() => setShowPass(!showPass)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors p-1"
-                  >
-                    {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
+                  <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                    <button 
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveKeypad('admin');
+                      }}
+                      className="p-1.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 bg-blue-50/60 rounded-lg transition-colors cursor-pointer"
+                      title="অন-স্ক্রিন কিপ্যাড খুলুন"
+                    >
+                      <Keyboard size={16} />
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowPass(!showPass);
+                      }}
+                      className="p-1.5 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                    >
+                      {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -797,31 +840,43 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin, customLogo }: {
                     </button>
                   )}
                 </div>
-                <div className="relative">
+                <div className="relative" onClick={() => setActiveKeypad('phone')}>
                   <Smartphone className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                   <input 
                     required
                     type="tel"
+                    readOnly
                     inputMode="none"
                     autoComplete="off"
-                    autoCorrect="off"
-                    spellCheck={false}
                     placeholder="Enter WhatsApp number (017...)"
                     value={whatsapp}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveKeypad('phone');
+                    }}
+                    onFocus={(e) => {
+                      e.target.blur();
+                      setActiveKeypad('phone');
+                    }}
                     onPaste={(e) => {
                       e.preventDefault();
                       const text = e.clipboardData.getData('text');
                       const cleaned = text.replace(/[^0-9+]/g, '');
                       if (cleaned) setWhatsapp((whatsapp + cleaned).slice(0, 15));
                     }}
-                    onFocus={(e) => {
-                      e.target.blur();
+                    className="w-full bg-slate-50/80 border border-slate-200 rounded-xl py-2.5 pl-10 pr-12 text-slate-900 text-sm font-mono outline-none focus:bg-white focus:border-blue-600 focus:ring-4 focus:ring-blue-100 transition-all cursor-pointer select-none"
+                  />
+                  <button 
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
                       setActiveKeypad('phone');
                     }}
-                    onClick={() => setActiveKeypad('phone')}
-                    onChange={e => setWhatsapp(e.target.value)}
-                    className="w-full bg-slate-50/80 border border-slate-200 rounded-xl py-2.5 pl-10 pr-4 text-slate-900 text-sm font-mono outline-none focus:bg-white focus:border-blue-600 focus:ring-4 focus:ring-blue-100 transition-all cursor-pointer select-none"
-                  />
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 bg-blue-50/60 rounded-lg transition-colors cursor-pointer"
+                    title="অন-স্ক্রিন কিপ্যাড খুলুন"
+                  >
+                    <Keyboard size={16} />
+                  </button>
                 </div>
               </div>
 
@@ -868,37 +923,54 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin, customLogo }: {
                     </button>
                   )}
                 </div>
-                <div className="relative">
+                <div className="relative" onClick={() => setActiveKeypad('password')}>
                   <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                   <input 
                     required
                     type={showPass ? "text" : "password"}
+                    readOnly
                     inputMode="none"
                     autoComplete="off"
-                    autoCorrect="off"
-                    spellCheck={false}
                     placeholder="Enter password..."
                     value={password}
-                    onPaste={(e) => {
-                      e.preventDefault();
-                      const text = e.clipboardData.getData('text');
-                      if (text) setPassword(password + text);
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveKeypad('password');
                     }}
                     onFocus={(e) => {
                       e.target.blur();
                       setActiveKeypad('password');
                     }}
-                    onClick={() => setActiveKeypad('password')}
-                    onChange={e => setPassword(e.target.value)}
-                    className="w-full bg-slate-50/80 border border-slate-200 rounded-xl py-2.5 pl-10 pr-10 text-slate-900 text-sm outline-none focus:bg-white focus:border-blue-600 focus:ring-4 focus:ring-blue-100 transition-all font-mono cursor-pointer select-none"
+                    onPaste={(e) => {
+                      e.preventDefault();
+                      const text = e.clipboardData.getData('text');
+                      if (text) setPassword(password + text);
+                    }}
+                    className="w-full bg-slate-50/80 border border-slate-200 rounded-xl py-2.5 pl-10 pr-20 text-slate-900 text-sm outline-none focus:bg-white focus:border-blue-600 focus:ring-4 focus:ring-blue-100 transition-all font-mono cursor-pointer select-none"
                   />
-                  <button 
-                    type="button"
-                    onClick={() => setShowPass(!showPass)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors p-1"
-                  >
-                    {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
+                  <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                    <button 
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveKeypad('password');
+                      }}
+                      className="p-1.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 bg-blue-50/60 rounded-lg transition-colors cursor-pointer"
+                      title="অন-স্ক্রিন কিপ্যাড খুলুন"
+                    >
+                      <Keyboard size={16} />
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowPass(!showPass);
+                      }}
+                      className="p-1.5 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                    >
+                      {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -966,6 +1038,7 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin, customLogo }: {
           value={whatsapp} 
           onChange={setWhatsapp} 
           onClose={() => setActiveKeypad(null)} 
+          onNext={() => setActiveKeypad('password')}
           title={mode === 'login' ? "WhatsApp Number" : "Personal Phone Number"}
           savedAccounts={savedAccounts}
           onSaveAccount={handleSaveAccount}
@@ -982,6 +1055,7 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin, customLogo }: {
           value={password} 
           onChange={setPassword} 
           onClose={() => setActiveKeypad(null)} 
+          onSubmit={() => setActiveKeypad(null)}
           title={activeKeypad === 'admin' ? "Admin Access Password" : (mode === 'login' ? "Account Password" : "Create New Password")}
           savedAccounts={savedAccounts}
           onSaveAccount={handleSaveAccount}
@@ -2940,7 +3014,10 @@ export default function App() {
   const [approvedUsers, setApprovedUsers] = useState<UserRegistration[]>([]);
   const [authenticatedUser, setAuthenticatedUser] = useState<UserRegistration | null>(() => {
     try {
-      const saved = localStorage.getItem('unity_user');
+      // Force re-login on new sessions/browser exits per user request:
+      // Clear persistent localStorage cache so opening link afresh prompts login
+      localStorage.removeItem('unity_user');
+      const saved = sessionStorage.getItem('unity_session_user');
       return saved ? JSON.parse(saved) : null;
     } catch (e) {
       return null;
@@ -3069,8 +3146,8 @@ export default function App() {
       // Handle Push Notification Registration
       if (u) {
         try {
-          const registeredUserStr = localStorage.getItem('unity_user');
-          const isAdminLoggedIn = localStorage.getItem('isAdmin') === 'true';
+          const registeredUserStr = sessionStorage.getItem('unity_session_user') || localStorage.getItem('unity_user');
+          const isAdminLoggedIn = sessionStorage.getItem('isAdmin') === 'true' || localStorage.getItem('isAdmin') === 'true';
           
           let whatsapp = '';
           if (registeredUserStr) {
@@ -3116,8 +3193,8 @@ export default function App() {
       }
 
       // Auto-restore anonymous auth for both admins and regular users who are logged in
-      const isUserLoggedIn = localStorage.getItem('unity_user') !== null;
-      const isAdminLoggedIn = localStorage.getItem('isAdmin') === 'true';
+      const isUserLoggedIn = sessionStorage.getItem('unity_session_user') !== null;
+      const isAdminLoggedIn = sessionStorage.getItem('isAdmin') === 'true' || localStorage.getItem('isAdmin') === 'true';
 
       if ((isAdminLoggedIn || isUserLoggedIn) && !u) {
         try {
@@ -3173,14 +3250,28 @@ export default function App() {
     // Listen to Members
     const unsubMembers = onSnapshot(query(collection(db, 'members'), orderBy('createdAt', 'desc')), (snapshot) => {
       const mList: Member[] = [];
-      snapshot.forEach(d => mList.push({ id: d.id, ...d.data() } as Member));
+      snapshot.forEach(d => {
+        const data = d.data();
+        const rawName = (data?.name && typeof data.name === 'string') ? data.name.trim() : '';
+        if (!rawName || rawName === 'undefined' || rawName === 'null') {
+          // Permanently auto-delete blank/unnamed document so empty boxes never appear
+          deleteDoc(doc(db, 'members', d.id)).catch(console.error);
+          return;
+        }
+        mList.push({ id: d.id, ...data, name: rawName } as Member);
+      });
       setMembers(mList);
     }, async (err) => {
       console.warn('Members Listener Error, attempting cache fallback:', err);
       try {
         const cacheSnap = await getDocsFromCache(query(collection(db, 'members'), orderBy('createdAt', 'desc')));
         const mList: Member[] = [];
-        cacheSnap.forEach(d => mList.push({ id: d.id, ...d.data() } as Member));
+        cacheSnap.forEach(d => {
+          const data = d.data();
+          const rawName = (data?.name && typeof data.name === 'string') ? data.name.trim() : '';
+          if (!rawName || rawName === 'undefined' || rawName === 'null') return;
+          mList.push({ id: d.id, ...data, name: rawName } as Member);
+        });
         setMembers(mList);
       } catch (cacheErr) {
         console.warn('Failed to fetch members from cache:', cacheErr);
@@ -3328,7 +3419,14 @@ export default function App() {
     const unsubLeaderRanking = onSnapshot(collection(db, 'leaderRanking'), (snapshot) => {
       const list: RankingMember[] = [];
       snapshot.forEach(d => {
-        list.push({ id: d.id, ...d.data() } as RankingMember);
+        const data = d.data();
+        const rawName = (data?.name && typeof data.name === 'string') ? data.name.trim() : '';
+        if (!rawName || rawName === 'undefined' || rawName === 'null') {
+          // Permanently auto-delete blank/unnamed document so empty boxes never appear
+          deleteDoc(doc(db, 'leaderRanking', d.id)).catch(console.error);
+          return;
+        }
+        list.push({ id: d.id, ...data, name: rawName } as RankingMember);
       });
       list.sort((a, b) => (b.score || 0) - (a.score || 0));
       setLeaderRanking(list);
@@ -3338,7 +3436,10 @@ export default function App() {
         const cacheSnap = await getDocsFromCache(collection(db, 'leaderRanking'));
         const list: RankingMember[] = [];
         cacheSnap.forEach(d => {
-          list.push({ id: d.id, ...d.data() } as RankingMember);
+          const data = d.data();
+          const rawName = (data?.name && typeof data.name === 'string') ? data.name.trim() : '';
+          if (!rawName || rawName === 'undefined' || rawName === 'null') return;
+          list.push({ id: d.id, ...data, name: rawName } as RankingMember);
         });
         list.sort((a, b) => (b.score || 0) - (a.score || 0));
         setLeaderRanking(list);
@@ -3352,7 +3453,14 @@ export default function App() {
     const unsubTrainerRanking = onSnapshot(collection(db, 'trainerRanking'), (snapshot) => {
       const list: RankingMember[] = [];
       snapshot.forEach(d => {
-        list.push({ id: d.id, ...d.data() } as RankingMember);
+        const data = d.data();
+        const rawName = (data?.name && typeof data.name === 'string') ? data.name.trim() : '';
+        if (!rawName || rawName === 'undefined' || rawName === 'null') {
+          // Permanently auto-delete blank/unnamed document so empty boxes never appear
+          deleteDoc(doc(db, 'trainerRanking', d.id)).catch(console.error);
+          return;
+        }
+        list.push({ id: d.id, ...data, name: rawName } as RankingMember);
       });
       list.sort((a, b) => (b.score || 0) - (a.score || 0));
       setTrainerRanking(list);
@@ -3362,7 +3470,10 @@ export default function App() {
         const cacheSnap = await getDocsFromCache(collection(db, 'trainerRanking'));
         const list: RankingMember[] = [];
         cacheSnap.forEach(d => {
-          list.push({ id: d.id, ...d.data() } as RankingMember);
+          const data = d.data();
+          const rawName = (data?.name && typeof data.name === 'string') ? data.name.trim() : '';
+          if (!rawName || rawName === 'undefined' || rawName === 'null') return;
+          list.push({ id: d.id, ...data, name: rawName } as RankingMember);
         });
         list.sort((a, b) => (b.score || 0) - (a.score || 0));
         setTrainerRanking(list);
@@ -3506,14 +3617,28 @@ export default function App() {
         // Listen to User Registrations (Admin only)
         unsubPending = onSnapshot(query(collection(db, 'pendingRegistrations'), orderBy('createdAt', 'desc')), (snapshot) => {
           const list: UserRegistration[] = [];
-          snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as UserRegistration));
+          snapshot.forEach(d => {
+            const data = d.data();
+            const rawName = (data?.fullName && typeof data.fullName === 'string') ? data.fullName.trim() : '';
+            if (!rawName || rawName === 'undefined' || rawName === 'null') {
+              // Auto-delete blank registration requests
+              deleteDoc(doc(db, 'pendingRegistrations', d.id)).catch(console.error);
+              return;
+            }
+            list.push({ id: d.id, ...data, fullName: rawName } as UserRegistration);
+          });
           setPendingUsers(list);
         }, async (err) => {
           console.warn('Sync Pending error, attempting cache fallback:', err);
           try {
             const cacheSnap = await getDocsFromCache(query(collection(db, 'pendingRegistrations'), orderBy('createdAt', 'desc')));
             const list: UserRegistration[] = [];
-            cacheSnap.forEach(d => list.push({ id: d.id, ...d.data() } as UserRegistration));
+            cacheSnap.forEach(d => {
+              const data = d.data();
+              const rawName = (data?.fullName && typeof data.fullName === 'string') ? data.fullName.trim() : '';
+              if (!rawName || rawName === 'undefined' || rawName === 'null') return;
+              list.push({ id: d.id, ...data, fullName: rawName } as UserRegistration);
+            });
             setPendingUsers(list);
           } catch (cacheErr) {
             console.warn('Failed to fetch pending users from cache:', cacheErr);
@@ -3522,14 +3647,26 @@ export default function App() {
 
         unsubApproved = onSnapshot(collection(db, 'registeredUsers'), (snapshot) => {
           const list: UserRegistration[] = [];
-          snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as UserRegistration));
+          snapshot.forEach(d => {
+            const data = d.data();
+            const rawName = (data?.fullName && typeof data.fullName === 'string') ? data.fullName.trim() : '';
+            // Note: We don't auto-delete approved users because it might be a partial update or migration
+            // but we filter them from the UI.
+            if (!rawName || rawName === 'undefined' || rawName === 'null') return;
+            list.push({ id: d.id, ...data, fullName: rawName } as UserRegistration);
+          });
           setApprovedUsers(list);
         }, async (err) => {
           console.warn('Sync Approved error, attempting cache fallback:', err);
           try {
             const cacheSnap = await getDocsFromCache(collection(db, 'registeredUsers'));
             const list: UserRegistration[] = [];
-            cacheSnap.forEach(d => list.push({ id: d.id, ...d.data() } as UserRegistration));
+            cacheSnap.forEach(d => {
+              const data = d.data();
+              const rawName = (data?.fullName && typeof data.fullName === 'string') ? data.fullName.trim() : '';
+              if (!rawName || rawName === 'undefined' || rawName === 'null') return;
+              list.push({ id: d.id, ...data, fullName: rawName } as UserRegistration);
+            });
             setApprovedUsers(list);
           } catch (cacheErr) {
             console.warn('Failed to fetch approved users from cache:', cacheErr);
@@ -3746,11 +3883,14 @@ export default function App() {
       await signOut(auth);
       setIsAdmin(false);
       localStorage.removeItem('isAdmin');
+      sessionStorage.removeItem('isAdmin');
       setShowAdminPanel(false);
       setSiteAuthenticated(false);
       setAuthenticatedUser(null);
       localStorage.removeItem('stlAuth');
+      sessionStorage.removeItem('stlAuth');
       localStorage.removeItem('unity_user');
+      sessionStorage.removeItem('unity_session_user');
       setTimeout(() => {
         window.location.reload();
       }, 500);
@@ -3815,11 +3955,14 @@ export default function App() {
   };
 
   const loginUser = async (whatsapp: string, pass: string) => {
-    const sanitizedWhatsapp = whatsapp.trim().replace(/\s+/g, '');
+    const rawWa = (whatsapp || '').trim();
+    const sanitizedWhatsapp = normalizePhoneNumber(rawWa);
     console.log('Login attempt for (sanitized):', sanitizedWhatsapp);
     try {
-      // Admin manual login check
-      if (sanitizedWhatsapp === adminEmail) {
+      // 1. Admin manual login check (email, 'admin', or admin phone)
+      const cleanWaLower = sanitizedWhatsapp.toLowerCase();
+      const adminEmailLower = adminEmail.toLowerCase();
+      if (cleanWaLower === adminEmailLower || cleanWaLower === 'admin') {
         console.log('Checking admin login');
         let currentAdminPass = initialAdminPass;
         try {
@@ -3837,46 +3980,85 @@ export default function App() {
           console.warn("Using fallback admin password:", e);
         }
 
-        if (pass === currentAdminPass) {
+        if (comparePasswords(pass, currentAdminPass)) {
           setIsAdmin(true);
-          localStorage.setItem('isAdmin', 'true');
+          sessionStorage.setItem('isAdmin', 'true');
+          localStorage.removeItem('isAdmin');
           setSiteAuthenticated(true);
+          showMsg('এডমিন হিসেবে সফলভাবে লগইন হয়েছে!', 'success');
           return true;
         } else {
-          showMsg('Invalid admin credentials', 'error');
+          showMsg('ভুল এডমিন পাসওয়ার্ড! অনুগ্রহ করে সঠিক পাসওয়ার্ড দিন।', 'error');
           return false;
         }
       }
 
-      console.log('Fetching user from registeredUsers:', sanitizedWhatsapp);
-      let userSnap;
-      try {
-        userSnap = await getDoc(doc(db, 'registeredUsers', sanitizedWhatsapp));
-      } catch (err) {
-        console.warn('Network getDoc failed for login, trying cache fallback:', err);
+      // 2. Look for regular user in registeredUsers
+      const candidates = generatePhoneCandidates(rawWa);
+      let foundUser: UserRegistration | null = null;
+
+      // First check getDoc on candidate IDs
+      for (const candidate of candidates) {
         try {
-          userSnap = await getDocFromCache(doc(db, 'registeredUsers', sanitizedWhatsapp));
-        } catch (cacheErr) {
-          console.warn('Cache getDoc also failed (likely expected):', cacheErr);
-          throw err; // throw original network error if cache also failed
-        }
+          let userSnap;
+          try {
+            userSnap = await getDoc(doc(db, 'registeredUsers', candidate));
+          } catch (err) {
+            userSnap = await getDocFromCache(doc(db, 'registeredUsers', candidate));
+          }
+          if (userSnap && userSnap.exists()) {
+            foundUser = { id: userSnap.id, ...userSnap.data() } as UserRegistration;
+            break;
+          }
+        } catch (_) {}
       }
-      
-      if (!userSnap.exists()) {
+
+      // If not found via direct doc ID, check in approvedUsers state (synced realtime)
+      if (!foundUser) {
+        const cleanDigits = getCleanDigits(rawWa);
+        const last10 = cleanDigits.length >= 10 ? cleanDigits.slice(-10) : cleanDigits;
+        foundUser = approvedUsers.find(u => {
+          const uDigits = getCleanDigits(u.whatsapp);
+          if (cleanDigits && uDigits && cleanDigits === uDigits) return true;
+          if (last10 && uDigits && uDigits.endsWith(last10)) return true;
+          return false;
+        }) || null;
+      }
+
+      // If still not found, fetch docs from registeredUsers collection
+      if (!foundUser) {
+        try {
+          const querySnap = await getDocs(collection(db, 'registeredUsers'));
+          const cleanDigits = getCleanDigits(rawWa);
+          const last10 = cleanDigits.length >= 10 ? cleanDigits.slice(-10) : cleanDigits;
+          querySnap.forEach(d => {
+            if (foundUser) return;
+            const data = d.data() as UserRegistration;
+            const uDigits = getCleanDigits(data.whatsapp || d.id);
+            if (cleanDigits && uDigits && cleanDigits === uDigits) {
+              foundUser = { id: d.id, ...data };
+            } else if (last10 && uDigits && uDigits.endsWith(last10)) {
+              foundUser = { id: d.id, ...data };
+            }
+          });
+        } catch (_) {}
+      }
+
+      if (!foundUser) {
         console.log('User not found in registeredUsers');
-        showMsg('Invalid WhatsApp or Password!', 'error');
-        return false;
-      }
-      
-      const user = userSnap.data() as UserRegistration;
-      console.log('User found, checking password:', user.password === pass);
-      if (user.password !== pass) {
-        showMsg('Invalid WhatsApp or Password!', 'error');
+        showMsg('এই নাম্বারে কোনো রেজিস্টার্ড অ্যাকাউন্ট পাওয়া যায়নি! (Account not found)', 'error');
         return false;
       }
 
-      if (user.status === 'blocked') {
-        showMsg('Your account is blocked!', 'error');
+      // Validate password with robust comparison
+      const isPassValid = comparePasswords(pass, foundUser.password);
+      if (!isPassValid) {
+        showMsg('ভুল পাসওয়ার্ড! অনুগ্রহ করে সঠিক পাসওয়ার্ড লিখুন। (Wrong Password)', 'error');
+        return false;
+      }
+
+      if (foundUser.status === 'blocked') {
+        showMsg('আপনার অ্যাকাউন্টটি সাময়িকভাবে বন্ধ (Blocked) আছে! এডমিনের সাথে যোগাযোগ করুন।', 'error');
         return false;
       }
 
@@ -3889,10 +4071,13 @@ export default function App() {
         console.warn("Auth error during user login:", authErr);
       }
 
-      setAuthenticatedUser(user);
-      localStorage.setItem('unity_user', JSON.stringify(user));
+      setAuthenticatedUser(foundUser);
+      setShowLoginStatsPopup(true);
+      // Store in sessionStorage so browser exit/closing tab forces re-login, per user instruction
+      sessionStorage.setItem('unity_session_user', JSON.stringify(foundUser));
+      localStorage.removeItem('unity_user');
       setUserTab('home');
-      showMsg(`Welcome back, ${user.fullName}!`);
+      showMsg(`স্বাগতম, ${foundUser.fullName}!`, 'success');
       return true;
     } catch (err) {
       handleFirestoreError(err, OperationType.GET, `registeredUsers/${whatsapp}`, showMsg);
@@ -4083,7 +4268,8 @@ export default function App() {
 
                 const updatedUser = { ...currentAuthUser, profilePic: base64 };
                 setAuthenticatedUser(updatedUser);
-                localStorage.setItem('unity_user', JSON.stringify(updatedUser));
+                sessionStorage.setItem('unity_session_user', JSON.stringify(updatedUser));
+                localStorage.removeItem('unity_user');
                 
                 showMsg('প্রোফাইল পিকচার সফলভাবে আপডেট করা হয়েছে!', 'success');
                 cleanup();
@@ -4121,7 +4307,8 @@ export default function App() {
       });
       const updatedUser = { ...currentAuthUser, password: newPassword };
       setAuthenticatedUser(updatedUser);
-      localStorage.setItem('unity_user', JSON.stringify(updatedUser));
+      sessionStorage.setItem('unity_session_user', JSON.stringify(updatedUser));
+      localStorage.removeItem('unity_user');
       showMsg('পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে!', 'success');
       setNewPassword('');
     } catch (err) {
@@ -4157,7 +4344,8 @@ export default function App() {
 
       const updatedUser = { ...currentAuthUser, profilePic: avatarValue };
       setAuthenticatedUser(updatedUser);
-      localStorage.setItem('unity_user', JSON.stringify(updatedUser));
+      sessionStorage.setItem('unity_session_user', JSON.stringify(updatedUser));
+      localStorage.removeItem('unity_user');
       showMsg('কার্টুন অ্যাভাটার সফলভাবে যুক্ত হয়েছে!', 'success');
     } catch (err) {
       showMsg('অ্যাভাটার সেভ করতে সমস্যা হয়েছে', 'error');
@@ -4188,7 +4376,8 @@ export default function App() {
 
       const updatedUser = { ...currentAuthUser, profilePic: '' };
       setAuthenticatedUser(updatedUser);
-      localStorage.setItem('unity_user', JSON.stringify(updatedUser));
+      sessionStorage.setItem('unity_session_user', JSON.stringify(updatedUser));
+      localStorage.removeItem('unity_user');
       showMsg('প্রোফাইল পিকচার মুছে ফেলা হয়েছে, অটো কার্টুন সক্রিয়!', 'success');
     } catch (err) {
       showMsg('ছবি মুছতে সমস্যা হয়েছে', 'error');
@@ -4755,11 +4944,15 @@ export default function App() {
   };
 
   const addRankingMember = async (type: 'leader' | 'trainer', name: string, score: number, leads: number = 0) => {
-    if (!name.trim()) return;
+    const cleanName = (name || '').trim();
+    if (!cleanName) {
+      showMsg('সদস্যের নাম ছাড়া র্যাংকিংয়ে যুক্ত করা সম্ভব নয়।', 'error');
+      return;
+    }
     const coll = type === 'leader' ? 'leaderRanking' : 'trainerRanking';
     try {
       await addDoc(collection(db, coll), {
-        name,
+        name: cleanName,
         score,
         leads,
         createdAt: serverTimestamp()
@@ -5389,16 +5582,22 @@ export default function App() {
 
           // 3. Re-populate from manual roster (members) if not already synced
           members.forEach(member => {
-            const isLeader = member.type === 'leader' || member.type === 'trainer';
-            const coll = member.type === 'leader' ? 'leaderRanking' : 'trainerRanking';
+            const isLeader = member.type === 'leader';
+            const isTrainer = member.type === 'trainer';
+            if (!isLeader && !isTrainer) return;
             
+            const coll = isLeader ? 'leaderRanking' : 'trainerRanking';
+            
+            // Skip if name is invalid
+            if (!member.name || member.name.trim() === '' || member.name === 'undefined' || member.name === 'null') return;
+
             // Check if already added via registeredUsers
             const exists = approvedUsers.some(u => u.fullName.trim().toLowerCase() === member.name.trim().toLowerCase());
             
-            if (!exists && (member.type === 'leader' || member.type === 'trainer')) {
+            if (!exists) {
               const rankingRef = doc(collection(db, coll));
               batch.set(rankingRef, {
-                name: member.name,
+                name: member.name.trim(),
                 score: 0,
                 leads: 0,
                 createdAt: serverTimestamp()
@@ -6282,13 +6481,156 @@ export default function App() {
   }, [sortedLeaders, sortedTrainers, stats]);
 
   const currentAuthUser = useMemo(() => {
-    return approvedUsers.find(u => u.whatsapp === authenticatedUser?.whatsapp) || authenticatedUser;
+    if (!authenticatedUser) return null;
+    const cleanAuthWa = normalizePhoneNumber(authenticatedUser.whatsapp || '').replace(/[^0-9]/g, '');
+    const cleanAuthName = normalizeName(authenticatedUser.fullName || '');
+
+    const found = approvedUsers.find(u => {
+      const uWa = normalizePhoneNumber(u.whatsapp || '').replace(/[^0-9]/g, '');
+      const uName = normalizeName(u.fullName || '');
+      if (cleanAuthWa && uWa && (cleanAuthWa === uWa || (cleanAuthWa.length >= 10 && uWa.endsWith(cleanAuthWa.slice(-10))) || (uWa.length >= 10 && cleanAuthWa.endsWith(uWa.slice(-10))))) {
+        return true;
+      }
+      if (cleanAuthName && uName && cleanAuthName === uName) {
+        return true;
+      }
+      return false;
+    });
+
+    return found ? { ...authenticatedUser, ...found } : authenticatedUser;
   }, [approvedUsers, authenticatedUser]);
 
   const myMember = useMemo(() => {
     if (!currentAuthUser) return null;
-    return members.find(m => m.name.trim().toLowerCase() === currentAuthUser.fullName.trim().toLowerCase());
+    const cleanAuthWa = normalizePhoneNumber(currentAuthUser.whatsapp || '').replace(/[^0-9]/g, '');
+    const cleanAuthName = normalizeName(currentAuthUser.fullName || '');
+
+    return members.find(m => {
+      const mWa = normalizePhoneNumber((m as any).whatsapp || '').replace(/[^0-9]/g, '');
+      const mName = normalizeName(m.name || '');
+      if (cleanAuthWa && mWa && (cleanAuthWa === mWa || (cleanAuthWa.length >= 10 && mWa.endsWith(cleanAuthWa.slice(-10))) || (mWa.length >= 10 && cleanAuthWa.endsWith(mWa.slice(-10))))) {
+        return true;
+      }
+      if (cleanAuthName && mName && (cleanAuthName === mName || cleanAuthName.includes(mName) || mName.includes(cleanAuthName))) {
+        return true;
+      }
+      return false;
+    }) || null;
   }, [members, currentAuthUser]);
+
+  const myStlMember = useMemo(() => {
+    if (!currentAuthUser) return null;
+    const cleanAuthWa = normalizePhoneNumber(currentAuthUser.whatsapp || '').replace(/[^0-9]/g, '');
+    const cleanAuthName = normalizeName(currentAuthUser.fullName || '');
+
+    return (stlMembers || []).find(s => {
+      const sWa = normalizePhoneNumber((s as any).whatsapp || '').replace(/[^0-9]/g, '');
+      const sName = normalizeName(s.name || '');
+      if (cleanAuthWa && sWa && (cleanAuthWa === sWa || (cleanAuthWa.length >= 10 && sWa.endsWith(cleanAuthWa.slice(-10))) || (sWa.length >= 10 && cleanAuthWa.endsWith(sWa.slice(-10))))) {
+        return true;
+      }
+      if (cleanAuthName && sName && (cleanAuthName === sName || cleanAuthName.includes(sName) || sName.includes(cleanAuthName))) {
+        return true;
+      }
+      return false;
+    }) || null;
+  }, [stlMembers, currentAuthUser]);
+
+  const isMySTL = useMemo(() => {
+    if (!currentAuthUser) return false;
+    const pos = (currentAuthUser.position || currentAuthUser.role || '').toLowerCase();
+    if (pos === 'stl' || pos.includes('stl') || pos.includes('senior team leader')) return true;
+    if (myStlMember) return true;
+    const name = (currentAuthUser.fullName || '').toLowerCase();
+    if (name.includes('stl') || /^stl\b/i.test(name)) return true;
+    return false;
+  }, [currentAuthUser, myStlMember]);
+
+  const myStlTotalConverts = useMemo(() => {
+    if (!isMySTL || !myStlMember) return 0;
+    if (myStlMember.assignedTLs && myStlMember.assignedTLs.length > 0) {
+      let sum = 0;
+      const seenTLNames = new Set<string>();
+      const teamLeaders = members.filter(m => (m.type || '').toLowerCase().includes('leader') || (m.type || '').toLowerCase().includes('tl'));
+      myStlMember.assignedTLs.forEach(idOrName => {
+        const cleanIdOrName = normalizeName(idOrName);
+        const member = teamLeaders.find(
+          m => m.id === idOrName || normalizeName(m.name) === cleanIdOrName
+        );
+        const data = resolveTLConvertData(idOrName, teamLeaders, leaderRanking, results, member);
+        const nameKey = normalizeName(data.name || idOrName);
+        if (!seenTLNames.has(nameKey)) {
+          seenTLNames.add(nameKey);
+          sum += data.convert;
+        }
+      });
+      return sum;
+    }
+    if (myStlMember.score !== undefined) return Number(myStlMember.score) || 0;
+    return 0;
+  }, [isMySTL, myStlMember, members, leaderRanking, results]);
+
+  const myTotalConverts = useMemo(() => {
+    if (!currentAuthUser) return 0;
+    if (isMySTL && myStlMember) {
+      return myStlTotalConverts;
+    }
+    const cleanAuthName = normalizeName(currentAuthUser.fullName || '');
+
+    // 1. Check leaderRanking
+    const foundLeader = leaderRanking.find(r => {
+      if (myMember && r.id === myMember.id) return true;
+      const rName = normalizeName(r.name || '');
+      return Boolean(cleanAuthName && rName && (cleanAuthName === rName || cleanAuthName.includes(rName) || rName.includes(cleanAuthName)));
+    });
+    if (foundLeader && foundLeader.score !== undefined) return Number(foundLeader.score) || 0;
+
+    // 2. Check trainerRanking
+    const foundTrainer = trainerRanking.find(r => {
+      if (myMember && r.id === myMember.id) return true;
+      const rName = normalizeName(r.name || '');
+      return Boolean(cleanAuthName && rName && (cleanAuthName === rName || cleanAuthName.includes(rName) || rName.includes(cleanAuthName)));
+    });
+    if (foundTrainer && foundTrainer.score !== undefined) return Number(foundTrainer.score) || 0;
+
+    // 3. Fallback to myMember score or results
+    if (myMember && (myMember as any).score !== undefined) return Number((myMember as any).score) || 0;
+    if (myMember && results[myMember.id]?.convert !== undefined) return Number(results[myMember.id]?.convert) || 0;
+
+    return 0;
+  }, [currentAuthUser, isMySTL, myStlMember, myStlTotalConverts, myMember, leaderRanking, trainerRanking, results]);
+
+  const myTargetConverts = useMemo(() => {
+    if (isMySTL && myStlMember?.target !== undefined) {
+      return Math.max(0, Number(myStlMember.target) || 0);
+    }
+    return Math.max(0, Number(myMember?.target || (currentAuthUser as any)?.target) || 0);
+  }, [isMySTL, myStlMember, myMember, currentAuthUser]);
+
+  const myUserBalance = useMemo(() => {
+    if (!currentAuthUser && !myMember) return null;
+    const cleanAuthWa = normalizePhoneNumber(currentAuthUser?.whatsapp || (myMember as any)?.whatsapp || '').replace(/[^0-9]/g, '');
+    const cleanAuthName = normalizeName(currentAuthUser?.fullName || myMember?.name || '');
+
+    if (currentAuthUser?.whatsapp && userBalances[currentAuthUser.whatsapp]) return userBalances[currentAuthUser.whatsapp];
+    if (cleanAuthWa && userBalances[cleanAuthWa]) return userBalances[cleanAuthWa];
+    if (myMember?.id && userBalances[myMember.id]) return userBalances[myMember.id];
+
+    return Object.values(userBalances).find((b: any) => {
+      const bWa = normalizePhoneNumber(b.whatsapp || '').replace(/[^0-9]/g, '');
+      const bName = normalizeName(b.userName || '');
+      if (cleanAuthWa && bWa && cleanAuthWa === bWa) return true;
+      if (cleanAuthName && bName && cleanAuthName === bName) return true;
+      return false;
+    }) || null;
+  }, [currentAuthUser, myMember, userBalances]);
+
+  const currentWalletBalance = myUserBalance?.balance ?? 1500;
+  const myRoleType = (myMember?.type || currentAuthUser?.position || currentAuthUser?.role || '').toLowerCase();
+  const isMyLeader = !isMySTL && (myRoleType.includes('leader') || myRoleType.includes('tl'));
+  const myIncomeRate = isMySTL ? 25 : (isMyLeader ? 60 : 50);
+  const myPossibleIncome = myTotalConverts * myIncomeRate;
+  const myTargetIncome = myTargetConverts > 0 ? myTargetConverts * myIncomeRate : 0;
 
   const myUserStats = useMemo(() => {
     return computeUserSubmissionStats(
@@ -7405,7 +7747,11 @@ export default function App() {
                     type="button"
                     onClick={() => {
                       setAuthenticatedUser(null);
+                      sessionStorage.removeItem('unity_session_user');
                       localStorage.removeItem('unity_user');
+                      setIsAdmin(false);
+                      sessionStorage.removeItem('isAdmin');
+                      localStorage.removeItem('isAdmin');
                     }}
                     className="neu-btn-primary text-white font-black py-3.5 px-8 rounded-2xl inline-flex items-center gap-2.5 transition-all active:scale-95 shadow-md text-sm"
                   >
@@ -7560,9 +7906,18 @@ export default function App() {
                 {/* Profile Information Cards */}
                 <div className="p-6 sm:p-8 space-y-6">
                   <div>
-                    <h3 className="text-xs sm:text-sm font-black text-[#090d16] uppercase tracking-wider mb-3">
-                      ব্যক্তিগত তথ্য ও অ্যাক্টিভিটি (Account Overview)
-                    </h3>
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                      <h3 className="text-xs sm:text-sm font-black text-[#090d16] uppercase tracking-wider">
+                        ব্যক্তিগত তথ্য ও অ্যাক্টিভিটি (Account Overview)
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={() => setShowLoginStatsPopup(true)}
+                        className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-[11px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-sm transition-all"
+                      >
+                        <Target size={13} /> সামারি কার্ড
+                      </button>
+                    </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                       <div className="neu-card-sm bg-[#e7eff9] border border-white/80 rounded-2xl p-4">
                         <span className="block text-[10px] text-slate-500 uppercase font-black tracking-wider mb-1">
@@ -7587,7 +7942,16 @@ export default function App() {
                           পদবী (Position)
                         </span>
                         <span className="text-[#090d16] font-black text-base">
-                          {currentAuthUser.position || 'Sub-Admin'}
+                          {currentAuthUser.position || 'Team Member'}
+                        </span>
+                      </div>
+
+                      <div className="neu-card-sm bg-gradient-to-br from-emerald-50 to-teal-50/80 border border-emerald-200/90 rounded-2xl p-4">
+                        <span className="block text-[10px] text-emerald-800 uppercase font-black tracking-wider mb-1">
+                          অ্যাকাউন্টে যত আছে (Wallet Balance)
+                        </span>
+                        <span className="text-emerald-700 font-black text-xl font-mono flex items-center gap-1.5">
+                          ৳ {currentWalletBalance.toLocaleString('en-IN')}
                         </span>
                       </div>
 
@@ -7595,12 +7959,41 @@ export default function App() {
                         <span className="block text-[10px] text-slate-500 uppercase font-black tracking-wider mb-1">
                           মোট ভেরিফাইড কনভার্ট (Total Converts)
                         </span>
-                        <span className="text-amber-700 font-black text-xl flex items-center gap-1.5">
-                          👑 {
-                            [...leaderRanking, ...trainerRanking].find(
-                              r => r.name.trim().toLowerCase() === currentAuthUser?.fullName.trim().toLowerCase()
-                            )?.score || 0
-                          }
+                        <span className="text-amber-700 font-black text-xl flex items-center gap-1.5 font-mono">
+                          👑 {myTotalConverts} Convert
+                        </span>
+                      </div>
+
+                      <div className="neu-card-sm bg-[#e7eff9] border border-white/80 rounded-2xl p-4">
+                        <span className="block text-[10px] text-slate-500 uppercase font-black tracking-wider mb-1">
+                          কনভার্ট টার্গেট (Target Converts)
+                        </span>
+                        <span className="text-blue-700 font-black text-xl flex items-center gap-1.5 font-mono">
+                          🎯 {myTargetConverts > 0 ? `${myTargetConverts}টি` : 'সেট নেই'}
+                        </span>
+                      </div>
+
+                      <div className="neu-card-sm bg-gradient-to-br from-amber-50 to-orange-50/80 border border-amber-200/90 rounded-2xl p-4">
+                        <span className="block text-[10px] text-amber-900 uppercase font-black tracking-wider mb-1">
+                          পসিবল ইনকাম (Possible Income)
+                        </span>
+                        <span className="text-amber-800 font-black text-xl font-mono flex items-center gap-1.5">
+                          💰 ৳ {myPossibleIncome.toLocaleString('en-IN')}
+                        </span>
+                        <span className="block text-[9px] text-amber-700/80 font-bold mt-1">
+                          ({myTotalConverts} কনভার্ট × ৳{myIncomeRate})
+                        </span>
+                      </div>
+
+                      <div className="neu-card-sm bg-gradient-to-br from-indigo-50 to-blue-50/80 border border-indigo-200/90 rounded-2xl p-4">
+                        <span className="block text-[10px] text-indigo-900 uppercase font-black tracking-wider mb-1">
+                          টার্গেট থেকে ইনকাম (Target Income)
+                        </span>
+                        <span className="text-indigo-800 font-black text-xl font-mono flex items-center gap-1.5">
+                          🏁 ৳ {myTargetIncome.toLocaleString('en-IN')}
+                        </span>
+                        <span className="block text-[9px] text-indigo-700/80 font-bold mt-1">
+                          {myTargetConverts > 0 ? `(${myTargetConverts} টার্গেট × ৳${myIncomeRate})` : 'টার্গেট সেট করা নেই'}
                         </span>
                       </div>
 
@@ -7610,7 +8003,7 @@ export default function App() {
                             <span className="block text-[10px] text-slate-500 uppercase font-black tracking-wider mb-1">
                               আজকের সেশন কনভার্ট (Today's Converts)
                             </span>
-                            <span className="text-emerald-700 font-black text-xl flex items-center gap-1.5">
+                            <span className="text-emerald-700 font-black text-xl flex items-center gap-1.5 font-mono">
                               ⚡ {results[myMember.id]?.convert || 0}
                             </span>
                           </div>
@@ -7618,7 +8011,7 @@ export default function App() {
                             <span className="block text-[10px] text-slate-500 uppercase font-black tracking-wider mb-1">
                               আজকের পার্সোনাল লিড (Today's Personal Leads)
                             </span>
-                            <span className="text-purple-700 font-black text-xl flex items-center gap-1.5">
+                            <span className="text-purple-700 font-black text-xl flex items-center gap-1.5 font-mono">
                               🎯 {results[myMember.id]?.personalLead || 0}
                             </span>
                           </div>
@@ -7676,7 +8069,11 @@ export default function App() {
                       type="button"
                       onClick={() => {
                         setAuthenticatedUser(null);
+                        sessionStorage.removeItem('unity_session_user');
                         localStorage.removeItem('unity_user');
+                        setIsAdmin(false);
+                        sessionStorage.removeItem('isAdmin');
+                        localStorage.removeItem('isAdmin');
                         showMsg('সফলভাবে লগআউট করা হয়েছে!', 'success');
                       }}
                       className="neu-btn text-red-600 hover:text-red-700 font-black py-2.5 px-5 rounded-xl text-xs uppercase tracking-wider flex items-center gap-2 border border-red-200/80 bg-red-50/50 hover:bg-red-50 active:scale-95 transition-all shadow-sm"
@@ -8571,6 +8968,9 @@ export default function App() {
             myMember={myMember}
             members={members}
             results={results}
+            leaderRanking={leaderRanking}
+            trainerRanking={trainerRanking}
+            stlMembers={stlMembers}
           />
         )}
       </AnimatePresence>
@@ -11009,6 +11409,8 @@ function RankingMemberRow({
       onSave();
     }
   };
+
+  if (!m.name || m.name.trim() === '' || m.name === 'undefined' || m.name === 'null') return null;
 
   return (
     <div className={`flex items-center justify-between bg-surface/50 border rounded-xl p-3 px-4 text-xs group transition-all animate-fade-in ${hasChanges ? 'border-amber-500 bg-amber-500/5 shadow-md shadow-amber-500/5' : 'border-border hover:border-gold/30'}`}>

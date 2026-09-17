@@ -38,6 +38,10 @@ const PORT = 3000;
 
 async function startServer() {
   // API Routes
+  app.get('/api/time', (req, res) => {
+    res.json({ now: Date.now() });
+  });
+
   app.post('/api/save-token', async (req, res) => {
     const { whatsapp, token, platform } = req.body;
     if (!whatsapp || !token) {

@@ -27,6 +27,9 @@ export interface PerformancePageProps {
   myMember: any;
   members: any[];
   results: Record<string, any>;
+  leaderRanking?: any[];
+  trainerRanking?: any[];
+  userBalances?: Record<string, any>;
   onNavigateToSubmit?: () => void;
   onRefreshData?: () => void;
 }
@@ -36,34 +39,70 @@ export const PerformancePage: React.FC<PerformancePageProps> = ({
   myMember,
   members,
   results,
+  leaderRanking = [],
+  trainerRanking = [],
+  userBalances = {},
   onNavigateToSubmit,
 }) => {
   // If user is logged in, match their member
   const activeMember = useMemo(() => {
     if (myMember) return myMember;
     if (!currentAuthUser) return null;
-    return members.find(m => 
-      (m.whatsapp && currentAuthUser.whatsapp && m.whatsapp.replace(/\s+/g, '') === currentAuthUser.whatsapp.replace(/\s+/g, '')) ||
-      (m.name && currentAuthUser.fullName && m.name.trim().toLowerCase() === currentAuthUser.fullName.trim().toLowerCase())
-    );
+    const cleanAuthWa = (currentAuthUser.whatsapp || '').replace(/[^0-9]/g, '');
+    const cleanAuthName = (currentAuthUser.fullName || '').trim().toLowerCase();
+
+    return members.find(m => {
+      const mWa = (m.whatsapp || '').replace(/[^0-9]/g, '');
+      const mName = (m.name || '').trim().toLowerCase();
+      if (cleanAuthWa && mWa && (cleanAuthWa === mWa || (cleanAuthWa.length >= 10 && mWa.endsWith(cleanAuthWa.slice(-10))) || (mWa.length >= 10 && cleanAuthWa.endsWith(mWa.slice(-10))))) {
+        return true;
+      }
+      if (cleanAuthName && mName && (cleanAuthName === mName || cleanAuthName.includes(mName) || mName.includes(cleanAuthName))) {
+        return true;
+      }
+      return false;
+    }) || null;
   }, [myMember, currentAuthUser, members]);
 
   const memberResult = activeMember ? results[activeMember.id] : null;
+  const todayConvert = memberResult?.convert ?? 0;
+
+  // Check ranking score from leaderRanking or trainerRanking
+  const rankingScore = useMemo(() => {
+    const cleanAuthName = (currentAuthUser?.fullName || activeMember?.name || '').trim().toLowerCase();
+    const cleanAuthWa = (currentAuthUser?.whatsapp || activeMember?.whatsapp || '').replace(/[^0-9]/g, '');
+
+    const foundLeader = leaderRanking.find(r => {
+      if (activeMember && r.id === activeMember.id) return true;
+      const rName = (r.name || '').trim().toLowerCase();
+      return cleanAuthName && rName && (cleanAuthName === rName || cleanAuthName.includes(rName) || rName.includes(cleanAuthName));
+    });
+    if (foundLeader && foundLeader.score !== undefined) return Number(foundLeader.score) || 0;
+
+    const foundTrainer = trainerRanking.find(r => {
+      if (activeMember && r.id === activeMember.id) return true;
+      const rName = (r.name || '').trim().toLowerCase();
+      return cleanAuthName && rName && (cleanAuthName === rName || cleanAuthName.includes(rName) || rName.includes(cleanAuthName));
+    });
+    if (foundTrainer && foundTrainer.score !== undefined) return Number(foundTrainer.score) || 0;
+
+    return null;
+  }, [currentAuthUser, activeMember, leaderRanking, trainerRanking]);
 
   // Real-time Database values
-  const totalConvert = memberResult?.convert ?? 0;
-  const target = Math.max(0, Number(activeMember?.target) || 0);
+  const totalConvert = rankingScore !== null ? rankingScore : (Number(activeMember?.score) || todayConvert);
+  const target = Math.max(0, Number(activeMember?.target || currentAuthUser?.target) || 0);
 
   // Role detection
-  const roleType = (activeMember?.type || currentAuthUser?.role || '').toLowerCase();
-  const isLeader = roleType === 'leader' || roleType.includes('leader') || roleType.includes('tl');
+  const roleType = (activeMember?.type || currentAuthUser?.position || currentAuthUser?.role || '').toLowerCase();
+  const isLeader = roleType === 'leader' || roleType.includes('leader') || roleType.includes('tl') || roleType.includes('stl');
   const isTrainer = roleType === 'trainer' || roleType.includes('trainer') || roleType.includes('tt');
 
   const roleDisplay = isLeader 
     ? 'Team Leader' 
     : isTrainer 
     ? 'Team Trainer' 
-    : (activeMember ? 'Team Member' : (currentAuthUser?.role || 'Member'));
+    : (activeMember ? 'Team Member' : (currentAuthUser?.position || currentAuthUser?.role || 'Member'));
 
   const displayName = currentAuthUser?.fullName || activeMember?.name || 'ব্যবহারকারী';
 
@@ -76,7 +115,29 @@ export const PerformancePage: React.FC<PerformancePageProps> = ({
   // INCOME CALCULATIONS
   // ----------------------------------------------------
   const activeRate = isLeader ? 60 : 50;
-  const activeConvertIncome = totalConvert * activeRate;
+  const possibleConvertIncome = totalConvert * activeRate;
+  const targetIncome = target > 0 ? target * activeRate : 0;
+
+  // User Account Balance from userBalances
+  const userBalObj = useMemo(() => {
+    if (!currentAuthUser && !activeMember) return null;
+    const cleanAuthWa = (currentAuthUser?.whatsapp || activeMember?.whatsapp || '').replace(/[^0-9]/g, '');
+    const cleanAuthName = (currentAuthUser?.fullName || activeMember?.name || '').trim().toLowerCase();
+
+    if (currentAuthUser?.whatsapp && userBalances[currentAuthUser.whatsapp]) return userBalances[currentAuthUser.whatsapp];
+    if (cleanAuthWa && userBalances[cleanAuthWa]) return userBalances[cleanAuthWa];
+    if (activeMember?.id && userBalances[activeMember.id]) return userBalances[activeMember.id];
+
+    return Object.values(userBalances).find((b: any) => {
+      const bWa = (b.whatsapp || '').replace(/[^0-9]/g, '');
+      const bName = (b.userName || '').trim().toLowerCase();
+      if (cleanAuthWa && bWa && cleanAuthWa === bWa) return true;
+      if (cleanAuthName && bName && cleanAuthName === bName) return true;
+      return false;
+    }) || null;
+  }, [currentAuthUser, activeMember, userBalances]);
+
+  const walletBalance = userBalObj?.balance ?? 1500;
 
   // Status Tier for brief evaluation
   const statusTier = useMemo(() => {
@@ -173,29 +234,78 @@ export const PerformancePage: React.FC<PerformancePageProps> = ({
         )}
       </div>
 
-      {/* 3. Income Summary (Premium Dark Card) */}
-      <div className="bg-[#090d16] p-6 rounded-2xl border border-slate-800 shadow-xl flex flex-col relative overflow-hidden">
-        {/* Subtle glow effect */}
-        <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none"></div>
-        
-        <div className="flex items-center gap-2 mb-4 relative z-10">
-          <div className="p-1.5 bg-slate-800 rounded-lg border border-slate-700">
-            <Coins size={14} className="text-emerald-400" />
+      {/* 3. Income & Account Summary Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+        {/* Possible Income Card */}
+        <div className="bg-[#090d16] p-5 rounded-2xl border border-slate-800 shadow-xl flex flex-col relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-28 h-28 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none"></div>
+          <div className="flex items-center justify-between mb-3 relative z-10">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-slate-800 rounded-lg border border-slate-700">
+                <Coins size={14} className="text-emerald-400" />
+              </div>
+              <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">পসিবল ইনকাম</span>
+            </div>
+            <span className="text-[10px] text-emerald-400 font-bold px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-800/60">
+              {totalConvert} কনভার্ট
+            </span>
           </div>
-          <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider">কনভার্ট ইনকাম</span>
-        </div>
-        
-        <div className="mb-5 relative z-10">
-          <span className="text-4xl font-black text-white tracking-tight flex items-baseline gap-1">
-            <span className="text-2xl text-slate-400 font-medium">৳</span>
-            {activeConvertIncome.toLocaleString('en-IN')}
-          </span>
-        </div>
-        
-        <div className="mt-auto relative z-10 border-t border-slate-800 pt-3">
-          <div className="flex items-center justify-between text-[11px] font-medium text-slate-400">
-            <span>{totalConvert} কনভার্ট × ৳{activeRate}</span>
+          <div className="mb-2 relative z-10">
+            <span className="text-3xl font-black text-white tracking-tight flex items-baseline gap-1">
+              <span className="text-xl text-slate-400 font-medium">৳</span>
+              {possibleConvertIncome.toLocaleString('en-IN')}
+            </span>
+          </div>
+          <div className="mt-auto relative z-10 border-t border-slate-800/80 pt-2 text-[10px] text-slate-400 flex justify-between">
+            <span>{totalConvert} × ৳{activeRate}</span>
             <span>{isLeader ? 'টিম লিডার' : 'ট্রেনার'} রেট</span>
+          </div>
+        </div>
+
+        {/* Target Income Card */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-blue-50 text-blue-600 rounded-lg border border-blue-100">
+                  <Target size={14} />
+                </div>
+                <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">টার্গেট ইনকাম</span>
+              </div>
+              <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
+                {target > 0 ? `${target}টি টার্গেট` : 'সেট নেই'}
+              </span>
+            </div>
+            <div className="text-3xl font-black text-slate-900 tracking-tight flex items-baseline gap-1 mb-1">
+              <span className="text-xl text-slate-400 font-medium">৳</span>
+              {targetIncome.toLocaleString('en-IN')}
+            </div>
+          </div>
+          <div className="border-t border-slate-100 pt-2 text-[10px] text-slate-500 flex justify-between">
+            <span>লক্ষ্যমাত্রা পূরণ হলে</span>
+            <span>{target > 0 ? `${boundedProgress}% অর্জিত` : '০%'}</span>
+          </div>
+        </div>
+
+        {/* Account Balance Card */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between sm:col-span-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl border border-emerald-100">
+                <Wallet size={18} />
+              </div>
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">অ্যাকাউন্টে যত আছে</div>
+                <div className="text-xs font-bold text-slate-700">বর্তমান ওয়ালেট ব্যালেন্স</div>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-2xl sm:text-3xl font-black text-emerald-700 font-mono tracking-tight flex items-baseline justify-end gap-1">
+                <span className="text-lg text-emerald-500 font-medium">৳</span>
+                {walletBalance.toLocaleString('en-IN')}
+              </div>
+              <div className="text-[10px] font-semibold text-slate-500">মূল অ্যাকাউন্ট স্ট্যাটাস: অ্যাক্টিভ</div>
+            </div>
           </div>
         </div>
       </div>

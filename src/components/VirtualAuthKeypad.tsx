@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Delete, ArrowUp, X, Check, Eye, EyeOff, Smartphone, Lock, Space, ChevronDown, Save, ClipboardPaste } from 'lucide-react';
 
 interface PhoneKeypadProps {
   value: string;
   onChange: (val: string) => void;
   onClose: () => void;
+  onNext?: () => void;
   title?: string;
   savedAccounts: { whatsapp: string, password: string }[];
   onSaveAccount: () => void;
@@ -12,7 +13,7 @@ interface PhoneKeypadProps {
   onSelectAccount?: (acc: { whatsapp: string, password: string }) => void;
 }
 
-export function PhoneKeypad({ value, onChange, onClose, title = "WhatsApp / Phone Number", savedAccounts, onSaveAccount, onDeleteSavedAccount, onSelectAccount }: PhoneKeypadProps) {
+export function PhoneKeypad({ value, onChange, onClose, onNext, title = "WhatsApp / Phone Number", savedAccounts, onSaveAccount, onDeleteSavedAccount, onSelectAccount }: PhoneKeypadProps) {
   const [showPasteFallback, setShowPasteFallback] = useState(false);
   const [fallbackText, setFallbackText] = useState('');
 
@@ -29,6 +30,30 @@ export function PhoneKeypad({ value, onChange, onClose, title = "WhatsApp / Phon
   const handleClear = () => {
     onChange('');
   };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement)?.tagName === 'INPUT' || (e.target as HTMLElement)?.tagName === 'TEXTAREA') {
+        return;
+      }
+      if ((e.key >= '0' && e.key <= '9') || e.key === '+') {
+        e.preventDefault();
+        handleKeyClick(e.key);
+      } else if (e.key === 'Backspace') {
+        e.preventDefault();
+        handleBackspace();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (onNext) onNext();
+        else onClose();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [value, onNext, onClose]);
 
   const handlePaste = async () => {
     try {
@@ -222,16 +247,25 @@ export function PhoneKeypad({ value, onChange, onClose, title = "WhatsApp / Phon
             })}
           </div>
 
-          {/* Bottom Done Confirmation Button */}
-          <div className="mt-2.5 pt-1">
+          {/* Bottom Done / Next Confirmation Button */}
+          <div className="mt-2.5 pt-1 flex gap-2">
             <button
               type="button"
               onClick={onClose}
-              className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-bold text-sm rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 active:scale-[0.99] transition-all cursor-pointer"
+              className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-750 active:bg-slate-700 text-slate-300 font-bold text-sm rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer"
             >
               <Check size={16} />
               <span>Done</span>
             </button>
+            {onNext && (
+              <button
+                type="button"
+                onClick={onNext}
+                className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-bold text-sm rounded-xl flex items-center justify-center gap-1.5 shadow-lg shadow-blue-600/30 active:scale-[0.99] transition-all cursor-pointer"
+              >
+                <span>Password ➔</span>
+              </button>
+            )}
           </div>
 
           {/* Paste Fallback Overlay Container */}
@@ -290,6 +324,7 @@ interface PasswordKeyboardProps {
   value: string;
   onChange: (val: string) => void;
   onClose: () => void;
+  onSubmit?: () => void;
   title?: string;
   savedAccounts: { whatsapp: string, password: string }[];
   onSaveAccount: () => void;
@@ -297,7 +332,7 @@ interface PasswordKeyboardProps {
   onSelectAccount?: (acc: { whatsapp: string, password: string }) => void;
 }
 
-export function PasswordKeyboard({ value, onChange, onClose, title = "Password Virtual Keyboard", savedAccounts, onSaveAccount, onDeleteSavedAccount, onSelectAccount }: PasswordKeyboardProps) {
+export function PasswordKeyboard({ value, onChange, onClose, onSubmit, title = "Password Virtual Keyboard", savedAccounts, onSaveAccount, onDeleteSavedAccount, onSelectAccount }: PasswordKeyboardProps) {
   // Default to numeric (123) layout as requested
   const [layoutMode, setLayoutMode] = useState<'num' | 'abc' | 'ABC' | 'sym'>('num');
   const [showPlainPassword, setShowPlainPassword] = useState(true);
@@ -319,6 +354,30 @@ export function PasswordKeyboard({ value, onChange, onClose, title = "Password V
   const handleSpace = () => {
     onChange(value + ' ');
   };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement)?.tagName === 'INPUT' || (e.target as HTMLElement)?.tagName === 'TEXTAREA') {
+        return;
+      }
+      if (e.key === 'Backspace') {
+        e.preventDefault();
+        handleBackspace();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (onSubmit) onSubmit();
+        else onClose();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        handleCharClick(e.key);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [value, onSubmit, onClose]);
 
   const handlePaste = async () => {
     try {

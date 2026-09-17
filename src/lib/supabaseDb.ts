@@ -28,6 +28,8 @@ async function initMemoryStore() {
       if (response.ok) {
         const backup = await response.json() as Record<string, any[]>;
         for (const [col, docs] of Object.entries(backup)) {
+          // Never overwrite dynamic live system config with static backup data
+          if (col === 'config') continue;
           if (!memoryStore[col]) {
             memoryStore[col] = new Map<string, any>();
           }
@@ -48,12 +50,13 @@ async function initMemoryStore() {
     isBackupLoaded = true;
     isBackupLoading = false;
 
-    // Notify all active listeners of the newly loaded backup data
+    // Notify all active listeners of the newly loaded backup data (skip config)
     for (const listener of activeListeners) {
       try {
         const t = listener.target;
         if (t.type === 'doc') {
           const colName = t.collection;
+          if (colName === 'config') continue;
           const docId = t.id;
           const map = memoryStore[colName] || (memoryStore[colName] = new Map());
           const localDoc = map.get(docId);
@@ -421,22 +424,46 @@ export function onSnapshot(
 
     let active = true;
     let channel: any = null;
+    let pollInterval: any = null;
 
-    if (supabase && isSupabaseConfigured()) {
-      // Fetch fresh doc from Supabase
-      (async () => {
-        try {
-          const { data, error } = await supabase.from(colName).select('*').eq('id', docId).maybeSingle();
-          if (!active) return;
-          if (!error && data) {
-            const unpacked = unpackSupabaseRow(data);
+    const fetchFreshDoc = async () => {
+      if (!supabase || !isSupabaseConfigured() || !active) return;
+      try {
+        const { data, error } = await supabase.from(colName).select('*').eq('id', docId).maybeSingle();
+        if (!active) return;
+        if (!error && data) {
+          const unpacked = unpackSupabaseRow(data);
+          const existing = map.get(docId);
+          // Only emit if data is different or not yet set
+          if (!existing || JSON.stringify(existing) !== JSON.stringify(unpacked)) {
             map.set(docId, unpacked);
             onNext(createDocSnapshot(colName, docId, unpacked));
           }
-        } catch (err) {
-          if (onError) onError(err);
         }
-      })();
+      } catch (err) {
+        if (onError) onError(err);
+      }
+    };
+
+    const handleVisibilityOrFocus = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        fetchFreshDoc();
+      }
+    };
+
+    if (supabase && isSupabaseConfigured()) {
+      // 2. Fetch fresh doc from Supabase immediately
+      fetchFreshDoc();
+
+      // For critical live documents like config/global, poll every 3 seconds to guarantee sync
+      if (colName === 'config') {
+        pollInterval = setInterval(fetchFreshDoc, 3000);
+      }
+
+      if (typeof window !== 'undefined') {
+        window.addEventListener('visibilitychange', handleVisibilityOrFocus);
+        window.addEventListener('focus', handleVisibilityOrFocus);
+      }
 
       // Subscribe to Supabase Realtime channel
       const channelName = `rt_${colName}_${docId}_${Math.random().toString(36).slice(2, 7)}`;
@@ -462,6 +489,11 @@ export function onSnapshot(
 
     return () => {
       active = false;
+      if (pollInterval) clearInterval(pollInterval);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+        window.removeEventListener('focus', handleVisibilityOrFocus);
+      }
       activeListeners.delete(listener);
       if (channel && supabase) {
         supabase.removeChannel(channel);

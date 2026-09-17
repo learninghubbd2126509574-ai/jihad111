@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Trophy, ChevronDown, ChevronUp, Users, Activity } from 'lucide-react';
+import { Trophy, ChevronDown, ChevronUp, Users, Activity, Award } from 'lucide-react';
 import CartoonAvatar from './CartoonAvatar';
 
 export interface STLMember {
@@ -146,9 +146,9 @@ export function resolveTLConvertData(
     }
   }
 
-  // 3. Resolve final convert count: prioritize direct session result submission (resultConvert)
-  // so that converts update immediately upon submission. Fallback to rankingScore if no session result exists.
-  const finalConvert = resultConvert !== null ? resultConvert : (rankingScore !== null ? rankingScore : 0);
+  // 3. Resolve final convert count: strictly use leader ranking score if available, 
+  // as requested by user to reflect "Total Converts set in Leader Ranking".
+  const finalConvert = rankingScore !== null ? rankingScore : (resultConvert !== null ? resultConvert : 0);
 
   return {
     id: member?.id || targetId,
@@ -308,34 +308,37 @@ export default function StlWiseResultSection({
       id="stl-wise-result-section" 
       className="neu-card rounded-2xl p-3 sm:p-4 mb-4 relative overflow-hidden border border-blue-200/90 shadow-xs bg-linear-to-b from-white/95 to-[#f4f8fd]/90 animate-fade-in"
     >
-      {/* Compact Section Header with Grand Total Badge */}
-      <div className="flex items-center justify-between gap-2.5 mb-2.5 pb-2 border-b border-blue-100/80">
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="w-7.5 h-7.5 neu-btn-primary rounded-xl flex items-center justify-center text-white flex-shrink-0 shadow-2xs">
-            <Trophy size={15} className="text-amber-300" />
+      {/* Section Header with Prominent Total Convert Banner */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-3 pb-2.5 border-b border-blue-100/80">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-8 h-8 neu-btn-primary rounded-xl flex items-center justify-center text-white flex-shrink-0 shadow-xs">
+            <Trophy size={16} className="text-amber-300" />
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <h2 className="text-xs sm:text-sm font-black text-slate-900 tracking-tight whitespace-nowrap">
-                STL Live Convert
+              <h2 className="text-sm sm:text-base font-black text-slate-900 tracking-tight whitespace-nowrap">
+                STL Live Convert & Team Ranking
               </h2>
-              <span className="px-1.5 py-0.2 rounded-md text-[8px] font-black bg-blue-100 text-blue-800 border border-blue-200 uppercase">
+              <span className="px-1.5 py-0.5 rounded-md text-[9px] font-black bg-blue-100 text-blue-800 border border-blue-200 uppercase">
                 Live Sum
               </span>
             </div>
-            <p className="text-slate-400 text-[9px] truncate">
-              টিম লিডারদের লাইভ কনভার্টের স্বয়ংক্রিয় যোগফল ও গ্রাফ
+            <p className="text-slate-500 text-[10px] font-medium truncate">
+              টিমলিডারদের অ্যাকাউন্টে সেট করা মোট কনভার্ট ও STL র্যাংকিং
             </p>
           </div>
         </div>
 
-        {/* Company Grand Total Badge */}
-        <div className="flex items-center gap-1.5 neu-card-sm px-2.5 py-1 rounded-xl border border-emerald-200/90 bg-emerald-50/90 flex-shrink-0 shadow-2xs">
-          <span className="text-[9px] font-black text-emerald-800 uppercase tracking-tight hidden sm:inline">
-            সর্বমোট:
-          </span>
-          <span className="text-xs sm:text-sm font-black text-emerald-800 font-mono">
-            {grandTotalAllStls} <span className="text-[10px] font-bold font-sans">Convert</span>
+        {/* Company Grand Total Banner - Highlighted */}
+        <div className="flex items-center justify-between sm:justify-end gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-3.5 py-2 rounded-xl shadow-xs border border-emerald-400/80">
+          <div className="flex items-center gap-1.5">
+            <Award size={16} className="text-amber-200" />
+            <span className="text-[11px] font-extrabold uppercase tracking-tight">
+              টোটাল কনভার্ট (Grand Total):
+            </span>
+          </div>
+          <span className="text-base sm:text-lg font-black font-mono tracking-tight bg-white/20 px-2 py-0.5 rounded-lg border border-white/30">
+            {grandTotalAllStls} <span className="text-[11px] font-bold font-sans">Convert</span>
           </span>
         </div>
       </div>
@@ -444,7 +447,7 @@ export default function StlWiseResultSection({
                       <div className={`neu-card-sm px-2 py-0.8 sm:px-2.5 sm:py-1 rounded-lg border flex items-center gap-1 shadow-2xs ${perf.badgeBg}`}>
                         <span className={`w-1.5 h-1.5 rounded-full ${perf.dotColor} animate-pulse flex-shrink-0`} />
                         <span className="text-[11px] sm:text-xs font-black font-mono whitespace-nowrap">
-                          {item.totalConvert} Convert
+                          টোটাল: {item.totalConvert} Convert
                         </span>
                       </div>
                     </div>
