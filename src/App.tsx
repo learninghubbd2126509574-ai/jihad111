@@ -3698,13 +3698,9 @@ export default function App() {
     };
   }, [isAuthReady, isAdmin, user]);
 
-  // Improved Timer Logic with robust Real-time Sync & Auto-off guards
+  // Timer Logic
   useEffect(() => {
-    // Immediate cleanup of existing interval
-    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-
     if (config.timerActive && config.timerEndTime) {
-      // Sync notifications refs
       if (timerStartedNotifiedRef.current !== config.timerStartedAt) {
         timerStartedNotifiedRef.current = config.timerStartedAt || Date.now();
         fiveMinWarningTriggeredRef.current = false;
@@ -3729,14 +3725,9 @@ export default function App() {
         const now = Date.now();
         const diff = config.timerEndTime - now;
         const remaining = Math.max(0, Math.floor(diff / 1000));
-        
-        // Use functional state update to ensure we have the absolute latest value without lag
-        setTimeLeft(prev => {
-          if (prev !== remaining) return remaining;
-          return prev;
-        });
+        setTimeLeft(remaining);
 
-        // 5 Minutes Left Notification
+        // 5 Minutes Left Notification (Trigger once per timer session on all devices)
         if (config.timerNotificationsActive !== false && remaining <= 300 && remaining > 0 && !fiveMinWarningTriggeredRef.current) {
           fiveMinWarningTriggeredRef.current = true;
           const warningTitle = 'Unity Earning ⏰ টাইমার শেষ হতে ৫ মিনিট বাকি!';
@@ -3745,46 +3736,38 @@ export default function App() {
           new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3').play().catch(e => console.log('Audio error:', e));
         }
 
-        // When timer reaches 0, auto turn it off with guards to prevent flickering
-        if (remaining <= 0 && config.timerActive) {
+        // When timer reaches 0, auto turn it off & send performance summary notification
+        if (remaining <= 0) {
           if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-          
           if (!timerEndedTriggeredRef.current) {
             timerEndedTriggeredRef.current = true;
             
+            // Only notify if it ended recently (within 60 seconds) to avoid reload spam
             const endedRecently = config.timerEndTime && (Date.now() - config.timerEndTime < 60000);
+            
             if (config.timerNotificationsActive !== false && endedRecently) {
               const { title, body } = generateTimerPerformanceSummary();
               triggerNativeNotification(title, body);
             }
-
-            // Centralized Auto-off: Only the admin (if online) or the first one to detect completion handles the Firestore reset
-            // We use a small delay check to ensure Firestore has actually reached the time for everyone
+            // Only update doc if still active to prevent multi-tab write loops
             if (isAdmin && config.timerActive) {
-              const resetTimer = async () => {
-                try {
-                  await updateDoc(doc(db, 'config', 'global'), {
-                    timerActive: false,
-                    timerEndTime: 0,
-                    timerLastEndedAt: serverTimestamp()
-                  });
-                } catch (e) {
-                  console.error('Timer auto-off error:', e);
-                }
-              };
-              resetTimer();
+              updateDoc(doc(db, 'config', 'global'), {
+                timerActive: false,
+                timerEndTime: 0
+              }).catch(console.error);
             }
           }
         }
       };
 
       updateRemaining();
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
       timerIntervalRef.current = setInterval(updateRemaining, 1000);
     } else {
       setTimeLeft(0);
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
 
-      // Trigger notification when timer is manually stopped by admin
+      // Trigger notification when timer is manually stopped by admin across all devices
       if (lastTimerActiveRef.current === true && !timerEndedTriggeredRef.current) {
         timerEndedTriggeredRef.current = true;
         if (config.timerNotificationsActive !== false) {

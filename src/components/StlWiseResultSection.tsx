@@ -306,18 +306,18 @@ export default function StlWiseResultSection({
   return (
     <section 
       id="stl-wise-result-section" 
-      className="neu-card rounded-2xl p-3 sm:p-4 mb-4 relative overflow-hidden border border-blue-200/90 shadow-xs bg-linear-to-b from-white/95 to-[#f4f8fd]/90 animate-fade-in"
+      className="neu-card rounded-2xl p-2 sm:p-3 mb-4 relative overflow-hidden border border-blue-200/90 shadow-xs bg-linear-to-b from-white/95 to-[#f4f8fd]/90 animate-fade-in"
     >
-      {/* Section Header with Slim Total Convert Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-3 pb-2 border-b border-blue-100/80">
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="w-7 h-7 neu-btn-primary rounded-lg flex items-center justify-center text-white flex-shrink-0 shadow-xs">
+      {/* Section Header with Prominent Total Convert Banner */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5 pb-2 border-b border-blue-100/80">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-7 h-7 neu-btn-primary rounded-xl flex items-center justify-center text-white flex-shrink-0 shadow-xs">
             <Trophy size={14} className="text-amber-300" />
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <h2 className="text-xs sm:text-sm font-black text-slate-900 tracking-tight whitespace-nowrap uppercase">
-                STL Live Board & Team Ranking
+              <h2 className="text-[12px] sm:text-sm font-black text-slate-900 tracking-tight whitespace-nowrap">
+                STL Live Convert & Team Ranking
               </h2>
             </div>
             <p className="text-slate-500 text-[9px] font-medium truncate">
@@ -326,21 +326,21 @@ export default function StlWiseResultSection({
           </div>
         </div>
 
-        {/* Company Grand Total Banner - Slimmer & More Beautiful */}
-        <div className="flex items-center justify-between sm:justify-end gap-2.5 bg-gradient-to-r from-emerald-600 to-teal-700 text-white px-3 py-1.5 rounded-xl shadow-md border border-emerald-500/50">
+        {/* Company Grand Total Banner - Highlighted */}
+        <div className="flex items-center justify-between sm:justify-end gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-3 py-1.5 rounded-xl shadow-xs border border-emerald-400/80">
           <div className="flex items-center gap-1.5">
             <Award size={14} className="text-amber-200" />
-            <span className="text-[10px] font-black uppercase tracking-tight">
-              টোটাল কনভার্ট:
+            <span className="text-[10px] sm:text-[11px] font-extrabold uppercase tracking-tight">
+              টোটাল কনভার্ট (Grand Total):
             </span>
           </div>
-          <div className="text-xs sm:text-base font-black font-mono tracking-tight bg-black/20 px-2 py-0.5 rounded-lg border border-white/20">
-            {grandTotalAllStls} <span className="text-[9px] sm:text-[10px] font-bold font-sans opacity-90">Convert</span>
-          </div>
+          <span className="text-sm sm:text-base font-black font-mono tracking-tight bg-white/20 px-2 py-0.5 rounded-lg border border-white/30">
+            {grandTotalAllStls} <span className="text-[10px] font-bold font-sans">Convert</span>
+          </span>
         </div>
       </div>
 
-      {/* Content - Slim, Elegant Card List */}
+      {/* Content - Slim, Elegant Card List with Side Indicator Line & Micro Graph */}
       <div>
         {sortedStlStats.length === 0 ? (
           <div className="neu-card-sm rounded-xl p-4 text-center border border-blue-200/60 bg-blue-50/30">
@@ -367,82 +367,85 @@ export default function StlWiseResultSection({
                   {/* Left Side Performance Indicator Line */}
                   <div 
                     className={`absolute left-0 top-0 bottom-0 w-[4px] ${perf.borderClass} transition-colors duration-300`} 
+                    title={`Performance: ${perf.label}`}
                   />
 
                   {/* Slim Main Row */}
                   <div 
                     onClick={() => item.assignedCount > 0 && toggleExpand(stlId)}
-                    className={`flex items-start sm:items-center justify-between gap-2 ${item.assignedCount > 0 ? 'cursor-pointer select-none' : ''}`}
+                    className={`flex flex-col gap-1 ${item.assignedCount > 0 ? 'cursor-pointer select-none' : ''}`}
                   >
-                    {/* Rank, Avatar, & STL Info */}
-                    <div className="flex items-start sm:items-center gap-2 min-w-0 flex-1">
-                      {/* Rank Badge */}
-                      <span className="w-5 h-5 rounded-lg neu-card-sm flex items-center justify-center text-[10px] font-black text-blue-800 flex-shrink-0 border border-blue-100 mt-0.5 sm:mt-0">
-                        {index === 0 ? '👑' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`}
-                      </span>
+                    {/* Top Row: Rank, Avatar, Name & Total */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        {/* Rank Badge */}
+                        <span className="w-5 h-5 rounded-lg neu-card-sm flex items-center justify-center text-[10px] font-black text-blue-800 flex-shrink-0 border border-blue-100 bg-blue-50/50">
+                          {index === 0 ? '👑' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`}
+                        </span>
 
-                      {/* Avatar */}
-                      <div className="w-7 h-7 rounded-lg overflow-hidden neu-card-sm flex items-center justify-center flex-shrink-0 border border-blue-200/70 mt-0.5 sm:mt-0">
-                        <CartoonAvatar src={item.stl.profilePic} name={item.stl.name} />
-                      </div>
+                        {/* Avatar */}
+                        <div className="w-6.5 h-6.5 rounded-lg overflow-hidden neu-card-sm flex items-center justify-center flex-shrink-0 border border-blue-200/70">
+                          <CartoonAvatar src={item.stl.profilePic} name={item.stl.name} />
+                        </div>
 
-                      {/* STL Name & Stats */}
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
-                          <span className="text-xs sm:text-sm font-black text-slate-900 tracking-tight truncate max-w-[150px] sm:max-w-[200px]">
-                            {item.formattedName}
-                          </span>
-
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            {/* Minimal TL Pill */}
+                        {/* STL Name & Compact Badge */}
+                        <div className="min-w-0 flex flex-col">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="text-xs sm:text-sm font-black text-slate-900 tracking-tight truncate max-w-[130px] sm:max-w-[200px]">
+                              {item.formattedName}
+                            </span>
                             {item.assignedCount > 0 && (
-                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-md bg-blue-50 text-blue-700 text-[9px] font-bold border border-blue-100 whitespace-nowrap">
-                                <Users size={9} />
+                              <span className="inline-flex items-center gap-0.5 px-1 rounded-md bg-blue-50 text-blue-700 text-[8px] font-bold border border-blue-100 whitespace-nowrap">
                                 {item.assignedCount} TL
                                 <span className="text-slate-400 ml-0.5">
-                                  {isExpanded ? <ChevronUp size={9} /> : <ChevronDown size={9} />}
+                                  {isExpanded ? <ChevronUp size={8} /> : <ChevronDown size={8} />}
                                 </span>
                               </span>
                             )}
-
-                            {/* Target Badge - Integrated better */}
-                            {hasTarget && (
-                              <span className="px-1.5 py-0.2 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 text-[9px] font-black font-mono flex items-center gap-1 shadow-2xs whitespace-nowrap">
-                                <span className="w-1 h-1 rounded-full bg-emerald-500" />
-                                🎯 {item.totalConvert}/{targetConvert} ({rawRatio}%)
-                              </span>
-                            )}
                           </div>
-                        </div>
-
-                        {/* Micro Progress / Performance Graph Bar (Ultra-slim) */}
-                        <div className="flex items-center gap-1.5 mt-1 pr-2">
-                          <div className="flex-1 h-1 bg-slate-100 rounded-full overflow-hidden border border-slate-200/60 max-w-[120px] sm:max-w-[180px]">
-                            <div 
-                              className={`h-full rounded-full ${perf.graphFill} transition-all duration-500`}
-                              style={{ width: `${graphPercent}%` }}
-                            />
-                          </div>
-                          <span className="text-[8px] font-bold font-mono text-slate-400">
-                            {hasTarget ? `${rawRatio}%` : `${graphPercent}%`}
-                          </span>
                         </div>
                       </div>
-                    </div>
 
-                    {/* Convert Count Badge - Slimmed down to prevent overlap */}
-                    <div className="flex-shrink-0 flex flex-col items-end gap-1">
-                      <div className={`neu-card-sm px-2 py-1 rounded-lg border flex items-center gap-1.5 shadow-2xs ${perf.badgeBg}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${perf.dotColor} animate-pulse flex-shrink-0`} />
-                        <span className="text-[10px] sm:text-xs font-black font-mono whitespace-nowrap">
+                      {/* Convert Count Badge - Integrated on Right */}
+                      <div className={`neu-card-sm px-2 py-0.5 rounded-lg border flex items-center gap-1 shadow-2xs ${perf.badgeBg}`}>
+                        <span className={`w-1 h-1 rounded-full ${perf.dotColor} animate-pulse flex-shrink-0`} />
+                        <span className="text-[10px] sm:text-[11px] font-black font-mono whitespace-nowrap">
                           টোটাল: {item.totalConvert} Convert
                         </span>
                       </div>
-                      
-                      {/* Performance Tag Pill (Visible only on larger screens or as secondary info) */}
-                      <span className={`text-[8px] font-extrabold px-1.5 py-0.2 rounded-md border ${perf.tagColor} flex items-center gap-0.5`}>
+                    </div>
+
+                    {/* Bottom Row: Target Info & Progress Bar (SLIMMER) */}
+                    <div className="flex items-center gap-2 pl-[58px]">
+                      {/* Target Pill */}
+                      {hasTarget ? (
+                        <div className="px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 text-[9px] font-bold font-mono flex items-center gap-1 whitespace-nowrap flex-shrink-0">
+                          🎯 {item.totalConvert}/{targetConvert} ({rawRatio}%)
+                        </div>
+                      ) : (
+                        <div className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter flex-shrink-0">
+                          Team Performance
+                        </div>
+                      )}
+
+                      {/* Progress Bar Container */}
+                      <div className="flex-1 flex items-center gap-2 min-w-0">
+                        <div className="flex-1 h-1 bg-slate-100 rounded-full overflow-hidden border border-slate-200/50">
+                          <div 
+                            className={`h-full rounded-full ${perf.graphFill} transition-all duration-500`}
+                            style={{ width: `${graphPercent}%` }}
+                          />
+                        </div>
+                        <span className="text-[8px] font-bold font-mono text-slate-400 flex-shrink-0">
+                          {hasTarget ? `${rawRatio}%` : `${graphPercent}%`}
+                        </span>
+                      </div>
+
+                      {/* Performance Label (Small Screens) */}
+                      <div className={`hidden sm:flex items-center gap-0.5 px-1.5 py-0.5 rounded-md border text-[8px] font-extrabold ${perf.tagColor} flex-shrink-0`}>
+                        <span className={`w-1 h-1 rounded-full ${perf.dotColor}`} />
                         {perf.label}
-                      </span>
+                      </div>
                     </div>
                   </div>
 
