@@ -505,11 +505,12 @@ const Toast = ({ message, type, onClose }: { message: string, type: 'success' | 
   );
 };
 
-const AuthContainer = ({ onLogin, onRegister, onAdminLogin, customLogo }: { 
+const AuthContainer = ({ onLogin, onRegister, onAdminLogin, customLogo, showMsg = (m: string, t: 'success' | 'error' = 'success') => console.log(`[Auth Log] ${t}: ${m}`) }: { 
   onLogin: (w: string, p: string) => Promise<boolean>, 
   onRegister: (d: any) => Promise<boolean>,
   onAdminLogin: (pass: string) => void,
-  customLogo?: string 
+  customLogo?: string,
+  showMsg?: (m: string, t: 'success' | 'error') => void
 }) => {
   const [mode, setMode] = useState<'login' | 'admin' | 'register'>('login');
   const [whatsapp, setWhatsapp] = useState('');
@@ -576,9 +577,18 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin, customLogo }: {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    let isFinished = false;
+    const timeout = setTimeout(() => {
+      if (!isFinished) {
+        setLoading(false);
+        showMsg('সার্ভার থেকে সাড়া পাওয়া যাচ্ছে না! পুনরায় চেষ্টা করুন। (Connection Timeout)', 'error');
+      }
+    }, 12000); // 12s safety timeout
+
     try {
       if (mode === 'login') {
          const success = await onLogin(whatsapp, password);
+         isFinished = true;
          if (success && rememberMe) {
            setSavedAccounts(prev => {
              const exists = prev.some(acc => acc.whatsapp === whatsapp);
@@ -595,9 +605,12 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin, customLogo }: {
       } else if (mode === 'register') {
          console.log('Sending data:', { fullName, whatsapp, position, password });
          const success = await onRegister({ fullName, whatsapp, position, password });
+         isFinished = true;
          if (success) setMode('login');
       }
     } finally {
+      isFinished = true;
+      clearTimeout(timeout);
       setLoading(false);
     }
   };
@@ -687,9 +700,22 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin, customLogo }: {
             <form onSubmit={async (e) => {
               e.preventDefault();
               setLoading(true);
+              let isFinished = false;
+              const timeout = setTimeout(() => {
+                if (!isFinished) {
+                  setLoading(false);
+                  showMsg('সার্ভার থেকে সাড়া পাওয়া যাচ্ছে না! পুনরায় চেষ্টা করুন। (Connection Timeout)', 'error');
+                }
+              }, 12000); // 12s safety timeout
+              
               try {
                 await onAdminLogin(password);
+                isFinished = true;
+              } catch (err) {
+                console.error("Admin Login Error:", err);
               } finally {
+                isFinished = true;
+                clearTimeout(timeout);
                 setLoading(false);
               }
             }} className="space-y-3.5">
@@ -3850,31 +3876,39 @@ export default function App() {
 
       let currentAdminPass = initialAdminPass;
       try {
-        const configDoc = await getDoc(doc(db, 'systemConfig', 'adminAuth'));
-        if (configDoc.exists() && configDoc.data().password) {
+        let configDoc;
+        try {
+          configDoc = await getDoc(doc(db, 'systemConfig', 'adminAuth'));
+        } catch (e) {
+          console.warn("Network fetch failed for admin password, trying cache:", e);
+          configDoc = await getDocFromCache(doc(db, 'systemConfig', 'adminAuth'));
+        }
+        
+        if (configDoc && configDoc.exists() && configDoc.data().password) {
           currentAdminPass = configDoc.data().password;
         }
       } catch (e) {
-        console.warn("Using fallback admin password");
+        console.warn("Using fallback admin password:", e);
       }
 
-      if (typedPassword !== currentAdminPass) {
+      if (!comparePasswords(typedPassword, currentAdminPass)) {
         showMsg('Invalid Admin Password!', 'error');
         return;
       }
 
-      try {
-        await signInAnonymously(auth);
-      } catch (authErr) {
-        console.warn("Failed to sign in anonymously:", authErr);
+      // Ensure Firebase Auth session for Storage/Firestore rules
+      // Non-blocking to prevent UI hang, Firestore will handle re-auth if needed
+      if (!auth.currentUser) {
+        signInAnonymously(auth).catch(err => console.warn("Background auth error:", err));
       }
 
       setIsAdmin(true);
       localStorage.setItem('isAdmin', 'true');
       setSiteAuthenticated(true);
+      showMsg('সফলভাবে এডমিন লগইন হয়েছে!', 'success');
     } catch (err: any) {
       console.error('Login error details:', err);
-      showMsg(`Login failed: ${err.message}`, 'error');
+      showMsg(`লগইন ব্যর্থ হয়েছে: ${err.message}`, 'error');
     }
   };
 
@@ -4009,36 +4043,40 @@ export default function App() {
         }) || null;
       }
 
-      // SECOND: If not in memory, try a direct query on whatsapp field
+      // SECOND: If not in memory, try direct lookups in parallel for maximum speed
+      if (!foundUser) {
+        const candidates = generatePhoneCandidates(rawWa);
+        // We know docs are keyed by whatsapp number. Let's check them all in parallel.
+        try {
+          const results = await Promise.all(candidates.map(async (candidate) => {
+            try {
+              const snap = await getDoc(doc(db, 'registeredUsers', candidate));
+              if (snap.exists()) return { id: snap.id, ...snap.data() } as UserRegistration;
+            } catch (e) {
+              // Try cache if network fails
+              const cSnap = await getDocFromCache(doc(db, 'registeredUsers', candidate));
+              if (cSnap.exists()) return { id: cSnap.id, ...cSnap.data() } as UserRegistration;
+            }
+            return null;
+          }));
+          foundUser = results.find(u => u !== null) || null;
+        } catch (err) {
+          console.warn("Parallel lookup failed:", err);
+        }
+      }
+
+      // THIRD: Fallback to query if doc ID lookup failed (e.g. if doc ID is NOT the whatsapp)
       if (!foundUser) {
         try {
-          const q = query(collection(db, 'registeredUsers'), where('whatsapp', '==', rawWa), limit(1));
+          const cleanWa = getCleanDigits(rawWa);
+          const q = query(collection(db, 'registeredUsers'), where('whatsapp', 'in', [rawWa, cleanWa, ...generatePhoneCandidates(rawWa)]), limit(1));
           const qSnap = await getDocs(q);
           if (!qSnap.empty) {
             const d = qSnap.docs[0];
             foundUser = { id: d.id, ...d.data() } as UserRegistration;
           }
         } catch (err) {
-          console.warn("Direct query failed, falling back to candidates:", err);
-        }
-      }
-
-      // THIRD: If still not found, try the candidate IDs
-      if (!foundUser) {
-        const candidates = generatePhoneCandidates(rawWa);
-        for (const candidate of candidates) {
-          try {
-            let userSnap;
-            try {
-              userSnap = await getDoc(doc(db, 'registeredUsers', candidate));
-            } catch (err) {
-              userSnap = await getDocFromCache(doc(db, 'registeredUsers', candidate));
-            }
-            if (userSnap && userSnap.exists()) {
-              foundUser = { id: userSnap.id, ...userSnap.data() } as UserRegistration;
-              break;
-            }
-          } catch (_) {}
+          console.warn("Query fallback failed:", err);
         }
       }
 
@@ -4061,12 +4099,9 @@ export default function App() {
       }
 
       // Ensure Firebase Auth session for Storage/Firestore rules
-      try {
-        if (!auth.currentUser) {
-          await signInAnonymously(auth);
-        }
-      } catch (authErr) {
-        console.warn("Auth error during user login:", authErr);
+      // Non-blocking to prevent UI hang
+      if (!auth.currentUser) {
+        signInAnonymously(auth).catch(err => console.warn("Auth error during user login:", err));
       }
 
       setAuthenticatedUser(foundUser);
@@ -6793,6 +6828,7 @@ export default function App() {
         onRegister={registerUser}
         onAdminLogin={(pass) => login(false, pass)}
         customLogo={config.customLogo}
+        showMsg={showMsg}
       />
     );
   }
