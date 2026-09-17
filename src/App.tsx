@@ -3994,29 +3994,13 @@ export default function App() {
       }
 
       // 2. Look for regular user in registeredUsers
-      const candidates = generatePhoneCandidates(rawWa);
       let foundUser: UserRegistration | null = null;
+      const cleanDigits = getCleanDigits(rawWa);
+      const last10 = cleanDigits.length >= 10 ? cleanDigits.slice(-10) : cleanDigits;
 
-      // First check getDoc on candidate IDs
-      for (const candidate of candidates) {
-        try {
-          let userSnap;
-          try {
-            userSnap = await getDoc(doc(db, 'registeredUsers', candidate));
-          } catch (err) {
-            userSnap = await getDocFromCache(doc(db, 'registeredUsers', candidate));
-          }
-          if (userSnap && userSnap.exists()) {
-            foundUser = { id: userSnap.id, ...userSnap.data() } as UserRegistration;
-            break;
-          }
-        } catch (_) {}
-      }
-
-      // If not found via direct doc ID, check in approvedUsers state (synced realtime)
-      if (!foundUser) {
-        const cleanDigits = getCleanDigits(rawWa);
-        const last10 = cleanDigits.length >= 10 ? cleanDigits.slice(-10) : cleanDigits;
+      // FIRST: Check in-memory approvedUsers state (Realtime sync)
+      // This is near-instant and should cover most cases
+      if (approvedUsers && approvedUsers.length > 0) {
         foundUser = approvedUsers.find(u => {
           const uDigits = getCleanDigits(u.whatsapp);
           if (cleanDigits && uDigits && cleanDigits === uDigits) return true;
@@ -4025,23 +4009,37 @@ export default function App() {
         }) || null;
       }
 
-      // If still not found, fetch docs from registeredUsers collection
+      // SECOND: If not in memory, try a direct query on whatsapp field
       if (!foundUser) {
         try {
-          const querySnap = await getDocs(collection(db, 'registeredUsers'));
-          const cleanDigits = getCleanDigits(rawWa);
-          const last10 = cleanDigits.length >= 10 ? cleanDigits.slice(-10) : cleanDigits;
-          querySnap.forEach(d => {
-            if (foundUser) return;
-            const data = d.data() as UserRegistration;
-            const uDigits = getCleanDigits(data.whatsapp || d.id);
-            if (cleanDigits && uDigits && cleanDigits === uDigits) {
-              foundUser = { id: d.id, ...data };
-            } else if (last10 && uDigits && uDigits.endsWith(last10)) {
-              foundUser = { id: d.id, ...data };
+          const q = query(collection(db, 'registeredUsers'), where('whatsapp', '==', rawWa), limit(1));
+          const qSnap = await getDocs(q);
+          if (!qSnap.empty) {
+            const d = qSnap.docs[0];
+            foundUser = { id: d.id, ...d.data() } as UserRegistration;
+          }
+        } catch (err) {
+          console.warn("Direct query failed, falling back to candidates:", err);
+        }
+      }
+
+      // THIRD: If still not found, try the candidate IDs
+      if (!foundUser) {
+        const candidates = generatePhoneCandidates(rawWa);
+        for (const candidate of candidates) {
+          try {
+            let userSnap;
+            try {
+              userSnap = await getDoc(doc(db, 'registeredUsers', candidate));
+            } catch (err) {
+              userSnap = await getDocFromCache(doc(db, 'registeredUsers', candidate));
             }
-          });
-        } catch (_) {}
+            if (userSnap && userSnap.exists()) {
+              foundUser = { id: userSnap.id, ...userSnap.data() } as UserRegistration;
+              break;
+            }
+          } catch (_) {}
+        }
       }
 
       if (!foundUser) {
@@ -5137,6 +5135,95 @@ export default function App() {
     });
   };
 
+  const auditAllRankings = async () => {
+    if (!isAdmin) return;
+    
+    setShowConfirm({
+      title: 'Recalculate All Rankings?',
+      message: 'This will scan all submission logs and rebuild ranking scores. This is helpful if data seems inconsistent.',
+      onConfirm: async () => {
+        try {
+          showMsg('Auditing rankings, please wait...', 'info');
+          
+          // 1. Fetch all submission logs (paginated for safety)
+          let allLogs: any[] = [];
+          let lastDoc = null;
+          let hasMore = true;
+          
+          while (hasMore) {
+            const q = lastDoc 
+              ? query(collection(db, 'submissionLogs'), limit(1000), startAfter(lastDoc))
+              : query(collection(db, 'submissionLogs'), limit(1000));
+            const snap = await getDocs(q);
+            if (snap.empty) {
+              hasMore = false;
+            } else {
+              snap.forEach(d => allLogs.push({ id: d.id, ...d.data() }));
+              lastDoc = snap.docs[snap.docs.length - 1];
+            }
+          }
+
+          // 2. Aggregate scores by memberId
+          const scoreMap: Record<string, { converts: number, leads: number }> = {};
+          let grandTotalConverts = 0;
+
+          allLogs.forEach(log => {
+            const mid = log.memberId;
+            if (!mid) return;
+            if (!scoreMap[mid]) scoreMap[mid] = { converts: 0, leads: 0 };
+            
+            // Use the largest convert value seen for a member on a specific date?
+            // Actually, submissionLogs are keyed by targetId_todayStr, so they are already unique per day.
+            scoreMap[mid].converts += (log.convert || 0);
+            scoreMap[mid].leads += (log.personalLead || 0);
+            
+            // Only count converts from Leaders for the grand total?
+            // The existing logic only counts leaders for config.totalConverts
+            const isLeader = leaderRanking.some(r => r.id === mid) || (members.find(m => m.id === mid)?.type === 'leader');
+            if (isLeader) {
+              grandTotalConverts += (log.convert || 0);
+            }
+          });
+
+          // 3. Batch update rankings
+          const batch = writeBatch(db);
+          
+          // Update Leaders
+          leaderRanking.forEach(r => {
+            const totals = scoreMap[r.id] || { converts: 0, leads: 0 };
+            batch.update(doc(db, 'leaderRanking', r.id), {
+              score: totals.converts,
+              leads: totals.leads,
+              updatedAt: serverTimestamp()
+            });
+          });
+
+          // Update Trainers
+          trainerRanking.forEach(r => {
+            const totals = scoreMap[r.id] || { converts: 0, leads: 0 };
+            batch.update(doc(db, 'trainerRanking', r.id), {
+              score: totals.converts,
+              leads: totals.leads,
+              updatedAt: serverTimestamp()
+            });
+          });
+
+          // Update Global Config
+          batch.update(doc(db, 'config', 'global'), {
+            totalConverts: grandTotalConverts
+          });
+
+          await batch.commit();
+          showMsg('Ranking audit and recalculation complete!', 'success');
+          setShowConfirm(null);
+        } catch (err) {
+          console.error('Audit failed:', err);
+          showMsg('Audit failed: ' + (err instanceof Error ? err.message : 'Unknown error'), 'error');
+        }
+      }
+    });
+  };
+
   const submitResult = async (memberId: string, lead: number, convert: number, personalLead: number) => {
     const isWindowOpen = config.timerActive && (config.timerEndTime ? (Date.now() <= config.timerEndTime + 10000) : true);
     if (!isWindowOpen) {
@@ -5164,12 +5251,31 @@ export default function App() {
       const targetId = member?.id || memberId || (targetWhatsapp ? `user-${targetWhatsapp}` : 'unknown');
 
       // 1. Fetch current database state for this member's result to ensure correct diff calculation
+      const todayStr = format(new Date(), 'yyyy-MM-dd');
       const resultDocRef = doc(db, 'results', targetId);
       const resultSnap = await getDoc(resultDocRef);
       const dbResult = resultSnap.exists() ? resultSnap.data() as Result : { lead: 0, convert: 0, personalLead: 0 };
       
-      const diffScore = convert - (dbResult.convert || 0);
-      const diffLeads = personalLead - (dbResult.personalLead || 0);
+      // CRITICAL DATA FIX: Only calculate diff if the record in 'results' is from TODAY.
+      // If dbResult is from a previous day (or doesn't exist), we treat the old score as 0 
+      // for the purpose of lifetime accumulation. This prevents subtracting yesterday's converts 
+      // from the total lifetime ranking score when a user makes their first submission of a new day.
+      let lastUpdateDate = '';
+      if (dbResult.updatedAt) {
+        try {
+          const dt = typeof (dbResult.updatedAt as any).toDate === 'function' 
+            ? (dbResult.updatedAt as any).toDate() 
+            : new Date((dbResult.updatedAt as any).seconds ? (dbResult.updatedAt as any).seconds * 1000 : dbResult.updatedAt);
+          lastUpdateDate = format(dt, 'yyyy-MM-dd');
+        } catch (_) {}
+      }
+
+      const isSameDay = lastUpdateDate === todayStr;
+      const effectiveOldConvert = isSameDay ? (dbResult.convert || 0) : 0;
+      const effectiveOldLeads = isSameDay ? (dbResult.personalLead || 0) : 0;
+
+      const diffScore = convert - effectiveOldConvert;
+      const diffLeads = personalLead - effectiveOldLeads;
 
       const data = {
         memberId: targetId,
@@ -5200,7 +5306,6 @@ export default function App() {
       }));
 
       // Save in submissionLogs
-      const todayStr = format(new Date(), 'yyyy-MM-dd');
       const logRef = doc(db, 'submissionLogs', `${targetId}_${todayStr}`);
       await setDoc(logRef, {
         whatsapp: targetWhatsapp,
@@ -8394,7 +8499,10 @@ export default function App() {
                            <button onClick={() => startTimer(timerDurationSelect)} disabled={config.timerActive} className="py-3 sm:py-4 bg-green-accent/10 text-green-accent font-black rounded-xl sm:rounded-2xl uppercase text-[9px] sm:text-[10px] tracking-widest border border-green-accent/20 disabled:opacity-30 hover:bg-green-accent hover:text-bg transition-all">Start ({Math.round(timerDurationSelect / 60)}m)</button>
                            <button onClick={stopTimer} disabled={!config.timerActive} className="py-3 sm:py-4 bg-red-accent/10 text-red-accent font-black rounded-xl sm:rounded-2xl uppercase text-[9px] sm:text-[10px] tracking-widest border border-red-accent/20 disabled:opacity-30 hover:bg-red-accent hover:text-white transition-all">Stop</button>
                          </div>
-                         <button onClick={clearResults} className="w-full mt-3 py-2 sm:py-3 text-[9px] sm:text-[10px] font-bold text-muted-main uppercase tracking-widest hover:text-red-accent transition-colors">Clear Sub-Admin Data</button>
+                         <div className="grid grid-cols-2 gap-2 mt-3">
+                            <button onClick={clearResults} className="py-2.5 sm:py-3 text-[9px] sm:text-[10px] font-bold text-muted-main uppercase tracking-widest bg-bg/50 border border-white/5 rounded-xl hover:text-red-accent transition-all">Clear Sub-Admin</button>
+                            <button onClick={auditAllRankings} className="py-2.5 sm:py-3 text-[9px] sm:text-[10px] font-bold text-muted-main uppercase tracking-widest bg-bg/50 border border-white/5 rounded-xl hover:text-gold transition-all">Audit Data</button>
+                          </div>
                       </div>
 
                       <div className="bg-surface/40 border border-white/5 p-4 sm:p-6 rounded-2xl sm:rounded-3xl">
