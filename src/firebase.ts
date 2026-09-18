@@ -1,62 +1,42 @@
-import { db as supabaseDb } from './lib/supabaseDb';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, onAuthStateChanged, signOut, signInAnonymously } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
+import { getStorage, ref, uploadBytes, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
+import { getMessaging, getToken, onMessage } from 'firebase/messaging';
+import firebaseConfig from '../firebase-applet-config.json';
 
-// Supabase Database Primary Adapter
-export const db = supabaseDb as any;
+const app = initializeApp(firebaseConfig);
 
-// Mocked / Supabase-backed authentication object
-const mockUser: any = {
-  uid: 'supabase-user-session',
-  email: 'user@unity.app',
-  emailVerified: true,
-  isAnonymous: true
+// Initialize services with the specific database ID from config
+export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const auth = getAuth(app);
+export const storage = getStorage(app);
+
+// Messaging is optional as it requires a service worker and vapidKey
+let messagingInstance = null;
+try {
+  messagingInstance = getMessaging(app);
+} catch (e) {
+  console.warn('Firebase Messaging could not be initialized:', e);
+}
+export const messaging = messagingInstance;
+
+export { 
+  signInWithPopup, 
+  signInWithRedirect, 
+  getRedirectResult, 
+  GoogleAuthProvider, 
+  onAuthStateChanged, 
+  signOut, 
+  signInAnonymously,
+  ref,
+  uploadBytes,
+  getDownloadURL,
+  uploadBytesResumable,
+  getToken,
+  onMessage
 };
 
-export const auth: any = {
-  currentUser: mockUser,
-  onAuthStateChanged: (callback: (user: any) => void) => {
-    setTimeout(() => callback(mockUser), 0);
-    return () => {};
-  },
-  signInAnonymously: async () => ({ user: mockUser }),
-  signOut: async () => {}
-};
-
-export const storage: any = null;
-export const messaging: any = null;
-
-// Auth stubs & helpers
-export class GoogleAuthProvider {}
-export async function signInWithPopup(..._args: any[]) {
-  return { user: mockUser };
-}
-export async function signInWithRedirect(..._args: any[]) {
-  return { user: mockUser };
-}
-export async function getRedirectResult(..._args: any[]) {
-  return null;
-}
-export function onAuthStateChanged(_auth: any, callback: (u: any) => void) {
-  setTimeout(() => callback(mockUser), 0);
-  return () => {};
-}
-export async function signOut(..._args: any[]) {
-  return Promise.resolve();
-}
-export async function signInAnonymously(..._args: any[]) {
-  return { user: mockUser };
-}
-
-// Storage stubs & helpers
-export function ref(..._args: any[]) { return {}; }
-export async function uploadBytes(..._args: any[]) { return {}; }
-export async function getDownloadURL(..._args: any[]) { return ''; }
-export function uploadBytesResumable(..._args: any[]) { return {}; }
-
-// Messaging stubs & helpers
-export async function getToken(..._args: any[]) { return ''; }
-export function onMessage(..._args: any[]) { return () => {}; }
-
-export type User = any;
-export type FirebaseUser = any;
+export type FirebaseUser = import('firebase/auth').User;
 
 

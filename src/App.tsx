@@ -26,8 +26,22 @@ import {
   getDocsFromCache,
   getDocFromCache,
   increment,
-  clearCollection
-} from './lib/supabaseDb';
+  runTransaction
+} from 'firebase/firestore';
+
+// Helper to clear a collection in Firestore
+async function clearCollection(colName: string) {
+  try {
+    const q = query(collection(db, colName));
+    const snap = await getDocs(q);
+    const batch = writeBatch(db);
+    snap.forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+  } catch (err) {
+    console.error(`Error clearing collection ${colName}:`, err);
+    throw err;
+  }
+}
 import { 
   db, 
   auth, 
@@ -453,7 +467,15 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   const message = err?.message || String(error);
   const code = err?.code || '';
   
-  if (code === 'unavailable' || code === 'resource-exhausted' || message.includes('unavailable') || message.includes('offline') || message.includes('Quota exceeded')) {
+  if (code === 'resource-exhausted' || message.includes('Quota exceeded')) {
+    if (showMsg) {
+      showMsg('আপনার ডাটাবেস ব্যবহারের দৈনিক ফ্রি লিমিট (Quota) শেষ হয়ে গেছে! অনুগ্রহ করে আগামীকাল আবার চেষ্টা করুন। (Quota Exceeded)', 'error');
+    }
+    console.warn('Firestore Quota exceeded:', message);
+    return;
+  }
+  
+  if (code === 'unavailable' || message.includes('unavailable') || message.includes('offline')) {
     console.warn('Database is synchronizing or operating in offline cache mode:', message);
     return;
   }
@@ -485,22 +507,36 @@ const handleDatabaseError = handleFirestoreError;
 
 // --- Components ---
 
-const Toast = ({ message, type, onClose }: { message: string, type: 'success' | 'error', onClose: () => void }) => {
+const Toast = ({ message, type, onClose }: { message: string, type: 'success' | 'error' | 'info', onClose: () => void }) => {
   useEffect(() => {
-    const timer = setTimeout(onClose, 2000);
+    const timer = setTimeout(onClose, 5000);
     return () => clearTimeout(timer);
   }, [onClose]);
 
+  const icons = {
+    success: <CheckCircle size={18} className="text-emerald-500" />,
+    error: <AlertCircle size={18} className="text-rose-500" />,
+    info: <Info size={18} className="text-blue-500" />
+  };
+
+  const bgColors = {
+    success: 'bg-emerald-50 border-emerald-100 text-emerald-900',
+    error: 'bg-rose-50 border-rose-100 text-rose-900',
+    info: 'bg-blue-50 border-blue-100 text-blue-900'
+  };
+
   return (
     <motion.div 
-      initial={{ y: 100, opacity: 0, x: '-50%' }}
+      initial={{ y: 50, opacity: 0, x: '-50%' }}
       animate={{ y: 0, opacity: 1, x: '-50%' }}
-      exit={{ y: 100, opacity: 0, x: '-50%' }}
-      className={`fixed bottom-8 left-1/2 z-[9999] px-6 py-3 rounded-full font-bold shadow-lg ${
-        type === 'success' ? 'bg-green-accent text-bg' : 'bg-red-accent text-white'
-      }`}
+      exit={{ y: 50, opacity: 0, x: '-50%' }}
+      className={`fixed bottom-24 left-1/2 z-[9999] px-5 py-3.5 rounded-2xl border shadow-2xl flex items-center gap-3 min-w-[320px] max-w-[90vw] ${bgColors[type] || bgColors.success}`}
     >
-      {message}
+      <div className="shrink-0">{icons[type] || icons.success}</div>
+      <p className="text-sm font-black tracking-tight leading-tight flex-1">{message}</p>
+      <button onClick={onClose} className="p-1 hover:bg-black/5 rounded-lg transition-colors">
+        <X size={16} className="text-slate-400" />
+      </button>
     </motion.div>
   );
 };
@@ -2956,6 +2992,7 @@ const UserCalendarModal = ({
   );
 };
 
+
 export default function App() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
@@ -3861,9 +3898,8 @@ export default function App() {
     return `${mins}:${secs}`;
   };
 
-  const showMsg = (message: string, type: 'success' | 'error' = 'success') => {
-    // Notifications disabled by user request
-    console.log(`[Notification Silenced] ${type}: ${message}`);
+  const showMsg = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+    setToast({ message, type });
   };
 
   // Actions
@@ -5289,7 +5325,7 @@ export default function App() {
       const todayStr = format(new Date(), 'yyyy-MM-dd');
       const resultDocRef = doc(db, 'results', targetId);
       const resultSnap = await getDoc(resultDocRef);
-      const dbResult = resultSnap.exists() ? resultSnap.data() as Result : { lead: 0, convert: 0, personalLead: 0 };
+      const dbResult = resultSnap.exists() ? resultSnap.data() as any : { lead: 0, convert: 0, personalLead: 0, updatedAt: null };
       
       // CRITICAL DATA FIX: Only calculate diff if the record in 'results' is from TODAY.
       // If dbResult is from a previous day (or doesn't exist), we treat the old score as 0 
@@ -6839,6 +6875,15 @@ export default function App() {
     <div className="min-h-screen pb-20">
       <NotificationManager user={currentAuthUser || user} position={currentAuthUser?.position} />
       
+      <AnimatePresence>
+        {toast && (
+          <Toast 
+            message={toast.message} 
+            type={toast.type as any} 
+            onClose={() => setToast(null)} 
+          />
+        )}
+      </AnimatePresence>
       {!isOnline && (
         <motion.div 
           initial={{ y: 20, opacity: 0 }}
