@@ -528,9 +528,13 @@ export async function getDoc(docRef: DocRef): Promise<DocumentSnapshot> {
   const supabase = getSupabase();
   if (supabase && isSupabaseConfigured()) {
     try {
-      const { data, error } = await supabase.from(colName).select('*').eq('id', docId).maybeSingle();
-      if (!error && data) {
-        const unpacked = unpackSupabaseRow(data);
+      const fetchPromise = supabase.from(colName).select('*').eq('id', docId).maybeSingle();
+      const timeoutPromise = new Promise<any>((resolve) =>
+        setTimeout(() => resolve({ data: null, error: { message: 'Timeout' } }), 2500)
+      );
+      const res = await Promise.race([fetchPromise, timeoutPromise]);
+      if (res && !res.error && res.data) {
+        const unpacked = unpackSupabaseRow(res.data);
         map.set(docId, unpacked);
         return createDocSnapshot(colName, docId, unpacked);
       }
@@ -574,9 +578,12 @@ export async function getDocs(target: CollectionRef | QueryRef): Promise<QuerySn
         }
       }
 
-      const { data, error } = await queryBuilder;
-      if (!error && Array.isArray(data)) {
-        for (const row of data) {
+      const timeoutPromise = new Promise<any>((resolve) =>
+        setTimeout(() => resolve({ data: null, error: { message: 'Timeout' } }), 3000)
+      );
+      const res = await Promise.race([queryBuilder, timeoutPromise]);
+      if (res && !res.error && Array.isArray(res.data)) {
+        for (const row of res.data) {
           const unpacked = unpackSupabaseRow(row);
           if (unpacked?.id) map.set(String(unpacked.id), unpacked);
         }

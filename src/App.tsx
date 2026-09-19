@@ -3763,40 +3763,34 @@ export default function App() {
   // Actions
   const login = async (useRedirect = false, typedPassword?: string) => {
     try {
-      if (!typedPassword) {
-        showMsg('Please enter the Admin Password first!', 'error');
+      if (!typedPassword || !typedPassword.trim()) {
+        showMsg('এডমিন পাসওয়ার্ড প্রদান করুন!', 'error');
         return;
       }
 
-      let currentAdminPass = initialAdminPass;
+      let currentAdminPass = localStorage.getItem('cachedAdminPassword') || initialAdminPass;
       try {
-        let configDoc;
-        try {
-          configDoc = await getDoc(doc(db, 'systemConfig', 'adminAuth'));
-        } catch (e) {
-          console.warn("Network fetch failed for admin password, trying cache:", e);
-          configDoc = await getDocFromCache(doc(db, 'systemConfig', 'adminAuth'));
-        }
-        
-        if (configDoc && configDoc.exists() && configDoc.data().password) {
+        const configDoc = await getDoc(doc(db, 'systemConfig', 'adminAuth'));
+        if (configDoc && configDoc.exists() && configDoc.data()?.password) {
           currentAdminPass = configDoc.data().password;
+          localStorage.setItem('cachedAdminPassword', currentAdminPass);
         }
       } catch (e) {
         console.warn("Using fallback admin password:", e);
       }
 
-      if (!comparePasswords(typedPassword, currentAdminPass)) {
-        showMsg('Invalid Admin Password!', 'error');
-        return;
+      if (comparePasswords(typedPassword.trim(), currentAdminPass)) {
+        setIsAdmin(true);
+        localStorage.setItem('isAdmin', 'true');
+        sessionStorage.setItem('isAdmin', 'true');
+        setSiteAuthenticated(true);
+        showMsg('সফলভাবে এডমিন লগইন হয়েছে!', 'success');
+      } else {
+        showMsg('ভুল এডমিন পাসওয়ার্ড! অনুগ্রহ করে সঠিক পাসওয়ার্ড দিন।', 'error');
       }
-
-      setIsAdmin(true);
-      localStorage.setItem('isAdmin', 'true');
-      setSiteAuthenticated(true);
-      showMsg('সফলভাবে এডমিন লগইন হয়েছে!', 'success');
     } catch (err: any) {
       console.error('Login error details:', err);
-      showMsg(`লগইন ব্যর্থ হয়েছে: ${err.message}`, 'error');
+      showMsg(`লগইন ব্যর্থ হয়েছে: ${err?.message || 'অজানা ত্রুটি'}`, 'error');
     }
   };
 
@@ -3879,17 +3873,12 @@ export default function App() {
       const adminEmailLower = adminEmail.toLowerCase();
       if (cleanWaLower === adminEmailLower || cleanWaLower === 'admin') {
         console.log('Checking admin login');
-        let currentAdminPass = initialAdminPass;
+        let currentAdminPass = localStorage.getItem('cachedAdminPassword') || initialAdminPass;
         try {
-          let configDoc;
-          try {
-            configDoc = await getDoc(doc(db, 'systemConfig', 'adminAuth'));
-          } catch (e) {
-            console.warn("Network fetch failed for admin password config, trying cache:", e);
-            configDoc = await getDocFromCache(doc(db, 'systemConfig', 'adminAuth'));
-          }
-          if (configDoc && configDoc.exists() && configDoc.data().password) {
+          const configDoc = await getDoc(doc(db, 'systemConfig', 'adminAuth'));
+          if (configDoc && configDoc.exists() && configDoc.data()?.password) {
             currentAdminPass = configDoc.data().password;
+            localStorage.setItem('cachedAdminPassword', currentAdminPass);
           }
         } catch (e) {
           console.warn("Using fallback admin password:", e);
@@ -3898,7 +3887,7 @@ export default function App() {
         if (comparePasswords(pass, currentAdminPass)) {
           setIsAdmin(true);
           sessionStorage.setItem('isAdmin', 'true');
-          localStorage.removeItem('isAdmin');
+          localStorage.setItem('isAdmin', 'true');
           setSiteAuthenticated(true);
           showMsg('এডমিন হিসেবে সফলভাবে লগইন হয়েছে!', 'success');
           return true;
@@ -12047,17 +12036,18 @@ function AdminLoginModal({ onClose, onSuccess, initialAdminPass }: { onClose: ()
     e.preventDefault();
     setLoading(true);
     try {
-      let currentAdminPass = initialAdminPass;
+      let currentAdminPass = localStorage.getItem('cachedAdminPassword') || initialAdminPass;
       try {
         const configDoc = await getDoc(doc(db, 'systemConfig', 'adminAuth'));
-        if (configDoc.exists() && configDoc.data().password) {
+        if (configDoc && configDoc.exists() && configDoc.data()?.password) {
           currentAdminPass = configDoc.data().password;
+          localStorage.setItem('cachedAdminPassword', currentAdminPass);
         }
       } catch (e) {
         console.warn("Using fallback admin password");
       }
 
-      if (password.trim() === currentAdminPass.trim()) {
+      if (comparePasswords(password.trim(), currentAdminPass)) {
         onSuccess();
       } else {
         setError(true);
