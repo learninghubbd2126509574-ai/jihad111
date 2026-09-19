@@ -131,7 +131,49 @@ service cloud.firestore {
              data.url is string && data.url.size() > 0 && data.url.size() < 500;
     }
 
+    function isValidPost(data) {
+      return data.keys().hasAll(['authorId', 'authorName', 'content', 'createdAt']) &&
+             data.keys().hasOnly(['authorId', 'authorName', 'authorRole', 'authorAvatar', 'content', 'imageUrl', 'createdAt', 'likesCount']) &&
+             data.authorId is string && data.authorId.size() < 100 &&
+             data.authorName is string && data.authorName.size() < 100 &&
+             data.content is string && data.content.size() > 0 && data.content.size() < 5000 &&
+             (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() < 1000000)) &&
+             (!('likesCount' in data) || (data.likesCount is number));
+    }
+
+    function isValidComment(data) {
+      return data.keys().hasAll(['userId', 'userName', 'text', 'createdAt']) &&
+             data.keys().hasOnly(['userId', 'userName', 'userAvatar', 'text', 'createdAt']) &&
+             data.userId is string && data.userId.size() < 100 &&
+             data.userName is string && data.userName.size() < 100 &&
+             data.text is string && data.text.size() > 0 && data.text.size() < 1000;
+    }
+
+    function isValidLike(data) {
+      return data.keys().hasAll(['userId', 'createdAt']) &&
+             data.keys().hasOnly(['userId', 'createdAt']) &&
+             data.userId is string && data.userId.size() < 100;
+    }
+
     // Rules
+    match /communityPosts/{postId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && isValidPost(request.resource.data);
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+
+      match /likes/{userId} {
+        allow read: if true;
+        allow create, delete: if isAuthenticated();
+      }
+
+      match /comments/{commentId} {
+        allow read: if true;
+        allow create: if isAuthenticated() && isValidComment(request.resource.data);
+        allow delete: if isAuthenticated();
+      }
+    }
+
     match /pendingRegistrations/{id} {
       allow create: if isValidUserRegistration(request.resource.data) && request.resource.data.status == 'pending' && isValidId(id);
       allow get: if true; 

@@ -95,6 +95,7 @@ import {
   RefreshCw,
   AlertTriangle,
   MessageCircle,
+  MessageSquare,
   Music,
   Home,
   ExternalLink,
@@ -133,11 +134,15 @@ import {
 } from 'date-fns';
 import { bn } from 'date-fns/locale';
 import CartoonAvatar, { CARTOON_AVATAR_LIST } from './components/CartoonAvatar';
-import StlWiseResultSection, { normalizeName } from './components/StlWiseResultSection';
+import StlWiseResultSection, { normalizeName, resolveTLConvertData } from './components/StlWiseResultSection';
 import StlAssignmentModal from './components/StlAssignmentModal';
 import StlAdminManager from './components/StlAdminManager';
 import UserQuickSubmitCard from './components/UserQuickSubmitCard';
 import { PhoneKeypad, PasswordKeyboard } from './components/VirtualAuthKeypad';
+import LoginPerformanceModal from './components/LoginPerformanceModal';
+import RankingExportManager from './components/RankingExportManager';
+import CommunitySection from './components/CommunitySection';
+import SubmissionFeedbackModal, { SubmissionFeedbackData } from './components/SubmissionFeedbackModal';
 
 // --- Types ---
 interface Member {
@@ -275,6 +280,27 @@ interface QuickLink {
   createdAt: any;
 }
 
+interface CommunityPost {
+  id: string;
+  authorId: string;
+  authorName: string;
+  authorRole: string;
+  authorAvatar?: string;
+  content: string;
+  imageUrl?: string;
+  createdAt: any;
+  likesCount: number;
+}
+
+interface PostComment {
+  id: string;
+  userId: string;
+  userName: string;
+  userAvatar?: string;
+  text: string;
+  createdAt: any;
+}
+
 interface UserRegistration {
   id?: string;
   fullName: string;
@@ -373,6 +399,7 @@ interface Config {
   giftBoxTitle?: string;
   giftBoxContent?: string;
   customLogo?: string;
+  communityActive?: boolean;
 }
 
 enum OperationType {
@@ -472,64 +499,78 @@ const QuickLinksModal = ({ links, onClose }: { links: QuickLink[], onClose: () =
       <motion.div 
         initial={{ y: 50, opacity: 0, scale: 0.9 }} 
         animate={{ y: 0, opacity: 1, scale: 1 }} 
-        className="relative bg-surface border border-white/10 rounded-[32px] p-8 max-w-xl w-full shadow-[0_0_80px_rgba(37,99,235,0.2)] overflow-hidden"
+        className="relative bg-surface border-4 border-white rounded-[40px] p-8 max-w-xl w-full shadow-[20px_20px_60px_#beccde,-20px_-20px_60px_#ffffff] overflow-hidden"
       >
-        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500" />
+        <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-600 via-purple-600 to-emerald-600" />
         
-        <div className="flex justify-between items-center mb-8">
-          <div className="flex items-center gap-3">
-             <div className="p-2.5 rounded-2xl bg-blue-accent/20 text-blue-accent">
-               <Home size={24} />
+        <div className="flex justify-between items-center mb-10">
+          <div className="flex items-center gap-4">
+             <div className="w-14 h-14 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-lg shadow-blue-500/20">
+               <Globe size={28} strokeWidth={2.5} />
              </div>
              <div>
-               <h3 className="text-2xl font-black text-white tracking-tight">Quick Resources</h3>
-               <p className="text-[10px] text-muted-main uppercase tracking-[2px] font-bold">Important Links & Tools</p>
+               <h3 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tighter leading-none mb-1">Quick Resources</h3>
+               <p className="text-[10px] text-blue-700 uppercase tracking-[3px] font-black">Official Platform Links</p>
              </div>
           </div>
-          <button onClick={onClose} className="p-3 bg-white/5 rounded-2xl text-muted-main hover:text-white hover:bg-white/10 transition-all">
-            <X size={20} />
+          <button onClick={onClose} className="p-4 bg-white/50 border border-white rounded-2xl text-slate-400 hover:text-red-500 hover:bg-white transition-all shadow-sm">
+            <X size={24} strokeWidth={3} />
           </button>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 max-h-[60vh] overflow-y-auto pr-2 pb-4 custom-scrollbar">
+        <div className="grid grid-cols-1 gap-4 max-h-[60vh] overflow-y-auto pr-2 pb-6 custom-scrollbar">
           {links.length === 0 ? (
-            <div className="text-center py-12 bg-white/[0.03] rounded-2xl border border-white/5 italic text-muted-main2 mx-2">
-              No quick links available yet...
+            <div className="col-span-full text-center py-16 bg-white/40 rounded-[32px] border border-border italic text-muted-main/50 font-serif">
+              No resources found at the moment...
             </div>
           ) : (
-            links.map((link, idx) => (
-              <motion.a
-                key={link.id}
-                href={link.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: idx * 0.05 }}
-                className="group flex items-center justify-between p-4 rounded-xl bg-white/[0.03] border border-white/5 hover:border-blue-accent/50 hover:bg-white/[0.06] transition-all"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-blue-accent/10 flex items-center justify-center text-blue-accent">
-                    <Link size={18} />
+            links.map((link, idx) => {
+              const colorSchemes = [
+                { bg: 'bg-blue-100', border: 'border-blue-200', text: 'text-blue-700', iconBg: 'bg-blue-600', iconColor: 'text-white', glow: 'shadow-blue-500/10' },
+                { bg: 'bg-purple-100', border: 'border-purple-200', text: 'text-purple-700', iconBg: 'bg-purple-600', iconColor: 'text-white', glow: 'shadow-purple-500/10' },
+                { bg: 'bg-emerald-100', border: 'border-emerald-200', text: 'text-emerald-700', iconBg: 'bg-emerald-600', iconColor: 'text-white', glow: 'shadow-emerald-500/10' },
+                { bg: 'bg-orange-100', border: 'border-orange-200', text: 'text-orange-700', iconBg: 'bg-orange-600', iconColor: 'text-white', glow: 'shadow-orange-500/10' },
+                { bg: 'bg-rose-100', border: 'border-rose-200', text: 'text-rose-700', iconBg: 'bg-rose-600', iconColor: 'text-white', glow: 'shadow-rose-500/10' },
+                { bg: 'bg-indigo-100', border: 'border-indigo-200', text: 'text-indigo-700', iconBg: 'bg-indigo-600', iconColor: 'text-white', glow: 'shadow-indigo-500/10' },
+              ];
+              const scheme = colorSchemes[idx % colorSchemes.length];
+              
+              return (
+                <motion.a
+                  key={link.id}
+                  href={link.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: idx * 0.05 }}
+                  className={`group relative flex items-center gap-4 p-5 rounded-[24px] ${scheme.bg} border-2 ${scheme.border} hover:scale-[1.03] hover:shadow-xl active:scale-[0.98] transition-all duration-300 shadow-sm`}
+                >
+                  <div className={`w-14 h-14 rounded-2xl ${scheme.iconBg} ${scheme.iconColor} flex items-center justify-center shrink-0 shadow-lg group-hover:rotate-6 transition-transform duration-500`}>
+                    <Link size={24} strokeWidth={3} />
                   </div>
-                  <div>
-                    <h4 className="font-bold text-white text-sm">{link.name}</h4>
-                    <p className="text-[10px] text-muted-main/60 font-mono truncate max-w-[140px]">{link.url.replace(/^https?:\/\//, '')}</p>
+                  
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-black text-slate-900 text-base sm:text-lg tracking-tight leading-tight mb-1 break-all whitespace-normal">{link.name}</h4>
+                    <p className={`text-[10px] ${scheme.text} font-black uppercase tracking-widest break-all whitespace-normal opacity-70`}>
+                      {link.url}
+                    </p>
                   </div>
-                </div>
-                <div className="p-2 rounded-lg bg-white/5 text-muted-main group-hover:text-blue-accent group-hover:bg-blue-accent/10 transition-all">
-                  <ExternalLink size={16} />
-                </div>
-              </motion.a>
-            ))
+
+                  <div className={`p-2.5 rounded-xl bg-white/60 ${scheme.text} border border-white transition-all group-hover:bg-white`}>
+                    <ExternalLink size={16} strokeWidth={3} />
+                  </div>
+                </motion.a>
+              );
+            })
           )}
         </div>
 
         <button 
           onClick={onClose}
-          className="w-full mt-8 py-4 bg-white text-bg font-black rounded-2xl uppercase tracking-[2px] text-sm hover:opacity-90 transition-all shadow-xl"
+          className="w-full mt-8 py-5 bg-gradient-to-r from-slate-900 to-slate-800 text-white font-black rounded-3xl uppercase tracking-[4px] text-xs hover:scale-[1.01] active:scale-[0.98] transition-all shadow-2xl shadow-slate-900/20"
         >
-          Close
+          Close Resources
         </button>
       </motion.div>
     </div>
@@ -2429,12 +2470,13 @@ function GiftBoxOverlay({ config }: { config: Config }) {
 
   return (
     <>
-      <div className="fixed bottom-16 left-4 z-[250] w-12 h-12">
+      <div className="fixed bottom-24 left-4 z-[250] w-10 h-10">
         <button
           onClick={() => setIsOpen(true)}
-          className="w-full h-full bg-gradient-to-tr from-pink-600 to-orange-500 rounded-full shadow-[0_0_20px_rgba(236,72,153,0.5)] flex items-center justify-center text-white hover:scale-110 active:scale-95 transition-all overflow-visible group"
+          className="w-full h-full bg-gradient-to-tr from-pink-600 via-rose-500 to-orange-400 rounded-2xl shadow-[0_10px_20px_rgba(236,72,153,0.3),inset_0_2px_4px_rgba(255,255,255,0.3)] flex items-center justify-center text-white hover:scale-110 active:scale-95 transition-all overflow-visible group border border-white/20"
         >
-          <Gift size={22} className="animate-bounce" />
+          <Gift size={18} className="animate-bounce" />
+          <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
         </button>
         <button 
           onClick={(e) => {
@@ -2727,7 +2769,17 @@ export default function App() {
 
   const [pendingUsers, setPendingUsers] = useState<UserRegistration[]>([]);
   const [approvedUsers, setApprovedUsers] = useState<UserRegistration[]>([]);
-  const [authenticatedUser, setAuthenticatedUser] = useState<UserRegistration | null>(null);
+  const [authenticatedUser, setAuthenticatedUser] = useState<UserRegistration | null>(() => {
+    try {
+      const saved = localStorage.getItem('unity_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
+  });
+
+  const [showLoginPerformanceModal, setShowLoginPerformanceModal] = useState(false);
+  const [submissionFeedbackData, setSubmissionFeedbackData] = useState<SubmissionFeedbackData | null>(null);
 
   const [leaderRanking, setLeaderRanking] = useState<RankingMember[]>([]);
   const [trainerRanking, setTrainerRanking] = useState<RankingMember[]>([]);
@@ -2737,7 +2789,7 @@ export default function App() {
   const [showSocialsModal, setShowSocialsModal] = useState(false);
   const [showNoticeModal, setShowNoticeModal] = useState(false);
   const [showCounsellingModal, setShowCounsellingModal] = useState(false);
-  const [userTab, setUserTab] = useState<'home' | 'submit' | 'sheet' | 'links' | 'profile'>('home');
+  const [userTab, setUserTab] = useState<'home' | 'submit' | 'sheet' | 'community' | 'profile'>('home');
   const [savingPic, setSavingPic] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
@@ -2754,8 +2806,12 @@ export default function App() {
   
   const [showConfirm, setShowConfirm] = useState<{ title: string, onConfirm: () => void } | null>(null);
   const [showCalendarUser, setShowCalendarUser] = useState<{ whatsapp: string, name: string, memberId?: string } | null>(null);
-  const [siteAuthenticated, setSiteAuthenticated] = useState(false);
-  const [stlAuthenticated, setStlAuthenticated] = useState(false);
+  const [siteAuthenticated, setSiteAuthenticated] = useState(() => {
+    return localStorage.getItem('isAdmin') === 'true';
+  });
+  const [stlAuthenticated, setStlAuthenticated] = useState(() => {
+    return localStorage.getItem('stlAuth') === 'true';
+  });
   const [showStlLoginModal, setShowStlLoginModal] = useState(false);
   const [showAdminLoginModal, setShowAdminLoginModal] = useState(false);
 
@@ -2764,7 +2820,9 @@ export default function App() {
   const devEmail = "learninghubbd2126509574@gmail.com";
   // Initial password - this will be synced with Firestore if it exists
   const initialAdminPass = "212650";
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(() => {
+    return localStorage.getItem('isAdmin') === 'true';
+  });
   const hasStlAccess = isAdmin || stlAuthenticated;
 
   useEffect(() => {
@@ -3513,6 +3571,7 @@ export default function App() {
 
       setAuthenticatedUser(user);
       localStorage.setItem('unity_user', JSON.stringify(user));
+      setShowLoginPerformanceModal(true);
       showMsg(`Welcome back, ${user.fullName}!`);
       return true;
     } catch (err) {
@@ -4596,7 +4655,87 @@ export default function App() {
         }
       }
 
-      showMsg('Result submitted!');
+      showMsg('Result submitted!', 'success');
+
+      // Trigger performance feedback modal with role-based emotional feedback
+      const memberName = member?.name || currentAuthUser?.fullName || 'সদস্য';
+      
+      // Prioritize current user's actual position for accurate role detection
+      const userPos = (currentAuthUser?.position || '').toLowerCase();
+      const memberPos = (member?.position || '').toLowerCase();
+      const posStr = (userPos || memberPos).toLowerCase();
+      
+      let roleName = 'সদস্য';
+      if (posStr.includes('trainer') || posStr.includes('ট্রেনার')) {
+        roleName = 'ট্রেনার';
+      } else if (posStr.includes('stl') || posStr.includes('senior team leader') || posStr.includes('সিনিয়র টিম লিডার')) {
+        roleName = 'STL';
+      } else if (posStr.includes('senior') || posStr.includes('সিনিয়র')) {
+        roleName = 'STL';
+      } else if (posStr.includes('leader') || posStr.includes('লিডার') || member?.type === 'leader') {
+        roleName = 'টিম লিডার';
+      } else {
+        roleName = member?.type === 'leader' ? 'টিম লিডার' : 'ট্রেনার';
+      }
+
+      const rate = roleName === 'ট্রেনার' ? 50 : roleName === 'STL' ? 25 : 60;
+      const earnedAmount = convert * rate;
+
+      let ratingTier: 'angry' | 'strict' | 'disappointed' | 'happy' | 'legend' = 'angry';
+      let feedbackMsg = '';
+
+      if (convert === 0) {
+        ratingTier = 'angry';
+        feedbackMsg = `${roleName} হিসেবে আপনার কনভার্ট একদম শূন্য! আপনার লজ্জা হওয়া উচিত। অবিলম্বে কাজের গতি বাড়ান!`;
+      } else if (convert === 1 || convert === 2) {
+        ratingTier = 'strict';
+        feedbackMsg = `${roleName} হিসেবে মাত্র ${convert}টি কনভার্ট! এভাবে চললে টার্গেট পূরণ হবে না। কঠোরভাবে কাজ করুন!`;
+      } else if (convert === 3 || convert === 4) {
+        ratingTier = 'disappointed';
+        feedbackMsg = `${roleName} হিসেবে ${convert}টি কনভার্ট, যা সন্তোষজনক নয়। মন খারাপের বিষয়! আরও মনোযোগ দিন।`;
+      } else if (convert >= 5 && convert < 10) {
+        ratingTier = 'happy';
+        feedbackMsg = `${roleName} হিসেবে চমৎকার! ${convert}টি কনভার্ট এসেছে। ভালো প্রচেষ্টা, এই ধারাবাহিকতা রাখুন!`;
+      } else {
+        ratingTier = 'legend';
+        feedbackMsg = `${roleName} হিসেবে অসাধারণ! ${convert}টি কনভার্ট! অবিশ্বাস্য সাফল্য, আপনাকে অভিনন্দন 🔥`;
+      }
+
+      // Add bonus message if criteria met
+      if ((roleName === 'টিম লিডার' && convert >= 6) || (roleName === 'ট্রেনার' && convert >= 4)) {
+        feedbackMsg += " 🎉 অভিনন্দন! আজকে আপনি বোনাস পাবেন।";
+      }
+
+      let personalLeadFeedback = '';
+      if (personalLead <= 2) {
+        personalLeadFeedback = `মাত্র ${personalLead}টি পার্সোনাল লিড! এটা একদমই কম এবং অত্যন্ত রাগ করার মতো ব্যাপার 😡। লিড সংখ্যা দ্রুত বাড়াতে হবে!`;
+      } else if (personalLead <= 5) {
+        personalLeadFeedback = `পার্সোনাল লিড মাত্র ${personalLead}টি! এই পারফরম্যান্সে মন খারাপ হওয়া স্বাভাবিক 😞। আরও বেশি লিড কালেক্ট করার জন্য জোর দিতে হবে।`;
+      } else if (personalLead <= 8) {
+        personalLeadFeedback = `${personalLead}টি পার্সোনাল লিড সংগ্রহ হয়েছে। মোটামুটি ভালো ও সন্তোষজনক 🟡। আরেকটু চেষ্টা করলে আরও ভালো ফলাফল আসবে।`;
+      } else {
+        personalLeadFeedback = `দারুণ! ${personalLead}টি পার্সোনাল লিড কালেক্ট করেছেন! আপনার এই পারফরম্যান্স সত্যি খুব খুশি করার মতো 😃🔥`;
+      }
+
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth();
+      const lastDayOfMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+      const currentDay = now.getDate();
+      const daysRemaining = Math.max(0, lastDayOfMonth - currentDay);
+
+      setSubmissionFeedbackData({
+        memberName,
+        role: roleName,
+        convert,
+        lead,
+        personalLead,
+        estimatedEarnings: earnedAmount,
+        feedbackText: feedbackMsg,
+        personalLeadFeedback,
+        ratingTier,
+        daysRemaining
+      });
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'results', showMsg);
     }
@@ -5822,7 +5961,7 @@ export default function App() {
                   <ChevronRight size={18} className="text-blue-600" />
                 </button>
 
-                <div className="pt-4 mt-4 border-t border-[#d2dce8]">
+                  <div className="pt-4 mt-4 border-t border-[#d2dce8]">
                   <div className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mb-3 pl-1">System Control</div>
                   <button 
                     onClick={() => { setShowMenu(false); setShowSocialsModal(true); }}
@@ -5830,7 +5969,7 @@ export default function App() {
                   >
                     <div className="flex items-center gap-3">
                       <Globe className="text-blue-600" size={18} />
-                      <span className="text-sm font-bold">Social Link</span>
+                      <span className="text-sm font-bold">Social Links</span>
                     </div>
                     <ChevronRight size={16} className="text-slate-400" />
                   </button>
@@ -6363,51 +6502,13 @@ export default function App() {
           </div>
         )}
 
-        {userTab === 'links' && (
-          <div className="space-y-8">
-            <div className="text-center mb-8">
-              <div className="inline-flex items-center gap-2 bg-blue-100 border border-blue-300 text-blue-900 px-3 py-1 rounded-full text-[9px] sm:text-[10px] tracking-[2px] uppercase mb-4 font-black shadow-2xs">
-                <Link size={12} className="text-blue-700" /> প্রজেক্ট লিঙ্ক সমূহ
-              </div>
-              <h1 className="font-serif text-2xl sm:text-4xl font-black mb-2 text-red-600 dark:text-red-400 px-2">
-                গুরুত্বপূর্ণ লিংকসমূহ
-              </h1>
-              <p className="text-slate-800 dark:text-slate-200 text-[10px] sm:text-sm max-w-md mx-auto font-black leading-relaxed">
-                প্রয়োজনীয় এবং প্রয়োজনীয় প্রজেক্ট ও ফাইলগুলোর শর্টকাট লিংক।
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4">
-              {quickLinks.length === 0 ? (
-                <div className="text-center py-16 bg-slate-50 rounded-2xl border border-slate-200/80 italic text-slate-500">
-                  No quick links available yet...
-                </div>
-              ) : (
-                quickLinks.map((link) => (
-                  <a
-                    key={link.id}
-                    href={link.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="group flex items-center justify-between gap-3 p-4 rounded-2xl bg-white/95 border border-slate-200 hover:border-blue-500 hover:bg-white shadow-xs transition-all overflow-hidden"
-                  >
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <div className="w-12 h-12 shrink-0 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 group-hover:bg-blue-600 group-hover:text-white transition-all">
-                        <Link size={20} />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <h4 className="font-bold text-slate-850 text-sm sm:text-base group-hover:text-blue-600 transition-colors truncate">{link.name}</h4>
-                        <p className="text-[10px] text-slate-500 font-mono mt-0.5 truncate w-full group-hover:text-slate-600 transition-colors">{link.url}</p>
-                      </div>
-                    </div>
-                    <div className="p-2.5 shrink-0 rounded-xl bg-slate-50 border border-slate-100 text-slate-500 group-hover:text-blue-600 group-hover:bg-blue-50 group-hover:border-blue-100 transition-all">
-                      <ExternalLink size={18} />
-                    </div>
-                  </a>
-                ))
-              )}
-            </div>
-          </div>
+        {userTab === 'community' && (
+          <CommunitySection 
+            currentUser={currentAuthUser}
+            isAdmin={isAdmin}
+            communityActive={config.communityActive || false}
+            onToggleActive={(active) => updateDoc(doc(db, 'config', 'global'), { communityActive: active })}
+          />
         )}
 
         {userTab === 'profile' && (
@@ -6784,9 +6885,9 @@ export default function App() {
               indicatorColor: 'bg-blue-600'
             },
             { 
-              id: 'links', 
-              label: 'লিংক সমূহ', 
-              icon: <Link size={18} className="sm:w-5 sm:h-5" />, 
+              id: 'community', 
+              label: 'কমিউনিটি', 
+              icon: <MessageSquare size={18} className="sm:w-5 sm:h-5" />, 
               isExternal: false,
               labelColor: 'text-slate-600 font-bold',
               activeLabelColor: 'text-blue-600 font-black',
@@ -6797,7 +6898,13 @@ export default function App() {
             { 
               id: 'profile', 
               label: 'প্রোফাইল', 
-              icon: <User size={18} className="sm:w-5 sm:h-5" />, 
+              icon: currentAuthUser?.profilePic ? (
+                <div className="w-full h-full rounded-lg overflow-hidden flex items-center justify-center">
+                  <CartoonAvatar src={currentAuthUser.profilePic} name={currentAuthUser.fullName} className="w-full h-full object-cover" />
+                </div>
+              ) : (
+                <User size={18} className="sm:w-5 sm:h-5" />
+              ), 
               isExternal: false,
               labelColor: 'text-slate-600 font-bold',
               activeLabelColor: 'text-blue-600 font-black',
@@ -7081,6 +7188,25 @@ export default function App() {
                       <SocialLinksManager config={config} onUpdate={(links) => updateDoc(doc(db, 'config', 'global'), { socialLinks: links })} />
                       <NoticeManager config={config} onUpdate={updateNoticeText} />
                       <GiftBoxManager config={config} onUpdate={updateGiftBox} />
+                      <div className="pt-4 border-t border-slate-100">
+                        <div className="flex items-center justify-between p-4 bg-purple-50 rounded-2xl border border-purple-100">
+                          <div className="flex items-center gap-3">
+                            <div className="p-2 bg-purple-100 text-purple-600 rounded-xl">
+                              <MessageSquare size={20} />
+                            </div>
+                            <div>
+                              <h4 className="text-sm font-black text-slate-800">কমিউনিটি অপশন</h4>
+                              <p className="text-[10px] text-purple-600 font-bold uppercase tracking-wider">Enable Community Tab</p>
+                            </div>
+                          </div>
+                          <button 
+                            onClick={() => updateDoc(doc(db, 'config', 'global'), { communityActive: !config.communityActive })}
+                            className={`w-12 h-6 rounded-full relative transition-all ${config.communityActive ? 'bg-purple-600' : 'bg-slate-300'}`}
+                          >
+                            <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${config.communityActive ? 'left-7' : 'left-1'}`} />
+                          </button>
+                        </div>
+                      </div>
                    </div>
                 </AdminAccordion>
 
@@ -7192,6 +7318,11 @@ export default function App() {
                         onUpdateScore={(id, score, leads) => updateRankingScore('trainer', id, score, leads)}
                         isActive={config.trainerRankingActive || false}
                         onToggleActive={(val) => updateAttendanceConfig(undefined, undefined, undefined, val)}
+                      />
+                      <RankingExportManager 
+                        leaderRanking={leaderRanking}
+                        trainerRanking={trainerRanking}
+                        customLogo={config.customLogo}
                       />
                    </div>
                 </AdminAccordion>
@@ -7491,6 +7622,62 @@ export default function App() {
             onClose={() => setShowOverallStatsModal(false)}
             leaders={sortedLeaderRanking}
             trainers={sortedTrainerRanking}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showLoginPerformanceModal && authenticatedUser && (
+          <LoginPerformanceModal 
+            user={authenticatedUser}
+            totalConverts={
+              (() => {
+                const uName = (authenticatedUser?.fullName || '').trim().toLowerCase();
+                const pos = (authenticatedUser?.position || '').toLowerCase();
+                if (pos.includes('stl') || pos.includes('senior')) {
+                  const stl = stlMembers.find(s => s.name.trim().toLowerCase() === uName || normalizeName(s.name) === normalizeName(authenticatedUser?.fullName || ''));
+                  if (stl && stl.assignedTLs) {
+                    let sum = 0;
+                    stl.assignedTLs.forEach(idOrName => {
+                      const cleanIdOrName = normalizeName(idOrName);
+                      const member = members.find(m => m.id === idOrName || normalizeName(m.name) === cleanIdOrName);
+                      const data = resolveTLConvertData(idOrName, members.filter(m => m.type === 'leader'), leaderRanking, results, member);
+                      sum += data.convert;
+                    });
+                    return sum;
+                  }
+                  return 0;
+                } else {
+                  const match = [...leaderRanking, ...trainerRanking].find(
+                    r => r.name.trim().toLowerCase() === uName || normalizeName(r.name) === normalizeName(authenticatedUser?.fullName || '')
+                  );
+                  return match?.score || 0;
+                }
+              })()
+            }
+            monthlyTarget={
+              (() => {
+                const uName = (authenticatedUser?.fullName || '').trim().toLowerCase();
+                const pos = (authenticatedUser?.position || '').toLowerCase();
+                if (pos.includes('stl') || pos.includes('senior')) {
+                  const stl = stlMembers.find(s => s.name.trim().toLowerCase() === uName || normalizeName(s.name) === normalizeName(authenticatedUser?.fullName || ''));
+                  return stl?.target || 30;
+                } else {
+                  const mem = members.find(m => m.name.trim().toLowerCase() === uName || normalizeName(m.name) === normalizeName(authenticatedUser?.fullName || ''));
+                  return mem?.target || 30;
+                }
+              })()
+            }
+            onClose={() => setShowLoginPerformanceModal(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {submissionFeedbackData && (
+          <SubmissionFeedbackModal 
+            data={submissionFeedbackData}
+            onClose={() => setSubmissionFeedbackData(null)}
           />
         )}
       </AnimatePresence>
@@ -10197,7 +10384,7 @@ function RankingBoardModal({
                    animate={{ x: 0, opacity: 1 }}
                    transition={{ delay: idx * 0.04 }}
                    className={`relative flex items-center justify-between p-4 sm:p-5 rounded-2xl transition-all duration-300 border ${
-                     isTop1 ? 'neu-card bg-amber-50/80 border-amber-300/80 shadow-md' : 
+                     isTop1 ? 'bg-gradient-to-r from-blue-900 via-indigo-950 to-slate-900 border-2 border-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.35)]' : 
                      isTop2 ? 'neu-card-sm bg-blue-50/70 border-blue-200/80' :
                      isTop3 ? 'neu-card-sm bg-emerald-50/70 border-emerald-200/80' :
                      'neu-card-sm bg-[#e2ebf5] border-slate-200/60'
@@ -10205,7 +10392,7 @@ function RankingBoardModal({
                  >
                    <div className="flex items-center gap-3.5 relative flex-1 min-w-0">
                      <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-base font-black shadow-sm shrink-0 ${
-                       isTop1 ? 'bg-amber-400 text-amber-950' :
+                       isTop1 ? 'bg-gradient-to-br from-amber-300 to-amber-500 text-amber-950 shadow-md' :
                        isTop2 ? 'bg-blue-500 text-white' :
                        isTop3 ? 'bg-emerald-500 text-white' :
                        'neu-inset text-slate-700 font-bold'
@@ -10216,20 +10403,32 @@ function RankingBoardModal({
                         idx + 1}
                      </div>
                      <div className="min-w-0 flex-1">
-                       <div className="text-base sm:text-lg font-black text-[#090d16] tracking-tight truncate flex items-center gap-1.5">
+                       <div className={`text-base sm:text-lg font-black tracking-tight truncate flex items-center gap-1.5 ${
+                         isTop1 ? 'text-amber-300' : 'text-[#090d16]'
+                       }`}>
                          <span>{m.name}</span>
-                         {isTop1 && <span className="text-amber-600 text-xs">👑</span>}
+                         {isTop1 && (
+                           <span className="bg-amber-400/20 text-amber-300 text-[9px] px-1.5 py-0.5 rounded-full border border-amber-400/30 font-bold tracking-widest uppercase">
+                             Elite Performer
+                           </span>
+                         )}
                        </div>
                        <div className="flex items-center gap-2 mt-0.5">
-                         <div className={`w-1.5 h-1.5 rounded-full ${isTop1 ? 'bg-amber-500 animate-pulse' : 'bg-slate-400'}`} />
-                         <span className="text-[10px] uppercase font-bold tracking-wider text-slate-600">{idx + 1}{idx === 0 ? 'st' : idx === 1 ? 'nd' : idx === 2 ? 'rd' : 'th'} Elite</span>
+                         <div className={`w-1.5 h-1.5 rounded-full ${isTop1 ? 'bg-amber-400 animate-pulse' : 'bg-slate-400'}`} />
+                         <span className={`text-[10px] uppercase font-bold tracking-wider ${
+                           isTop1 ? 'text-blue-200/80 font-black' : 'text-slate-600'
+                         }`}>{idx + 1}{idx === 0 ? 'st' : idx === 1 ? 'nd' : idx === 2 ? 'rd' : 'th'} Elite</span>
                        </div>
                      </div>
                    </div>
 
                    <div className="flex flex-col items-end gap-0.5">
-                      <span className="text-[9px] font-black uppercase text-slate-500">Converts</span>
-                      <div className="text-xl sm:text-2xl font-black text-[#090d16]">
+                      <span className={`text-[9px] font-black uppercase ${
+                        isTop1 ? 'text-amber-200/70' : 'text-slate-500'
+                      }`}>Converts</span>
+                      <div className={`text-xl sm:text-2xl font-black ${
+                        isTop1 ? 'text-amber-300' : 'text-[#090d16]'
+                      }`}>
                         {m.score.toLocaleString()}
                       </div>
                    </div>

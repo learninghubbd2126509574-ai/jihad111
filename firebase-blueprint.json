@@ -33,8 +33,48 @@
         "timerEndTime": { "type": "number", "description": "Timestamp when the timer ends" },
         "timerDuration": { "type": "number", "description": "Duration in seconds" },
         "announcement": { "type": "string", "description": "Broadcast message text" },
-        "announcementActive": { "type": "boolean", "description": "Whether to show the announcement" }
+        "announcementActive": { "type": "boolean", "description": "Whether to show the announcement" },
+        "communityActive": { "type": "boolean", "description": "Whether the community feature is enabled." }
       }
+    },
+    "CommunityPost": {
+      "title": "CommunityPost",
+      "description": "A post in the community forum.",
+      "type": "object",
+      "properties": {
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorRole": { "type": "string" },
+        "authorAvatar": { "type": "string" },
+        "content": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "likesCount": { "type": "number" }
+      },
+      "required": ["authorId", "authorName", "content", "createdAt"]
+    },
+    "PostLike": {
+      "title": "PostLike",
+      "description": "A like on a community post.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "createdAt"]
+    },
+    "PostComment": {
+      "title": "PostComment",
+      "description": "A comment on a community post.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userAvatar": { "type": "string" },
+        "text": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "userName", "text", "createdAt"]
     },
     "PickingItem": {
       "title": "PickingItem",
@@ -252,6 +292,18 @@
     "/registeredUsers/{whatsapp}": {
       "schema": "UserRegistration",
       "description": "Active approved users, indexed by WhatsApp number."
+    },
+    "/communityPosts/{postId}": {
+      "schema": "CommunityPost",
+      "description": "Community posts collection."
+    },
+    "/communityPosts/{postId}/likes/{userId}": {
+      "schema": "PostLike",
+      "description": "Likes on a community post."
+    },
+    "/communityPosts/{postId}/comments/{commentId}": {
+      "schema": "PostComment",
+      "description": "Comments on a community post."
     }
   }
 }
