@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Delete, ArrowUp, X, Check, Eye, EyeOff, Smartphone, Lock, Space, ChevronDown, Save, ClipboardPaste } from 'lucide-react';
 
 interface PhoneKeypadProps {
   value: string;
   onChange: (val: string) => void;
   onClose: () => void;
-  onNext?: () => void;
   title?: string;
   savedAccounts: { whatsapp: string, password: string }[];
   onSaveAccount: () => void;
@@ -13,10 +12,7 @@ interface PhoneKeypadProps {
   onSelectAccount?: (acc: { whatsapp: string, password: string }) => void;
 }
 
-export function PhoneKeypad({ value, onChange, onClose, onNext, title = "WhatsApp / Phone Number", savedAccounts, onSaveAccount, onDeleteSavedAccount, onSelectAccount }: PhoneKeypadProps) {
-  const [showPasteFallback, setShowPasteFallback] = useState(false);
-  const [fallbackText, setFallbackText] = useState('');
-
+export function PhoneKeypad({ value, onChange, onClose, title = "WhatsApp / Phone Number", savedAccounts, onSaveAccount, onDeleteSavedAccount, onSelectAccount }: PhoneKeypadProps) {
   const handleKeyClick = (key: string) => {
     if (value.length < 15) {
       onChange(value + key);
@@ -31,30 +27,6 @@ export function PhoneKeypad({ value, onChange, onClose, onNext, title = "WhatsAp
     onChange('');
   };
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.tagName === 'INPUT' || (e.target as HTMLElement)?.tagName === 'TEXTAREA') {
-        return;
-      }
-      if ((e.key >= '0' && e.key <= '9') || e.key === '+') {
-        e.preventDefault();
-        handleKeyClick(e.key);
-      } else if (e.key === 'Backspace') {
-        e.preventDefault();
-        handleBackspace();
-      } else if (e.key === 'Enter') {
-        e.preventDefault();
-        if (onNext) onNext();
-        else onClose();
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [value, onNext, onClose]);
-
   const handlePaste = async () => {
     try {
       const text = await navigator.clipboard.readText();
@@ -62,14 +34,10 @@ export function PhoneKeypad({ value, onChange, onClose, onNext, title = "WhatsAp
       const cleaned = text.replace(/[^0-9+]/g, '');
       if (cleaned) {
         onChange((value + cleaned).slice(0, 15));
-        return;
       }
     } catch (err) {
       console.warn('Failed to read clipboard', err);
     }
-    // Standard clipboard API failed or blocked (e.g. inside iframe), show beautiful fallback input popup
-    setShowPasteFallback(true);
-    setFallbackText('');
   };
 
   const keypadButtons = [
@@ -247,73 +215,17 @@ export function PhoneKeypad({ value, onChange, onClose, onNext, title = "WhatsAp
             })}
           </div>
 
-          {/* Bottom Done / Next Confirmation Button */}
-          <div className="mt-2.5 pt-1 flex gap-2">
+          {/* Bottom Done Confirmation Button */}
+          <div className="mt-2.5 pt-1">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-750 active:bg-slate-700 text-slate-300 font-bold text-sm rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+              className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-bold text-sm rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 active:scale-[0.99] transition-all cursor-pointer"
             >
               <Check size={16} />
               <span>Done</span>
             </button>
-            {onNext && (
-              <button
-                type="button"
-                onClick={onNext}
-                className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-bold text-sm rounded-xl flex items-center justify-center gap-1.5 shadow-lg shadow-blue-600/30 active:scale-[0.99] transition-all cursor-pointer"
-              >
-                <span>Password ➔</span>
-              </button>
-            )}
           </div>
-
-          {/* Paste Fallback Overlay Container */}
-          {showPasteFallback && (
-            <div className="absolute inset-0 bg-slate-950/95 rounded-t-3xl p-5 flex flex-col justify-center items-center z-[10000] animate-fade-in pointer-events-auto">
-              <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-400 mb-3 border border-blue-500/20">
-                <ClipboardPaste size={24} />
-              </div>
-              <h4 className="text-sm font-bold text-slate-200 mb-1">এখানে পেস্ট করুন (Paste Here)</h4>
-              <p className="text-[11px] text-slate-400 text-center max-w-xs mb-4 leading-relaxed font-bold">
-                নিরাপত্তার কারণে সরাসরি কপি করা যায়নি। নিচের বক্সে চেপে ধরে (Long press) পেস্ট করুন:
-              </p>
-              <div className="w-full max-w-xs flex gap-2 mb-4">
-                <input
-                  type="text"
-                  autoFocus
-                  value={fallbackText}
-                  onChange={(e) => {
-                    setFallbackText(e.target.value);
-                  }}
-                  placeholder="এখানে চেপে ধরে পেস্ট করুন..."
-                  className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-emerald-400 font-mono focus:border-blue-500 outline-none"
-                />
-              </div>
-              <div className="flex gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const cleaned = fallbackText.replace(/[^0-9+]/g, '');
-                    if (cleaned) {
-                      onChange((value + cleaned).slice(0, 15));
-                    }
-                    setShowPasteFallback(false);
-                  }}
-                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl shadow-md cursor-pointer transition-all active:scale-95"
-                >
-                  যোগ করুন (Add)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowPasteFallback(false)}
-                  className="px-4 py-2.5 bg-slate-800 hover:bg-slate-750 text-slate-300 text-xs font-bold rounded-xl cursor-pointer transition-all active:scale-95"
-                >
-                  বাতিল (Cancel)
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </>
@@ -324,7 +236,6 @@ interface PasswordKeyboardProps {
   value: string;
   onChange: (val: string) => void;
   onClose: () => void;
-  onSubmit?: () => void;
   title?: string;
   savedAccounts: { whatsapp: string, password: string }[];
   onSaveAccount: () => void;
@@ -332,12 +243,10 @@ interface PasswordKeyboardProps {
   onSelectAccount?: (acc: { whatsapp: string, password: string }) => void;
 }
 
-export function PasswordKeyboard({ value, onChange, onClose, onSubmit, title = "Password Virtual Keyboard", savedAccounts, onSaveAccount, onDeleteSavedAccount, onSelectAccount }: PasswordKeyboardProps) {
+export function PasswordKeyboard({ value, onChange, onClose, title = "Password Virtual Keyboard", savedAccounts, onSaveAccount, onDeleteSavedAccount, onSelectAccount }: PasswordKeyboardProps) {
   // Default to numeric (123) layout as requested
   const [layoutMode, setLayoutMode] = useState<'num' | 'abc' | 'ABC' | 'sym'>('num');
   const [showPlainPassword, setShowPlainPassword] = useState(true);
-  const [showPasteFallback, setShowPasteFallback] = useState(false);
-  const [fallbackText, setFallbackText] = useState('');
 
   const handleCharClick = (char: string) => {
     onChange(value + char);
@@ -355,42 +264,15 @@ export function PasswordKeyboard({ value, onChange, onClose, onSubmit, title = "
     onChange(value + ' ');
   };
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.tagName === 'INPUT' || (e.target as HTMLElement)?.tagName === 'TEXTAREA') {
-        return;
-      }
-      if (e.key === 'Backspace') {
-        e.preventDefault();
-        handleBackspace();
-      } else if (e.key === 'Enter') {
-        e.preventDefault();
-        if (onSubmit) onSubmit();
-        else onClose();
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        onClose();
-      } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        e.preventDefault();
-        handleCharClick(e.key);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [value, onSubmit, onClose]);
-
   const handlePaste = async () => {
     try {
       const text = await navigator.clipboard.readText();
       if (text) {
         onChange(value + text);
-        return;
       }
     } catch (err) {
       console.warn('Failed to read clipboard', err);
     }
-    setShowPasteFallback(true);
-    setFallbackText('');
   };
 
   const numRow = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'];
@@ -928,52 +810,6 @@ export function PasswordKeyboard({ value, onChange, onClose, onSubmit, title = "
                 >
                   <Check size={13} />
                   <span>Done</span>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Paste Fallback Overlay Container for Password Keyboard */}
-          {showPasteFallback && (
-            <div className="absolute inset-0 bg-slate-950/95 rounded-t-3xl p-5 flex flex-col justify-center items-center z-[10000] animate-fade-in pointer-events-auto">
-              <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-400 mb-3 border border-blue-500/20">
-                <ClipboardPaste size={24} />
-              </div>
-              <h4 className="text-sm font-bold text-slate-200 mb-1">এখানে পেস্ট করুন (Paste Here)</h4>
-              <p className="text-[11px] text-slate-400 text-center max-w-xs mb-4 leading-relaxed font-bold">
-                নিরাপত্তার কারণে সরাসরি কপি করা যায়নি। নিচের বক্সে চেপে ধরে (Long press) পেস্ট করুন:
-              </p>
-              <div className="w-full max-w-xs flex gap-2 mb-4">
-                <input
-                  type="text"
-                  autoFocus
-                  value={fallbackText}
-                  onChange={(e) => {
-                    setFallbackText(e.target.value);
-                  }}
-                  placeholder="এখানে চেপে ধরে পেস্ট করুন..."
-                  className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-sm text-blue-300 font-mono focus:border-blue-500 outline-none"
-                />
-              </div>
-              <div className="flex gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (fallbackText) {
-                      onChange(value + fallbackText);
-                    }
-                    setShowPasteFallback(false);
-                  }}
-                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl shadow-md cursor-pointer transition-all active:scale-95"
-                >
-                  যোগ করুন (Add)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowPasteFallback(false)}
-                  className="px-4 py-2.5 bg-slate-800 hover:bg-slate-750 text-slate-300 text-xs font-bold rounded-xl cursor-pointer transition-all active:scale-95"
-                >
-                  বাতিল (Cancel)
                 </button>
               </div>
             </div>

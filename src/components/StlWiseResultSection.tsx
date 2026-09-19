@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Trophy, ChevronDown, ChevronUp, Users, Activity, Award } from 'lucide-react';
+import { Trophy, ChevronDown, ChevronUp, Users, Activity } from 'lucide-react';
 import CartoonAvatar from './CartoonAvatar';
 
 export interface STLMember {
@@ -146,15 +146,15 @@ export function resolveTLConvertData(
     }
   }
 
-  // 3. Resolve final convert count: strictly use leader ranking score if available, 
-  // as requested by user to reflect "Total Converts set in Leader Ranking".
+  // If leaderRanking entry exists, its score is authoritative.
+  // Otherwise, fall back to results collection.
   const finalConvert = rankingScore !== null ? rankingScore : (resultConvert !== null ? resultConvert : 0);
 
   return {
     id: member?.id || targetId,
     name: resolvedName,
     convert: finalConvert,
-    submitted: submitted || (resultConvert !== null && resultConvert > 0) || finalConvert > 0
+    submitted: submitted || finalConvert > 0
   };
 }
 
@@ -306,35 +306,35 @@ export default function StlWiseResultSection({
   return (
     <section 
       id="stl-wise-result-section" 
-      className="neu-card rounded-2xl p-2 sm:p-3 mb-4 relative overflow-hidden border border-blue-200/90 shadow-xs bg-linear-to-b from-white/95 to-[#f4f8fd]/90 animate-fade-in"
+      className="neu-card rounded-2xl p-3 sm:p-4 mb-4 relative overflow-hidden border border-blue-200/90 shadow-xs bg-linear-to-b from-white/95 to-[#f4f8fd]/90 animate-fade-in"
     >
-      {/* Section Header with Prominent Total Convert Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5 pb-2 border-b border-blue-100/80">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-7 h-7 neu-btn-primary rounded-xl flex items-center justify-center text-white flex-shrink-0 shadow-xs">
-            <Trophy size={14} className="text-amber-300" />
+      {/* Compact Section Header with Grand Total Badge */}
+      <div className="flex items-center justify-between gap-2.5 mb-2.5 pb-2 border-b border-blue-100/80">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-7.5 h-7.5 neu-btn-primary rounded-xl flex items-center justify-center text-white flex-shrink-0 shadow-2xs">
+            <Trophy size={15} className="text-amber-300" />
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <h2 className="text-[12px] sm:text-sm font-black text-slate-900 tracking-tight whitespace-nowrap">
-                STL Live Convert & Team Ranking
+              <h2 className="text-xs sm:text-sm font-black text-slate-900 tracking-tight whitespace-nowrap">
+                STL Live Convert
               </h2>
+              <span className="px-1.5 py-0.2 rounded-md text-[8px] font-black bg-blue-100 text-blue-800 border border-blue-200 uppercase">
+                Live Sum
+              </span>
             </div>
-            <p className="text-slate-500 text-[9px] font-medium truncate">
-              টিমলিডারদের মোট কনভার্ট ও STL র্যাংকিং
+            <p className="text-slate-400 text-[9px] truncate">
+              টিম লিডারদের লাইভ কনভার্টের স্বয়ংক্রিয় যোগফল ও গ্রাফ
             </p>
           </div>
         </div>
 
-        {/* Company Grand Total Banner - Highlighted */}
-        <div className="flex items-center justify-between sm:justify-end gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-3 py-1.5 rounded-xl shadow-xs border border-emerald-400/80">
-          <div className="flex items-center gap-1.5">
-            <Award size={14} className="text-amber-200" />
-            <span className="text-[10px] sm:text-[11px] font-extrabold uppercase tracking-tight">
-              টোটাল কনভার্ট (Grand Total):
-            </span>
-          </div>
-          <span className="text-sm sm:text-base font-black font-mono tracking-tight bg-white/20 px-2 py-0.5 rounded-lg border border-white/30">
+        {/* Company Grand Total Badge */}
+        <div className="flex items-center gap-1.5 neu-card-sm px-2.5 py-1 rounded-xl border border-emerald-200/90 bg-emerald-50/90 flex-shrink-0 shadow-2xs">
+          <span className="text-[9px] font-black text-emerald-800 uppercase tracking-tight hidden sm:inline">
+            সর্বমোট:
+          </span>
+          <span className="text-xs sm:text-sm font-black text-emerald-800 font-mono">
             {grandTotalAllStls} <span className="text-[10px] font-bold font-sans">Convert</span>
           </span>
         </div>
@@ -362,7 +362,7 @@ export default function StlWiseResultSection({
               return (
                 <div
                   key={stlId}
-                  className={`neu-card-sm rounded-xl p-1.5 sm:p-2 border border-blue-200/70 bg-white/95 transition-all hover:border-blue-300 shadow-2xs relative overflow-hidden pl-3`}
+                  className={`neu-card-sm rounded-xl p-2 sm:p-2.5 border border-blue-200/70 bg-white/95 transition-all hover:border-blue-300 shadow-2xs relative overflow-hidden pl-3`}
                 >
                   {/* Left Side Performance Indicator Line */}
                   <div 
@@ -373,78 +373,79 @@ export default function StlWiseResultSection({
                   {/* Slim Main Row */}
                   <div 
                     onClick={() => item.assignedCount > 0 && toggleExpand(stlId)}
-                    className={`flex flex-col gap-1 ${item.assignedCount > 0 ? 'cursor-pointer select-none' : ''}`}
+                    className={`flex items-center justify-between gap-2 ${item.assignedCount > 0 ? 'cursor-pointer select-none' : ''}`}
                   >
-                    {/* Top Row: Rank, Avatar, Name & Total */}
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        {/* Rank Badge */}
-                        <span className="w-5 h-5 rounded-lg neu-card-sm flex items-center justify-center text-[10px] font-black text-blue-800 flex-shrink-0 border border-blue-100 bg-blue-50/50">
-                          {index === 0 ? '👑' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`}
-                        </span>
+                    {/* Rank, Avatar, & STL Info */}
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      {/* Rank Badge */}
+                      <span className="w-5 h-5 rounded-lg neu-card-sm flex items-center justify-center text-[10px] font-black text-blue-800 flex-shrink-0 border border-blue-100">
+                        {index === 0 ? '👑' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`}
+                      </span>
 
-                        {/* Avatar */}
-                        <div className="w-6.5 h-6.5 rounded-lg overflow-hidden neu-card-sm flex items-center justify-center flex-shrink-0 border border-blue-200/70">
-                          <CartoonAvatar src={item.stl.profilePic} name={item.stl.name} />
-                        </div>
-
-                        {/* STL Name & Compact Badge */}
-                        <div className="min-w-0 flex flex-col">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <span className="text-xs sm:text-sm font-black text-slate-900 tracking-tight truncate max-w-[130px] sm:max-w-[200px]">
-                              {item.formattedName}
-                            </span>
-                            {item.assignedCount > 0 && (
-                              <span className="inline-flex items-center gap-0.5 px-1 rounded-md bg-blue-50 text-blue-700 text-[8px] font-bold border border-blue-100 whitespace-nowrap">
-                                {item.assignedCount} TL
-                                <span className="text-slate-400 ml-0.5">
-                                  {isExpanded ? <ChevronUp size={8} /> : <ChevronDown size={8} />}
-                                </span>
-                              </span>
-                            )}
-                          </div>
-                        </div>
+                      {/* Avatar */}
+                      <div className="w-6.5 h-6.5 rounded-lg overflow-hidden neu-card-sm flex items-center justify-center flex-shrink-0 border border-blue-200/70">
+                        <CartoonAvatar src={item.stl.profilePic} name={item.stl.name} />
                       </div>
 
-                      {/* Convert Count Badge - Integrated on Right */}
-                      <div className={`neu-card-sm px-2 py-0.5 rounded-lg border flex items-center gap-1 shadow-2xs ${perf.badgeBg}`}>
-                        <span className={`w-1 h-1 rounded-full ${perf.dotColor} animate-pulse flex-shrink-0`} />
-                        <span className="text-[10px] sm:text-[11px] font-black font-mono whitespace-nowrap">
-                          টোটাল: {item.totalConvert} Convert
-                        </span>
+                      {/* STL Name & Compact Badge inline */}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-xs sm:text-sm font-black text-slate-900 tracking-tight truncate max-w-[130px] sm:max-w-[190px]">
+                            {item.formattedName}
+                          </span>
+
+                          {/* Minimal TL Pill */}
+                          {item.assignedCount > 0 ? (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-md bg-blue-50 text-blue-700 text-[9px] font-bold border border-blue-100 whitespace-nowrap">
+                              <Users size={8.5} />
+                              {item.assignedCount} TL
+                              <span className="text-slate-400 ml-0.5">
+                                {isExpanded ? <ChevronUp size={9} /> : <ChevronDown size={9} />}
+                              </span>
+                            </span>
+                          ) : (
+                            <span className="text-[8px] text-slate-400">
+                              (0 TL)
+                            </span>
+                          )}
+
+                          {/* Target Badge */}
+                          {hasTarget && (
+                            <span className="px-1.5 py-0.2 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-300 text-[9px] font-black font-mono flex items-center gap-1 shadow-2xs whitespace-nowrap">
+                              <span className="w-1 h-1 rounded-full bg-emerald-500" />
+                              🎯 {item.totalConvert}/{targetConvert} ({rawRatio}%)
+                            </span>
+                          )}
+
+                          {/* Performance Tag Pill */}
+                          <span className={`text-[8px] font-extrabold px-1.5 py-0.2 rounded-md border ${perf.tagColor} hidden sm:inline-flex items-center gap-0.5`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${perf.dotColor}`} />
+                            {perf.label}
+                          </span>
+                        </div>
+
+                        {/* Micro Progress / Performance Graph Bar (Ultra-slim) */}
+                        <div className="flex items-center gap-1.5 mt-1 pr-2">
+                          <div className="flex-1 h-1 bg-slate-100 rounded-full overflow-hidden border border-slate-200/60 max-w-[140px] sm:max-w-[180px]">
+                            <div 
+                              className={`h-full rounded-full ${perf.graphFill} transition-all duration-500`}
+                              style={{ width: `${graphPercent}%` }}
+                            />
+                          </div>
+                          <span className="text-[8px] font-bold font-mono text-slate-400">
+                            {hasTarget ? `${rawRatio}%` : `${graphPercent}%`}
+                          </span>
+                        </div>
                       </div>
                     </div>
 
-                    {/* Bottom Row: Target Info & Progress Bar (SLIMMER) */}
-                    <div className="flex items-center gap-2 pl-[58px]">
-                      {/* Target Pill */}
-                      {hasTarget ? (
-                        <div className="px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200 text-[9px] font-bold font-mono flex items-center gap-1 whitespace-nowrap flex-shrink-0">
-                          🎯 {item.totalConvert}/{targetConvert} ({rawRatio}%)
-                        </div>
-                      ) : (
-                        <div className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter flex-shrink-0">
-                          Team Performance
-                        </div>
-                      )}
-
-                      {/* Progress Bar Container */}
-                      <div className="flex-1 flex items-center gap-2 min-w-0">
-                        <div className="flex-1 h-1 bg-slate-100 rounded-full overflow-hidden border border-slate-200/50">
-                          <div 
-                            className={`h-full rounded-full ${perf.graphFill} transition-all duration-500`}
-                            style={{ width: `${graphPercent}%` }}
-                          />
-                        </div>
-                        <span className="text-[8px] font-bold font-mono text-slate-400 flex-shrink-0">
-                          {hasTarget ? `${rawRatio}%` : `${graphPercent}%`}
+                    {/* Convert Count Badge - Slim & Color-Coded */}
+                    <div className="flex-shrink-0">
+                      <div className={`neu-card-sm px-2 py-0.8 sm:px-2.5 sm:py-1 rounded-lg border flex items-center gap-1 shadow-2xs ${perf.badgeBg}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${perf.dotColor} animate-pulse flex-shrink-0`} />
+                        <span className="text-[11px] sm:text-xs font-black font-mono whitespace-nowrap">
+                          {item.totalConvert} Convert
                         </span>
-                      </div>
-
-                      {/* Performance Label (Small Screens) */}
-                      <div className={`hidden sm:flex items-center gap-0.5 px-1.5 py-0.5 rounded-md border text-[8px] font-extrabold ${perf.tagColor} flex-shrink-0`}>
-                        <span className={`w-1 h-1 rounded-full ${perf.dotColor}`} />
-                        {perf.label}
                       </div>
                     </div>
                   </div>

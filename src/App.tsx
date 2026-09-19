@@ -4,7 +4,6 @@
  */
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import * as htmlToImage from "html-to-image";
 import { 
   collection, 
   doc, 
@@ -25,13 +24,20 @@ import {
   getDocFromServer,
   getDocsFromCache,
   getDocFromCache,
-  increment,
-  runTransaction,
-  clearCollection,
-  arrayUnion,
-  arrayRemove,
-  db
-} from './lib/supabaseDb';
+  increment
+} from 'firebase/firestore';
+import { 
+  signInWithPopup, 
+  signInWithRedirect,
+  getRedirectResult,
+  GoogleAuthProvider, 
+  onAuthStateChanged, 
+  signOut,
+  signInAnonymously,
+  type User as FirebaseUser
+} from 'firebase/auth';
+import { db, auth, storage } from './firebase';
+import { ref, uploadBytes, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   User,
@@ -108,32 +114,8 @@ import {
   Share2,
   Target,
   Save,
-  KeyRound,
-  Database,
-  TrendingUp,
-  Keyboard
+  KeyRound
 } from 'lucide-react';
-import { SupabaseSettings } from './components/SupabaseSettings';
-
-// Global Server Time Synchronization to eliminate device clock skew
-let serverTimeOffset = 0;
-async function fetchServerTime() {
-  try {
-    const t0 = Date.now();
-    const res = await fetch('/api/time', { cache: 'no-store' });
-    if (res.ok) {
-      const data = await res.json();
-      const t1 = Date.now();
-      const latency = Math.round((t1 - t0) / 2);
-      serverTimeOffset = (data.now + latency) - t1;
-    }
-  } catch (err) {
-    // Keep 0 if failed
-  }
-}
-function getSyncedNow(): number {
-  return Date.now() + serverTimeOffset;
-}
 
 import { 
   format, 
@@ -151,18 +133,11 @@ import {
 } from 'date-fns';
 import { bn } from 'date-fns/locale';
 import CartoonAvatar, { CARTOON_AVATAR_LIST } from './components/CartoonAvatar';
-import StlWiseResultSection, { normalizeName, resolveTLConvertData } from './components/StlWiseResultSection';
-import { toEnglishDigits, normalizePhoneNumber, getCleanDigits, generatePhoneCandidates, comparePasswords } from './lib/authHelpers';
+import StlWiseResultSection, { normalizeName } from './components/StlWiseResultSection';
 import StlAssignmentModal from './components/StlAssignmentModal';
 import StlAdminManager from './components/StlAdminManager';
 import UserQuickSubmitCard from './components/UserQuickSubmitCard';
 import { PhoneKeypad, PasswordKeyboard } from './components/VirtualAuthKeypad';
-// Push notifications removed
-import ResultAppreciationModal, { AppreciationData } from './components/ResultAppreciationModal';
-import PerformancePage from './components/PerformancePage';
-import CommunityPage from './components/CommunityPage';
-import QuickLinksModal from './components/QuickLinksModal';
-import LoginStatsModal from './components/LoginStatsModal';
 
 // --- Types ---
 interface Member {
@@ -374,7 +349,6 @@ interface Config {
   announcementActive?: boolean;
   securityPassword?: string;
   isLocked?: boolean;
-  communityLocked?: boolean;
   stlActive?: boolean;
   demoActive?: boolean;
   teacherActive?: boolean;
@@ -387,7 +361,6 @@ interface Config {
   counsellingSchedules?: CounsellingSchedule[];
   paymentMethods?: PaymentMethods;
   autoTimerEnabled?: boolean;
-  timerNotificationsActive?: boolean;
   autoTimerTime?: string;
   lastAutoStartTime?: string;
   totalConverts?: number;
@@ -436,78 +409,137 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   const message = err?.message || String(error);
   const code = err?.code || '';
   
-  if (code === 'resource-exhausted' || message.includes('Quota exceeded')) {
-    if (showMsg) {
-      showMsg('আপনার ডাটাবেস ব্যবহারের দৈনিক ফ্রি লিমিট (Quota) শেষ হয়ে গেছে! অনুগ্রহ করে আগামীকাল আবার চেষ্টা করুন। (Quota Exceeded)', 'error');
-    }
-    console.warn('Firestore Quota exceeded:', message);
-    return;
-  }
-  
-  if (code === 'unavailable' || message.includes('unavailable') || message.includes('offline')) {
-    console.warn('Database is synchronizing or operating in offline cache mode:', message);
+  // If code is 'unavailable', 'resource-exhausted', offline or quota exceeded, log warning rather than treating as fatal error
+  if (code === 'unavailable' || code === 'resource-exhausted' || message.includes('unavailable') || message.includes('offline') || message.includes('Quota exceeded') || message.includes('Could not reach Cloud Firestore')) {
+    console.warn('Firestore is reconnecting, quota exceeded, or operating in offline cache mode:', message);
     return;
   }
 
-  const errInfo: any = {
-    authInfo: null,
+  const errInfo: FirestoreErrorInfo = {
+    error: message,
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData?.map(provider => ({
+        providerId: provider.providerId,
+        displayName: provider.displayName,
+        email: provider.email,
+        photoUrl: provider.photoURL
+      })) || []
+    },
     operationType,
     path
   };
-  console.error('Database Error: ', JSON.stringify(errInfo));
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
   if (showMsg) {
-    if (message.includes('permission-denied') || message.includes('Missing or insufficient permissions') || message.includes('JWT') || message.includes('unauthorized')) {
-      showMsg('Permission Denied / Unauthorized access!', 'error');
+    if (message.includes('permission-denied') || message.includes('Missing or insufficient permissions')) {
+      showMsg('Permission Denied! (Admin access via Google Login may be required)', 'error');
     } else {
-      showMsg(`Database Error: ${message}`, 'error');
+      showMsg(`System Error: ${message}`, 'error');
     }
   }
 }
 
-const handleDatabaseError = handleFirestoreError;
-
 // --- Components ---
 
-const Toast = ({ message, type, onClose }: { message: string, type: 'success' | 'error' | 'info', onClose: () => void }) => {
+const Toast = ({ message, type, onClose }: { message: string, type: 'success' | 'error', onClose: () => void }) => {
   useEffect(() => {
-    const timer = setTimeout(onClose, 5000);
+    const timer = setTimeout(onClose, 2000);
     return () => clearTimeout(timer);
   }, [onClose]);
 
-  const icons = {
-    success: <CheckCircle size={18} className="text-emerald-500" />,
-    error: <AlertCircle size={18} className="text-rose-500" />,
-    info: <Info size={18} className="text-blue-500" />
-  };
-
-  const bgColors = {
-    success: 'bg-emerald-50 border-emerald-100 text-emerald-900',
-    error: 'bg-rose-50 border-rose-100 text-rose-900',
-    info: 'bg-blue-50 border-blue-100 text-blue-900'
-  };
-
   return (
     <motion.div 
-      initial={{ y: 50, opacity: 0, x: '-50%' }}
+      initial={{ y: 100, opacity: 0, x: '-50%' }}
       animate={{ y: 0, opacity: 1, x: '-50%' }}
-      exit={{ y: 50, opacity: 0, x: '-50%' }}
-      className={`fixed bottom-24 left-1/2 z-[9999] px-5 py-3.5 rounded-2xl border shadow-2xl flex items-center gap-3 min-w-[320px] max-w-[90vw] ${bgColors[type] || bgColors.success}`}
+      exit={{ y: 100, opacity: 0, x: '-50%' }}
+      className={`fixed bottom-8 left-1/2 z-[9999] px-6 py-3 rounded-full font-bold shadow-lg ${
+        type === 'success' ? 'bg-green-accent text-bg' : 'bg-red-accent text-white'
+      }`}
     >
-      <div className="shrink-0">{icons[type] || icons.success}</div>
-      <p className="text-sm font-black tracking-tight leading-tight flex-1">{message}</p>
-      <button onClick={onClose} className="p-1 hover:bg-black/5 rounded-lg transition-colors">
-        <X size={16} className="text-slate-400" />
-      </button>
+      {message}
     </motion.div>
   );
 };
 
-const AuthContainer = ({ onLogin, onRegister, onAdminLogin, customLogo, showMsg = (m: string, t: 'success' | 'error' = 'success') => console.log(`[Auth Log] ${t}: ${m}`) }: { 
+const QuickLinksModal = ({ links, onClose }: { links: QuickLink[], onClose: () => void }) => {
+  return (
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} onClick={onClose} className="absolute inset-0 bg-black/95 backdrop-blur-2xl" />
+      <motion.div 
+        initial={{ y: 50, opacity: 0, scale: 0.9 }} 
+        animate={{ y: 0, opacity: 1, scale: 1 }} 
+        className="relative bg-surface border border-white/10 rounded-[32px] p-8 max-w-xl w-full shadow-[0_0_80px_rgba(37,99,235,0.2)] overflow-hidden"
+      >
+        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500" />
+        
+        <div className="flex justify-between items-center mb-8">
+          <div className="flex items-center gap-3">
+             <div className="p-2.5 rounded-2xl bg-blue-accent/20 text-blue-accent">
+               <Home size={24} />
+             </div>
+             <div>
+               <h3 className="text-2xl font-black text-white tracking-tight">Quick Resources</h3>
+               <p className="text-[10px] text-muted-main uppercase tracking-[2px] font-bold">Important Links & Tools</p>
+             </div>
+          </div>
+          <button onClick={onClose} className="p-3 bg-white/5 rounded-2xl text-muted-main hover:text-white hover:bg-white/10 transition-all">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 max-h-[60vh] overflow-y-auto pr-2 pb-4 custom-scrollbar">
+          {links.length === 0 ? (
+            <div className="text-center py-12 bg-white/[0.03] rounded-2xl border border-white/5 italic text-muted-main2 mx-2">
+              No quick links available yet...
+            </div>
+          ) : (
+            links.map((link, idx) => (
+              <motion.a
+                key={link.id}
+                href={link.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: idx * 0.05 }}
+                className="group flex items-center justify-between p-4 rounded-xl bg-white/[0.03] border border-white/5 hover:border-blue-accent/50 hover:bg-white/[0.06] transition-all"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-blue-accent/10 flex items-center justify-center text-blue-accent">
+                    <Link size={18} />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-white text-sm">{link.name}</h4>
+                    <p className="text-[10px] text-muted-main/60 font-mono truncate max-w-[140px]">{link.url.replace(/^https?:\/\//, '')}</p>
+                  </div>
+                </div>
+                <div className="p-2 rounded-lg bg-white/5 text-muted-main group-hover:text-blue-accent group-hover:bg-blue-accent/10 transition-all">
+                  <ExternalLink size={16} />
+                </div>
+              </motion.a>
+            ))
+          )}
+        </div>
+
+        <button 
+          onClick={onClose}
+          className="w-full mt-8 py-4 bg-white text-bg font-black rounded-2xl uppercase tracking-[2px] text-sm hover:opacity-90 transition-all shadow-xl"
+        >
+          Close
+        </button>
+      </motion.div>
+    </div>
+  );
+};
+
+const AuthContainer = ({ onLogin, onRegister, onAdminLogin }: { 
   onLogin: (w: string, p: string) => Promise<boolean>, 
   onRegister: (d: any) => Promise<boolean>,
-  onAdminLogin: (pass: string) => void,
-  customLogo?: string,
-  showMsg?: (m: string, t: 'success' | 'error') => void
+  onAdminLogin: (pass: string) => void 
 }) => {
   const [mode, setMode] = useState<'login' | 'admin' | 'register'>('login');
   const [whatsapp, setWhatsapp] = useState('');
@@ -517,20 +549,7 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin, customLogo, showMsg 
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [activeKeypad, setActiveKeypad] = useState<'phone' | 'password' | 'admin' | null>(null);
-  const [rememberMe, setRememberMe] = useState(false);
-
-  const [logoSrc, setLogoSrc] = useState<string | null>(() => {
-    return customLogo || (typeof window !== 'undefined' ? localStorage.getItem('unity_custom_logo') : null);
-  });
-
-  useEffect(() => {
-    if (customLogo) {
-      setLogoSrc(customLogo);
-    } else if (typeof window !== 'undefined') {
-      const cached = localStorage.getItem('unity_custom_logo');
-      if (cached) setLogoSrc(cached);
-    }
-  }, [customLogo]);
+  const [rememberMe, setRememberMe] = useState(true);
 
   const [savedAccounts, setSavedAccounts] = useState<{ whatsapp: string, password: string }[]>(() => {
     try {
@@ -574,18 +593,9 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin, customLogo, showMsg 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    let isFinished = false;
-    const timeout = setTimeout(() => {
-      if (!isFinished) {
-        setLoading(false);
-        showMsg('সার্ভার থেকে সাড়া পাওয়া যাচ্ছে না! পুনরায় চেষ্টা করুন। (Connection Timeout)', 'error');
-      }
-    }, 12000); // 12s safety timeout
-
     try {
       if (mode === 'login') {
          const success = await onLogin(whatsapp, password);
-         isFinished = true;
          if (success && rememberMe) {
            setSavedAccounts(prev => {
              const exists = prev.some(acc => acc.whatsapp === whatsapp);
@@ -602,12 +612,9 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin, customLogo, showMsg 
       } else if (mode === 'register') {
          console.log('Sending data:', { fullName, whatsapp, position, password });
          const success = await onRegister({ fullName, whatsapp, position, password });
-         isFinished = true;
          if (success) setMode('login');
       }
     } finally {
-      isFinished = true;
-      clearTimeout(timeout);
       setLoading(false);
     }
   };
@@ -633,26 +640,15 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin, customLogo, showMsg 
 
         {/* Header - Brand Logo & Titles */}
         <div className="flex flex-col items-center text-center mb-5 pt-1">
-          {/* Circular Blue Emblem Logo / Uploaded Company Logo */}
+          {/* Circular Blue Emblem Logo */}
           <div className="relative mb-2.5">
-            {logoSrc ? (
-              <div className="w-16 h-16 sm:w-20 sm:h-20 bg-white rounded-2xl flex items-center justify-center p-2 shadow-xl shadow-blue-500/20 border-2 border-blue-100 overflow-hidden transition-all duration-300 hover:scale-105">
-                <img 
-                  src={logoSrc} 
-                  alt="Unity Earning Logo" 
-                  className="w-full h-full object-contain rounded-xl"
-                  onError={() => setLogoSrc(null)}
-                />
-              </div>
-            ) : (
-              <div className="w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/25">
-                <svg viewBox="0 0 40 40" className="w-8 h-8 sm:w-9 sm:h-9">
-                  <circle cx="20" cy="20" r="18" stroke="rgba(255,255,255,0.4)" strokeWidth="1.5" fill="none" />
-                  <path d="M13 11V22C13 25.866 16.134 29 20 29C23.866 29 27 25.866 27 22V11" stroke="#ffffff" strokeWidth="3.5" strokeLinecap="round" fill="none" />
-                  <circle cx="20" cy="8" r="2.5" fill="#ffffff" />
-                </svg>
-              </div>
-            )}
+            <div className="w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/25">
+              <svg viewBox="0 0 40 40" className="w-8 h-8 sm:w-9 sm:h-9">
+                <circle cx="20" cy="20" r="18" stroke="rgba(255,255,255,0.4)" strokeWidth="1.5" fill="none" />
+                <path d="M13 11V22C13 25.866 16.134 29 20 29C23.866 29 27 25.866 27 22V11" stroke="#ffffff" strokeWidth="3.5" strokeLinecap="round" fill="none" />
+                <circle cx="20" cy="8" r="2.5" fill="#ffffff" />
+              </svg>
+            </div>
           </div>
           
           <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight flex items-center gap-1.5 justify-center">
@@ -696,12 +692,9 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin, customLogo, showMsg 
           {mode === 'admin' ? (
             <form onSubmit={async (e) => {
               e.preventDefault();
-              if (loading) return;
               setLoading(true);
               try {
                 await onAdminLogin(password);
-              } catch (err) {
-                console.error("Admin Login Error:", err);
               } finally {
                 setLoading(false);
               }
@@ -720,36 +713,29 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin, customLogo, showMsg 
                   <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                   <input 
                     required
+                    readOnly
                     type={showPass ? "text" : "password"}
-                    autoComplete="current-password"
-                    placeholder="Enter admin password (e.g. 212650)..."
+                    inputMode="none"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    placeholder="Enter admin password..."
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full bg-slate-50/80 border border-slate-200 rounded-xl py-2.5 pl-10 pr-20 text-slate-900 text-sm outline-none focus:bg-white focus:border-blue-600 focus:ring-4 focus:ring-blue-100 transition-all font-mono"
+                    onFocus={(e) => {
+                      e.target.blur();
+                      setActiveKeypad('admin');
+                    }}
+                    onClick={() => setActiveKeypad('admin')}
+                    onChange={e => setPassword(e.target.value)}
+                    className="w-full bg-slate-50/80 border border-slate-200 rounded-xl py-2.5 pl-10 pr-10 text-slate-900 text-sm outline-none focus:bg-white focus:border-blue-600 focus:ring-4 focus:ring-blue-100 transition-all font-mono cursor-pointer select-none"
                   />
-                  <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                    <button 
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setActiveKeypad('admin');
-                      }}
-                      className="p-1.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 bg-blue-50/60 rounded-lg transition-colors cursor-pointer"
-                      title="অন-স্ক্রিন কিপ্যাড খুলুন"
-                    >
-                      <Keyboard size={16} />
-                    </button>
-                    <button 
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowPass(!showPass);
-                      }}
-                      className="p-1.5 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
-                    >
-                      {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
+                  <button 
+                    type="button"
+                    onClick={() => setShowPass(!showPass)}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors p-1"
+                  >
+                    {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
                 </div>
               </div>
 
@@ -839,43 +825,26 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin, customLogo, showMsg 
                     </button>
                   )}
                 </div>
-                <div className="relative" onClick={() => setActiveKeypad('phone')}>
+                <div className="relative">
                   <Smartphone className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                   <input 
                     required
-                    type="tel"
                     readOnly
+                    type="tel"
                     inputMode="none"
                     autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
                     placeholder="Enter WhatsApp number (017...)"
                     value={whatsapp}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setActiveKeypad('phone');
-                    }}
                     onFocus={(e) => {
                       e.target.blur();
                       setActiveKeypad('phone');
                     }}
-                    onPaste={(e) => {
-                      e.preventDefault();
-                      const text = e.clipboardData.getData('text');
-                      const cleaned = text.replace(/[^0-9+]/g, '');
-                      if (cleaned) setWhatsapp((whatsapp + cleaned).slice(0, 15));
-                    }}
-                    className="w-full bg-slate-50/80 border border-slate-200 rounded-xl py-2.5 pl-10 pr-12 text-slate-900 text-sm font-mono outline-none focus:bg-white focus:border-blue-600 focus:ring-4 focus:ring-blue-100 transition-all cursor-pointer select-none"
+                    onClick={() => setActiveKeypad('phone')}
+                    onChange={e => setWhatsapp(e.target.value)}
+                    className="w-full bg-slate-50/80 border border-slate-200 rounded-xl py-2.5 pl-10 pr-4 text-slate-900 text-sm font-mono outline-none focus:bg-white focus:border-blue-600 focus:ring-4 focus:ring-blue-100 transition-all cursor-pointer select-none"
                   />
-                  <button 
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setActiveKeypad('phone');
-                    }}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 bg-blue-50/60 rounded-lg transition-colors cursor-pointer"
-                    title="অন-স্ক্রিন কিপ্যাড খুলুন"
-                  >
-                    <Keyboard size={16} />
-                  </button>
                 </div>
               </div>
 
@@ -922,54 +891,33 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin, customLogo, showMsg 
                     </button>
                   )}
                 </div>
-                <div className="relative" onClick={() => setActiveKeypad('password')}>
+                <div className="relative">
                   <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                   <input 
                     required
-                    type={showPass ? "text" : "password"}
                     readOnly
+                    type={showPass ? "text" : "password"}
                     inputMode="none"
                     autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
                     placeholder="Enter password..."
                     value={password}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setActiveKeypad('password');
-                    }}
                     onFocus={(e) => {
                       e.target.blur();
                       setActiveKeypad('password');
                     }}
-                    onPaste={(e) => {
-                      e.preventDefault();
-                      const text = e.clipboardData.getData('text');
-                      if (text) setPassword(password + text);
-                    }}
-                    className="w-full bg-slate-50/80 border border-slate-200 rounded-xl py-2.5 pl-10 pr-20 text-slate-900 text-sm outline-none focus:bg-white focus:border-blue-600 focus:ring-4 focus:ring-blue-100 transition-all font-mono cursor-pointer select-none"
+                    onClick={() => setActiveKeypad('password')}
+                    onChange={e => setPassword(e.target.value)}
+                    className="w-full bg-slate-50/80 border border-slate-200 rounded-xl py-2.5 pl-10 pr-10 text-slate-900 text-sm outline-none focus:bg-white focus:border-blue-600 focus:ring-4 focus:ring-blue-100 transition-all font-mono cursor-pointer select-none"
                   />
-                  <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                    <button 
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setActiveKeypad('password');
-                      }}
-                      className="p-1.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 bg-blue-50/60 rounded-lg transition-colors cursor-pointer"
-                      title="অন-স্ক্রিন কিপ্যাড খুলুন"
-                    >
-                      <Keyboard size={16} />
-                    </button>
-                    <button 
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setShowPass(!showPass);
-                      }}
-                      className="p-1.5 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
-                    >
-                      {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
+                  <button 
+                    type="button"
+                    onClick={() => setShowPass(!showPass)}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors p-1"
+                  >
+                    {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
                 </div>
               </div>
 
@@ -1037,7 +985,6 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin, customLogo, showMsg 
           value={whatsapp} 
           onChange={setWhatsapp} 
           onClose={() => setActiveKeypad(null)} 
-          onNext={() => setActiveKeypad('password')}
           title={mode === 'login' ? "WhatsApp Number" : "Personal Phone Number"}
           savedAccounts={savedAccounts}
           onSaveAccount={handleSaveAccount}
@@ -1054,7 +1001,6 @@ const AuthContainer = ({ onLogin, onRegister, onAdminLogin, customLogo, showMsg 
           value={password} 
           onChange={setPassword} 
           onClose={() => setActiveKeypad(null)} 
-          onSubmit={() => setActiveKeypad(null)}
           title={activeKeypad === 'admin' ? "Admin Access Password" : (mode === 'login' ? "Account Password" : "Create New Password")}
           savedAccounts={savedAccounts}
           onSaveAccount={handleSaveAccount}
@@ -1417,17 +1363,16 @@ const AllMembersSubmissionSheet: React.FC<AllMembersSubmissionSheetProps> = ({
     const addedNames = new Set<string>();
 
     approvedUsers.forEach(u => {
-      addedWhatsapp.add(u.whatsapp || '');
-      const uName = (u.fullName || '').trim().toLowerCase();
-      addedNames.add(uName);
+      addedWhatsapp.add(u.whatsapp);
+      addedNames.add(u.fullName.trim().toLowerCase());
       const isLeader = u.position === 'Team Leader';
       const isTrainer = u.position === 'Team Trainer';
-      const matchedMember = members.find(m => (m.name || '').trim().toLowerCase() === uName);
+      const matchedMember = members.find(m => m.name.trim().toLowerCase() === u.fullName.trim().toLowerCase());
       list.push({
-        key: u.whatsapp || '',
-        name: u.fullName || '',
+        key: u.whatsapp,
+        name: u.fullName,
         position: u.position || 'Team Member',
-        whatsapp: u.whatsapp || '',
+        whatsapp: u.whatsapp,
         memberId: matchedMember?.id,
         profilePic: u.profilePic,
         isLeader,
@@ -1436,10 +1381,10 @@ const AllMembersSubmissionSheet: React.FC<AllMembersSubmissionSheetProps> = ({
     });
 
     members.forEach(m => {
-      if (!addedNames.has((m.name || '').trim().toLowerCase())) {
+      if (!addedNames.has(m.name.trim().toLowerCase())) {
         list.push({
           key: m.id,
-          name: m.name || '',
+          name: m.name,
           position: m.type === 'leader' ? 'Team Leader' : m.type === 'trainer' ? 'Team Trainer' : 'Member',
           whatsapp: '',
           memberId: m.id,
@@ -1918,8 +1863,6 @@ const BalanceManagementSection = ({
   onUpdateBalance,
   onWaiveFine,
   onRemoveDayFine,
-  onResetUserFine,
-  onSetExactFine,
   onRecalculateFine,
   computeUserSubmissionStats
 }: {
@@ -1930,8 +1873,6 @@ const BalanceManagementSection = ({
   onUpdateBalance: (whatsapp: string, userName: string, amount: number, isDeduct: boolean, reason: string) => Promise<void>;
   onWaiveFine: (whatsapp: string, userName: string, amount: number, reason: string) => Promise<void>;
   onRemoveDayFine: (whatsapp: string, userName: string, dateStr: string, reason: string) => Promise<void>;
-  onResetUserFine?: (whatsapp: string, userName: string, reason: string) => Promise<void>;
-  onSetExactFine?: (whatsapp: string, userName: string, targetFine: number, reason: string) => Promise<void>;
   onRecalculateFine: (whatsapp: string, userName: string) => Promise<void>;
   computeUserSubmissionStats?: (userWhatsapp: string, memberId?: string) => any;
 }) => {
@@ -1942,15 +1883,12 @@ const BalanceManagementSection = ({
   const [waiveReason, setWaiveReason] = useState<string>('');
   const [removeDate, setRemoveDate] = useState<string>('');
   const [removeReason, setRemoveReason] = useState<string>('');
-  const [resetReason, setResetReason] = useState<string>('');
-  const [exactFineAmount, setExactFineAmount] = useState<string>('');
-  const [exactReason, setExactReason] = useState<string>('');
-  const [activeTab, setActiveTab] = useState<'overview' | 'add' | 'deduct' | 'waive' | 'remove_day' | 'delete_reset' | 'logs'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'add' | 'deduct' | 'waive' | 'remove_day' | 'logs'>('overview');
   const [busy, setBusy] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   // Quick Action modal/inline box state
-  const [quickUser, setQuickUser] = useState<{ key: string; name: string; type: 'add' | 'deduct' | 'waive' | 'remove_day' | 'delete' | 'set_exact' } | null>(null);
+  const [quickUser, setQuickUser] = useState<{ key: string; name: string; type: 'add' | 'deduct' | 'waive' | 'remove_day' } | null>(null);
   const [quickAmount, setQuickAmount] = useState('');
   const [quickDate, setQuickDate] = useState(new Date().toISOString().split('T')[0]);
   const [quickReason, setQuickReason] = useState('');
@@ -1958,24 +1896,24 @@ const BalanceManagementSection = ({
   const userOptions = useMemo(() => {
     const list: { key: string; name: string; position?: string; whatsapp: string; memberId?: string }[] = [];
     approvedUsers.forEach(u => {
-      const cleanName = (u.fullName || '').trim().toLowerCase();
-      const matchedMember = members.find(m => (m.name || '').trim().toLowerCase() === cleanName);
+      const cleanName = u.fullName.trim().toLowerCase();
+      const matchedMember = members.find(m => m.name.trim().toLowerCase() === cleanName);
       list.push({ 
-        key: u.whatsapp || '', 
-        name: u.fullName || '', 
+        key: u.whatsapp, 
+        name: u.fullName, 
         position: u.position, 
-        whatsapp: u.whatsapp || '',
+        whatsapp: u.whatsapp,
         memberId: matchedMember?.id
       });
     });
     members.forEach(m => {
-      const cleanName = (m.name || '').trim().toLowerCase();
-      if (!list.some(x => (x.name || '').trim().toLowerCase() === cleanName)) {
+      const cleanName = m.name.trim().toLowerCase();
+      if (!list.some(x => x.name.trim().toLowerCase() === cleanName)) {
         list.push({ 
           key: m.id, 
-          name: m.name || '', 
+          name: m.name, 
           position: m.type === 'leader' ? 'Team Leader' : m.type === 'trainer' ? 'Team Trainer' : 'Team Member', 
-          whatsapp: m.whatsapp || '', 
+          whatsapp: '', 
           memberId: m.id 
         });
       }
@@ -2038,31 +1976,6 @@ const BalanceManagementSection = ({
     }
   };
 
-  const handleResetSubmit = async () => {
-    if (!selectedUser || !onResetUserFine) return;
-    setBusy(true);
-    try {
-      await onResetUserFine(selectedUser.key, selectedUser.name, resetReason || 'জরিমানা সম্পূর্ণ ডিলিট/রিসেট করা হয়েছে');
-      setResetReason('');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleExactSubmit = async () => {
-    if (!selectedUser || !onSetExactFine) return;
-    const amt = parseFloat(exactFineAmount);
-    if (isNaN(amt) || amt < 0) return;
-    setBusy(true);
-    try {
-      await onSetExactFine(selectedUser.key, selectedUser.name, amt, exactReason || `জরিমানা ৳${amt} নির্ধারণ করা হয়েছে`);
-      setExactFineAmount('');
-      setExactReason('');
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const handleQuickSubmit = async () => {
     if (!quickUser) return;
     setBusy(true);
@@ -2085,15 +1998,6 @@ const BalanceManagementSection = ({
       } else if (quickUser.type === 'remove_day') {
         if (quickDate) {
           await onRemoveDayFine(quickUser.key, quickUser.name, quickDate, quickReason || `${quickDate} তারিখের মিসড দিন বাদ দেওয়া হয়েছে`);
-        }
-      } else if (quickUser.type === 'delete') {
-        if (onResetUserFine) {
-          await onResetUserFine(quickUser.key, quickUser.name, quickReason || 'জরিমানা সম্পূর্ণ ডিলিট/রিসেট করা হয়েছে');
-        }
-      } else if (quickUser.type === 'set_exact') {
-        const amt = parseFloat(quickAmount);
-        if (!isNaN(amt) && amt >= 0 && onSetExactFine) {
-          await onSetExactFine(quickUser.key, quickUser.name, amt, quickReason || `জরিমানা ৳${amt} নির্ধারণ করা হয়েছে`);
         }
       }
       setQuickUser(null);
@@ -2123,7 +2027,6 @@ const BalanceManagementSection = ({
           { id: 'deduct', label: '- ফাইন কমান' },
           { id: 'waive', label: '🛡️ ক্ষমা/মওকুফ' },
           { id: 'remove_day', label: '📅 মিসড দিন রিমুভ' },
-          { id: 'delete_reset', label: '🗑️ ফাইন রিসেট' },
           { id: 'logs', label: 'অডিট লগ' }
         ].map((tab) => (
           <button
@@ -2193,7 +2096,7 @@ const BalanceManagementSection = ({
                           onClick={() => {
                             setSelectedUserKey(item.key);
                             setQuickUser({ key: item.key, name: item.name, type: 'add' });
-                            setQuickAmount('10');
+                            setQuickAmount('');
                             setQuickReason('');
                           }}
                           className="px-2.5 py-1 rounded-lg bg-red-accent/10 hover:bg-red-accent text-red-accent hover:text-white border border-red-accent/30 text-[10px] font-black transition-all"
@@ -2205,7 +2108,7 @@ const BalanceManagementSection = ({
                           onClick={() => {
                             setSelectedUserKey(item.key);
                             setQuickUser({ key: item.key, name: item.name, type: 'deduct' });
-                            setQuickAmount('10');
+                            setQuickAmount('');
                             setQuickReason('');
                           }}
                           className="px-2.5 py-1 rounded-lg bg-green-accent/10 hover:bg-green-accent text-green-accent hover:text-bg border border-green-accent/30 text-[10px] font-black transition-all"
@@ -2217,7 +2120,7 @@ const BalanceManagementSection = ({
                           onClick={() => {
                             setSelectedUserKey(item.key);
                             setQuickUser({ key: item.key, name: item.name, type: 'waive' });
-                            setQuickAmount(stats.totalFine > 0 ? String(stats.totalFine) : '10');
+                            setQuickAmount('');
                             setQuickReason('');
                           }}
                           className="px-2.5 py-1 rounded-lg bg-gold/10 hover:bg-gold text-gold hover:text-bg border border-gold/30 text-[10px] font-black transition-all"
@@ -2235,17 +2138,6 @@ const BalanceManagementSection = ({
                           className="px-2.5 py-1 rounded-lg bg-purple-500/10 hover:bg-purple-500 text-purple-400 hover:text-white border border-purple-500/30 text-[10px] font-black transition-all"
                         >
                           📅 দিন রিমুভ
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedUserKey(item.key);
-                            setQuickUser({ key: item.key, name: item.name, type: 'delete' });
-                            setQuickReason('');
-                          }}
-                          className="px-2.5 py-1 rounded-lg bg-red-500/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/40 text-[10px] font-black transition-all"
-                        >
-                          🗑️ ফাইন ডিলিট
                         </button>
                       </div>
                     </div>
@@ -2418,64 +2310,6 @@ const BalanceManagementSection = ({
             </div>
           )}
 
-          {activeTab === 'delete_reset' && (
-            <div className="space-y-4">
-              <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl space-y-3">
-                <h4 className="text-xs font-black text-red-400 uppercase tracking-wider flex items-center gap-2">
-                  <span>🗑️ জরিমানা সম্পূর্ণ ডিলিট / রিসেট করুন (Reset Fine to ৳0)</span>
-                </h4>
-                <p className="text-[11px] text-muted-main">
-                  সিলেক্ট করা মেম্বারের বর্তমান জমা হওয়া সমস্ত জরিমানা সম্পূর্ণ ডিলিট ও রিসেট হয়ে ৳০ টাকা হয়ে যাবে।
-                </p>
-                <input
-                  type="text"
-                  value={resetReason}
-                  onChange={(e) => setResetReason(e.target.value)}
-                  placeholder="কারণ / নোট (e.g. অ্যাডমিন কর্তৃক সম্পূর্ণ মওকুফ)"
-                  className="w-full bg-surface border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-gold"
-                />
-                <button
-                  type="button"
-                  disabled={busy || !selectedUser}
-                  onClick={handleResetSubmit}
-                  className="w-full py-3 rounded-xl bg-red-600 text-white font-black text-xs uppercase tracking-wider hover:bg-red-700 active:scale-95 transition-all shadow-lg"
-                >
-                  {busy ? 'প্রসেসিং...' : `${selectedUser?.name || 'মেম্বার'}-এর জরিমানা ডিলিট ও রিসেট করুন (৳0)`}
-                </button>
-              </div>
-
-              <div className="p-4 bg-gold/10 border border-gold/20 rounded-2xl space-y-3">
-                <h4 className="text-xs font-black text-gold uppercase tracking-wider flex items-center gap-2">
-                  <span>✏️ নির্দিষ্ট জরিমানা সেট করুন (Set Exact Fine)</span>
-                </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <input
-                    type="number"
-                    value={exactFineAmount}
-                    onChange={(e) => setExactFineAmount(e.target.value)}
-                    placeholder="নির্ধারিত টাকার পরিমাণ (৳)"
-                    className="bg-surface border border-white/10 rounded-xl p-3 text-sm font-bold text-white outline-none focus:border-gold"
-                  />
-                  <input
-                    type="text"
-                    value={exactReason}
-                    onChange={(e) => setExactReason(e.target.value)}
-                    placeholder="কারণ / নোট"
-                    className="bg-surface border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-gold"
-                  />
-                </div>
-                <button
-                  type="button"
-                  disabled={busy || !selectedUser}
-                  onClick={handleExactSubmit}
-                  className="w-full py-3 rounded-xl bg-gold text-bg font-black text-xs uppercase tracking-wider hover:opacity-90 active:scale-95 transition-all shadow-lg"
-                >
-                  {busy ? 'প্রসেসিং...' : `${selectedUser?.name || 'মেম্বার'}-এর জরিমানা সেট করুন`}
-                </button>
-              </div>
-            </div>
-          )}
-
           {activeTab === 'logs' && (
             <div className="space-y-3">
               <h4 className="text-xs font-black text-white uppercase tracking-wider mb-2">
@@ -2509,66 +2343,35 @@ const BalanceManagementSection = ({
       {/* Quick Action Modal Dialog */}
       <AnimatePresence>
         {quickUser && (
-          <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-black/80 backdrop-blur-md"
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
               onClick={() => setQuickUser(null)}
             />
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="relative w-full max-w-sm bg-surface border border-gold/40 p-5 sm:p-6 rounded-3xl shadow-2xl space-y-4 z-10"
+              className="relative w-full max-w-sm bg-surface border border-gold/30 p-5 rounded-2xl shadow-2xl space-y-4"
             >
               <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                <h3 className="text-sm sm:text-base font-black text-white flex items-center gap-2">
-                  <span>
-                    {quickUser.type === 'add'
-                      ? '➕ ফাইন বাড়ান'
-                      : quickUser.type === 'deduct'
-                      ? '➖ ফাইন কমান'
-                      : quickUser.type === 'waive'
-                      ? '🛡️ জরিমানা মওকুফ করুন'
-                      : quickUser.type === 'remove_day'
-                      ? '📅 মিসড দিন রিমুভ করুন'
-                      : quickUser.type === 'delete'
-                      ? '🗑️ জরিমানা সম্পূর্ণ ডিলিট করুন'
-                      : '✏️ নির্ধারিত জরিমানা সেট করুন'}
-                  </span>
+                <h3 className="text-sm font-black text-white">
+                  {quickUser.type === 'add' ? '➕ ফাইন বাড়ান' : quickUser.type === 'deduct' ? '➖ ফাইন কমান' : quickUser.type === 'waive' ? '🛡️ জরিমানা মওকুফ করুন' : '📅 মিসড দিন রিমুভ করুন'}
                 </h3>
-                <button type="button" onClick={() => setQuickUser(null)} className="w-7 h-7 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 text-muted-main hover:text-white transition-colors">
+                <button type="button" onClick={() => setQuickUser(null)} className="w-6 h-6 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 text-muted-main hover:text-white transition-colors">
                   ✕
                 </button>
               </div>
               
-              <div className="p-3 bg-white/5 rounded-xl border border-white/5 flex items-center justify-between">
-                <div>
-                  <span className="text-[10px] text-muted-main uppercase font-bold block">মেম্বার</span>
-                  <span className="text-sm text-white font-bold">{quickUser.name}</span>
-                </div>
-                {(() => {
-                  const qUser = userOptions.find(u => u.key === quickUser.key);
-                  const qStats = qUser && computeUserSubmissionStats ? computeUserSubmissionStats(qUser.whatsapp, qUser.memberId) : null;
-                  return qStats ? (
-                    <div className="text-right">
-                      <span className="text-[10px] text-muted-main uppercase font-bold block">বর্তমান জরিমানা</span>
-                      <span className="text-xs font-black text-gold">৳{qStats.totalFine}</span>
-                    </div>
-                  ) : null;
-                })()}
+              <div className="text-xs text-muted-main mb-2">
+                User: <span className="text-white font-bold">{quickUser.name}</span>
               </div>
 
               <div className="space-y-3">
-                {quickUser.type === 'delete' ? (
-                  <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl text-center">
-                    <p className="text-xs font-bold text-red-400">
-                      আপনি কি {quickUser.name}-এর সমস্ত জরিমানা মুছে সম্পূর্ণ ৳০ করতে চান?
-                    </p>
-                  </div>
-                ) : quickUser.type === 'remove_day' ? (
+                {quickUser.type === 'remove_day' ? (
                   <div>
                     <label className="block text-[10px] text-muted-main font-bold uppercase mb-1">তারিখ নির্বাচন করুন</label>
                     <input
@@ -2580,43 +2383,23 @@ const BalanceManagementSection = ({
                   </div>
                 ) : (
                   <div>
-                    <label className="block text-[10px] text-muted-main font-bold uppercase mb-1">
-                      {quickUser.type === 'set_exact' ? 'নির্ধারিত জরিমানা (৳)' : 'টাকার পরিমাণ (৳)'}
-                    </label>
+                    <label className="block text-[10px] text-muted-main font-bold uppercase mb-1">টাকার পরিমাণ (৳)</label>
                     <input
                       type="number"
                       value={quickAmount}
                       onChange={(e) => setQuickAmount(e.target.value)}
-                      placeholder="টাকার পরিমাণ লিখুন..."
-                      className="w-full bg-bg border border-white/10 rounded-xl p-3 text-sm font-bold text-white outline-none focus:border-gold transition-colors"
+                      placeholder="Enter amount..."
+                      className="w-full bg-bg border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-gold transition-colors"
                     />
-                    {/* Preset Amount Chips */}
-                    <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-                      <span className="text-[10px] text-muted-main font-bold">কুইক সিলেক্ট:</span>
-                      {[0, 10, 20, 30, 50, 100].map(val => (
-                        <button
-                          key={val}
-                          type="button"
-                          onClick={() => setQuickAmount(String(val))}
-                          className={`px-2 py-1 rounded-lg text-xs font-bold transition-all border ${
-                            quickAmount === String(val)
-                              ? 'bg-gold text-bg border-gold shadow-sm'
-                              : 'bg-white/5 text-muted-main hover:text-white border-white/10 hover:border-white/20'
-                          }`}
-                        >
-                          ৳{val}
-                        </button>
-                      ))}
-                    </div>
                   </div>
                 )}
                 <div>
-                  <label className="block text-[10px] text-muted-main font-bold uppercase mb-1">কারণ / নোট (ঐচ্ছিক)</label>
+                  <label className="block text-[10px] text-muted-main font-bold uppercase mb-1">কারণ / নোট (Optional)</label>
                   <input
                     type="text"
                     value={quickReason}
                     onChange={(e) => setQuickReason(e.target.value)}
-                    placeholder="কারণ লিখুন (যেমন: বিলম্ব ফি, বিশেষ ছাড়)..."
+                    placeholder="Enter reason..."
                     className="w-full bg-bg border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-gold transition-colors"
                   />
                 </div>
@@ -2626,7 +2409,7 @@ const BalanceManagementSection = ({
                 type="button"
                 disabled={busy}
                 onClick={handleQuickSubmit}
-                className="w-full py-3 rounded-xl bg-gold text-bg font-black text-sm uppercase tracking-wider hover:bg-gold/90 transition-all shadow-[0_0_15px_rgba(245,197,66,0.3)] disabled:opacity-50 disabled:cursor-not-allowed mt-2 active:scale-95"
+                className="w-full py-3 rounded-xl bg-gold text-bg font-black text-sm uppercase tracking-wider hover:bg-gold/90 transition-all shadow-[0_0_15px_rgba(245,197,66,0.3)] disabled:opacity-50 disabled:cursor-not-allowed mt-2"
               >
                 {busy ? 'প্রসেসিং...' : 'কনফার্ম করুন'}
               </button>
@@ -2646,25 +2429,12 @@ function GiftBoxOverlay({ config }: { config: Config }) {
 
   return (
     <>
-      <motion.div 
-        className="fixed bottom-20 left-6 z-[350]"
-        animate={{
-          y: [0, -12, 0],
-          rotate: [0, -6, 6, -6, 0]
-        }}
-        transition={{
-          duration: 3,
-          repeat: Infinity,
-          ease: "easeInOut"
-        }}
-      >
+      <div className="fixed bottom-16 left-4 z-[250] w-12 h-12">
         <button
           onClick={() => setIsOpen(true)}
-          className="w-14 h-14 bg-gradient-to-br from-red-600 via-rose-500 to-amber-500 rounded-full shadow-[0_10px_25px_rgba(239,68,68,0.45),inset_0_3px_6px_rgba(255,255,255,0.4),inset_0_-3px_6px_rgba(0,0,0,0.25)] border-2 border-amber-300 flex items-center justify-center text-white hover:scale-110 active:scale-95 transition-all overflow-visible group relative"
+          className="w-full h-full bg-gradient-to-tr from-pink-600 to-orange-500 rounded-full shadow-[0_0_20px_rgba(236,72,153,0.5)] flex items-center justify-center text-white hover:scale-110 active:scale-95 transition-all overflow-visible group"
         >
-          {/* Pulsing Gold Glow Behind */}
-          <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-amber-400 to-rose-500 blur-md opacity-60 animate-pulse scale-105 -z-10" />
-          <Gift size={24} className="text-amber-100 filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)] transform group-hover:scale-110 transition-transform" />
+          <Gift size={22} className="animate-bounce" />
         </button>
         <button 
           onClick={(e) => {
@@ -2672,11 +2442,11 @@ function GiftBoxOverlay({ config }: { config: Config }) {
             e.stopPropagation();
             setIsDismissed(true);
           }}
-          className="absolute -top-1.5 -right-1.5 flex h-5 w-5 bg-red-600 border border-white/90 rounded-full items-center justify-center text-white hover:scale-110 active:scale-95 transition-all z-20 shadow-lg cursor-pointer hover:bg-red-700"
+          className="absolute -top-1 -right-1 flex h-4 w-4 bg-red-500 border border-white rounded-full items-center justify-center text-white hover:scale-110 active:scale-95 transition-all z-10 shadow-md cursor-pointer"
         >
-          <X size={11} strokeWidth={4} />
+          <X size={10} strokeWidth={4} />
         </button>
-      </motion.div>
+      </div>
 
       <AnimatePresence>
         {isOpen && (
@@ -2685,43 +2455,27 @@ function GiftBoxOverlay({ config }: { config: Config }) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-slate-950/60 backdrop-blur-md"
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
               onClick={() => setIsOpen(false)}
             />
             <motion.div
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="relative w-full max-w-xs bg-[#e0e9f4] rounded-[2.25rem] p-6 shadow-[20px_20px_40px_rgba(152,170,194,0.7),-20px_-20px_40px_rgba(255,255,255,0.95)] border border-white/80 flex flex-col items-center text-center overflow-hidden"
+              className="relative w-full max-w-sm bg-surface border border-pink-500/30 p-6 rounded-3xl shadow-2xl flex flex-col items-center text-center"
             >
-              {/* Subtle Ambient Light */}
-              <div className="absolute top-0 left-1/4 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
-
-              {/* 3D Gift Box Header Avatar (shifted slightly lower inside with mt-6) */}
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-red-600 via-rose-500 to-amber-500 border-2 border-amber-300 flex items-center justify-center text-white shadow-[6px_6px_12px_rgba(152,170,194,0.4),-6px_-6px_12px_rgba(255,255,255,0.85),inset_0_2px_4px_rgba(255,255,255,0.4)] mt-6 mb-4 animate-bounce">
-                <Gift size={32} className="text-amber-100 filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)]" />
+              <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-pink-500 to-orange-400 flex items-center justify-center text-white shadow-lg mb-4">
+                <Gift size={32} />
               </div>
-
-              {/* Styled Title */}
-              <h3 className="text-base font-black tracking-tight mb-3 text-slate-900 flex items-center gap-1.5 justify-center">
-                <span className="bg-gradient-to-r from-red-600 to-amber-600 bg-clip-text text-transparent">
-                  {config.giftBoxTitle || 'সারপ্রাইজ উপহার! 🎁'}
-                </span>
-              </h3>
-
-              {/* Neumorphic text box for content */}
-              <div className="w-full p-4 bg-[#e0e9f4]/70 rounded-2xl shadow-[inset_3px_3px_6px_rgba(152,170,194,0.25),inset_-3px_-3px_6px_rgba(255,255,255,0.75)] border border-white/50 mb-5 text-center flex items-center justify-center min-h-[90px]">
-                <p className="text-[11px] font-bold leading-relaxed text-slate-700 whitespace-pre-wrap">
-                  {config.giftBoxContent || 'আপনার জন্য এখন কোনো বিশেষ অফার নেই। পরে আবার দেখুন!'}
-                </p>
-              </div>
-
-              {/* Sleek OK button */}
+              <h3 className="text-xl font-black text-white mb-2">{config.giftBoxTitle || 'Surprise Gift!'}</h3>
+              <p className="text-sm text-muted-main mb-6 whitespace-pre-wrap">
+                {config.giftBoxContent || 'No details available right now.'}
+              </p>
               <button
                 onClick={() => setIsOpen(false)}
-                className="w-full py-2.5 bg-[#e0e9f4] hover:bg-slate-50 text-slate-800 font-black text-xs uppercase tracking-wider rounded-xl shadow-[4px_4px_8px_rgba(152,170,194,0.6),-4px_-4px_8px_rgba(255,255,255,0.9)] border border-white/50 hover:scale-[1.01] active:scale-95 active:shadow-[inset_2px_2px_4px_rgba(152,170,194,0.3)] transition-all"
+                className="w-full py-3 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-sm transition-colors"
               >
-                ঠিক আছে
+                Close
               </button>
             </motion.div>
           </div>
@@ -2929,39 +2683,20 @@ const UserCalendarModal = ({
   );
 };
 
-
 export default function App() {
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<FirebaseUser | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [results, setResults] = useState<Record<string, Result>>({});
-
-  const [leaderRanking, setLeaderRanking] = useState<RankingMember[]>([]);
-  const [trainerRanking, setTrainerRanking] = useState<RankingMember[]>([]);
-  const [config, setConfig] = useState<Config>(() => {
-    const cachedLogo = typeof window !== 'undefined' ? localStorage.getItem('unity_custom_logo') || '' : '';
-    return { 
-      timerActive: false, 
-      timerEndTime: 0, 
-      timerDuration: 1800,
-      isLocked: true, 
-      securityPassword: 'unity2024',
-      customLogo: cachedLogo
-    };
+  const [config, setConfig] = useState<Config>({ 
+    timerActive: false, 
+    timerEndTime: 0, 
+    timerDuration: 1800,
+    isLocked: true, 
+    securityPassword: 'unity2024'
   });
   const [timeLeft, setTimeLeft] = useState(0);
-  const handleDeleteAllCommunityPosts = async () => {
-    try {
-      const snap = await getDocs(query(collection(db, 'fcmTokens'), where('platform', 'in', ['community_post', 'community_comment'])));
-      for (const d of snap.docs) {
-        await deleteDoc(doc(db, 'fcmTokens', d.id));
-      }
-      showMsg("কমিউনিটির সকল পোস্ট ও কমেন্ট সফলভাবে মুছে ফেলা হয়েছে।", "success");
-    } catch (err) {
-      showMsg("পোস্টগুলো মুছতে সমস্যা হয়েছে", "error");
-    }
-  };
   const [timerDurationSelect, setTimerDurationSelect] = useState<number>(1800); // 30 minutes default
-  const [isAuthReady, setIsAuthReady] = useState(true);
+  const [isAuthReady, setIsAuthReady] = useState(false);
   const [isConfigReady, setIsConfigReady] = useState(false);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [showPickingModal, setShowPickingModal] = useState(false);
@@ -2989,90 +2724,26 @@ export default function App() {
   const [demoAttendance, setDemoAttendance] = useState<DemoAttendance[]>([]);
   const [showDemoModal, setShowDemoModal] = useState(false);
   const [showDemoHistory, setShowDemoHistory] = useState<boolean>(false);
-  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
-
-  useEffect(() => {
-    const handleOnline = () => {
-      setIsOnline(true);
-      showMsg('সিস্টেম পুনরায় কানেক্ট হয়েছে (Online)', 'success');
-    };
-    const handleOffline = () => {
-      setIsOnline(false);
-      showMsg('ইন্টারনেট কানেকশন নেই (Offline)', 'error');
-    };
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
 
   const [pendingUsers, setPendingUsers] = useState<UserRegistration[]>([]);
   const [approvedUsers, setApprovedUsers] = useState<UserRegistration[]>([]);
-  const [authenticatedUser, setAuthenticatedUser] = useState<UserRegistration | null>(() => {
-    try {
-      // Force re-login on new sessions/browser exits per user request:
-      // Clear persistent localStorage cache so opening link afresh prompts login
-      localStorage.removeItem('unity_user');
-      const saved = sessionStorage.getItem('unity_session_user');
-      return saved ? JSON.parse(saved) : null;
-    } catch (e) {
-      return null;
-    }
-  });
+  const [authenticatedUser, setAuthenticatedUser] = useState<UserRegistration | null>(null);
 
+  const [leaderRanking, setLeaderRanking] = useState<RankingMember[]>([]);
+  const [trainerRanking, setTrainerRanking] = useState<RankingMember[]>([]);
   const [showLeaderRankingModal, setShowLeaderRankingModal] = useState(false);
   const [showTrainerRankingModal, setShowTrainerRankingModal] = useState(false);
   const [showOverallStatsModal, setShowOverallStatsModal] = useState(false);
   const [showSocialsModal, setShowSocialsModal] = useState(false);
   const [showNoticeModal, setShowNoticeModal] = useState(false);
   const [showCounsellingModal, setShowCounsellingModal] = useState(false);
-  const [showLoginStatsPopup, setShowLoginStatsPopup] = useState(false);
-  const [userTab, setUserTab] = useState<'home' | 'community' | 'submit' | 'sheet' | 'links' | 'profile'>(() => {
-    return 'home';
-  });
+  const [userTab, setUserTab] = useState<'home' | 'submit' | 'sheet' | 'links' | 'profile'>('home');
   const [savingPic, setSavingPic] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [updatingPass, setUpdatingPass] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const timerStartedNotifiedRef = useRef<number | null>(null);
-  const fiveMinWarningTriggeredRef = useRef<boolean>(false);
-  const timerEndedTriggeredRef = useRef<boolean>(false);
-  const lastTimerActiveRef = useRef<boolean>(false);
-  const rankingDataRef = useRef<{ sortedLeaders: any[], sortedTrainers: any[], stats: any }>({ sortedLeaders: [], sortedTrainers: [], stats: {} });
-
-  const generateTimerPerformanceSummary = () => {
-    const currentData = rankingDataRef.current;
-    const topL = (currentData?.sortedLeaders || []).filter((l: any) => (l.result?.convert || 0) > 0)[0] || null;
-    const topT = (currentData?.sortedTrainers || []).filter((t: any) => (t.result?.convert || 0) > 0)[0] || null;
-    const totalConverts = currentData?.stats?.todayConverts ?? currentData?.stats?.converts ?? 0;
-
-    const lines: string[] = ['টাইমার অফ হয়ে গিয়েছে! আজকের ফলাফল: 📊'];
-    
-    if (topL) {
-      lines.push(`👑 টপ টিম লিডার: 🥇 ${topL.name} (${topL.result?.convert || 0} টি কনভার্ট)`);
-    }
-
-    if (topT) {
-      lines.push(`🌟 টপ ট্রেনার: 🥇 ${topT.name} (${topT.result?.convert || 0} টি কনভার্ট)`);
-    }
-
-    if (!topL && !topT) {
-      lines.push(`আজকের মোট সাবমিট হওয়া কনভার্ট: ${totalConverts} টি। 🎯`);
-    } else {
-      lines.push(`🎯 মোট কনভার্ট: ${totalConverts} টি | অভিনন্দন ও ধন্যবাদ! 🎉✨`);
-    }
-
-    return {
-      title: 'Unity Earning 🏁 টাইমার সমাপ্ত & সেরা পারফরম্যান্স!',
-      body: lines.join('\n')
-    };
-  };
 
   const [quickLinks, setQuickLinks] = useState<QuickLink[]>([]);
   const [showQuickLinksModal, setShowQuickLinksModal] = useState(false);
@@ -3083,7 +2754,6 @@ export default function App() {
   
   const [showConfirm, setShowConfirm] = useState<{ title: string, onConfirm: () => void } | null>(null);
   const [showCalendarUser, setShowCalendarUser] = useState<{ whatsapp: string, name: string, memberId?: string } | null>(null);
-  const [appreciationData, setAppreciationData] = useState<AppreciationData | null>(null);
   const [siteAuthenticated, setSiteAuthenticated] = useState(false);
   const [stlAuthenticated, setStlAuthenticated] = useState(false);
   const [showStlLoginModal, setShowStlLoginModal] = useState(false);
@@ -3094,10 +2764,7 @@ export default function App() {
   const devEmail = "learninghubbd2126509574@gmail.com";
   // Initial password - this will be synced with Firestore if it exists
   const initialAdminPass = "212650";
-  const [isAdmin, setIsAdmin] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    return localStorage.getItem('isAdmin') === 'true' || sessionStorage.getItem('isAdmin') === 'true';
-  });
+  const [isAdmin, setIsAdmin] = useState(false);
   const hasStlAccess = isAdmin || stlAuthenticated;
 
   useEffect(() => {
@@ -3110,12 +2777,6 @@ export default function App() {
     return () => clearTimeout(timer);
   }, []);
 
-  useEffect(() => {
-    if (authenticatedUser) {
-      setShowLoginStatsPopup(true);
-    }
-  }, [authenticatedUser]);
-
   const COURSES = [
     "Photo Edit",
     "Video Edit", 
@@ -3126,7 +2787,39 @@ export default function App() {
   ];
 
   useEffect(() => {
-    setIsAuthReady(true);
+    // Handle Google Redirect Result
+    getRedirectResult(auth).then((result) => {
+      if (result?.user) {
+        if (result.user.email === devEmail || result.user.email === adminEmail) {
+          setIsAdmin(true);
+          localStorage.setItem('isAdmin', 'true');
+        } else {
+          // No notification
+        }
+      }
+    }).catch((err) => {
+      console.error('Redirect error:', err);
+      if (err.code !== 'auth/network-request-failed') {
+        showMsg(`Login failed: ${err.message}`, 'error');
+      }
+    });
+
+    const unsubscribe = onAuthStateChanged(auth, async (u) => {
+      setUser(u);
+      // Auto-restore anonymous auth for both admins and regular users who are logged in
+      const isUserLoggedIn = localStorage.getItem('unity_user') !== null;
+      const isAdminLoggedIn = localStorage.getItem('isAdmin') === 'true';
+
+      if ((isAdminLoggedIn || isUserLoggedIn) && !u) {
+        try {
+          await signInAnonymously(auth);
+        } catch (err) {
+          console.warn("Failed to automatically restore anonymous auth:", err);
+        }
+      }
+      setIsAuthReady(true);
+    });
+    return () => unsubscribe();
   }, []);
 
   // Real-time Listeners
@@ -3140,11 +2833,6 @@ export default function App() {
       console.log('Config Snapshot received');
       if (snapshot.exists()) {
         const newConfig = snapshot.data() as Config;
-        if (newConfig.customLogo) {
-          try {
-            localStorage.setItem('unity_custom_logo', newConfig.customLogo);
-          } catch (e) {}
-        }
         setConfig(prev => {
           if (newConfig.announcement !== prev.announcement || (newConfig.announcementActive && !prev.announcementActive)) {
             setAnnouncementDismissed(false);
@@ -3171,28 +2859,14 @@ export default function App() {
     // Listen to Members
     const unsubMembers = onSnapshot(query(collection(db, 'members'), orderBy('createdAt', 'desc')), (snapshot) => {
       const mList: Member[] = [];
-      snapshot.forEach(d => {
-        const data = d.data();
-        const rawName = (data?.name && typeof data.name === 'string') ? data.name.trim() : '';
-        if (!rawName || rawName === 'undefined' || rawName === 'null') {
-          // Permanently auto-delete blank/unnamed document so empty boxes never appear
-          deleteDoc(doc(db, 'members', d.id)).catch(console.error);
-          return;
-        }
-        mList.push({ id: d.id, ...data, name: rawName } as Member);
-      });
+      snapshot.forEach(d => mList.push({ id: d.id, ...d.data() } as Member));
       setMembers(mList);
     }, async (err) => {
       console.warn('Members Listener Error, attempting cache fallback:', err);
       try {
         const cacheSnap = await getDocsFromCache(query(collection(db, 'members'), orderBy('createdAt', 'desc')));
         const mList: Member[] = [];
-        cacheSnap.forEach(d => {
-          const data = d.data();
-          const rawName = (data?.name && typeof data.name === 'string') ? data.name.trim() : '';
-          if (!rawName || rawName === 'undefined' || rawName === 'null') return;
-          mList.push({ id: d.id, ...data, name: rawName } as Member);
-        });
+        cacheSnap.forEach(d => mList.push({ id: d.id, ...d.data() } as Member));
         setMembers(mList);
       } catch (cacheErr) {
         console.warn('Failed to fetch members from cache:', cacheErr);
@@ -3240,6 +2914,41 @@ export default function App() {
         console.warn('Failed to fetch picking schedule from cache:', cacheErr);
       }
       handleFirestoreError(err, OperationType.GET, 'pickingSchedule', showMsg);
+    });
+
+    // Listen to Rankings
+    const unsubLeaderRanking = onSnapshot(query(collection(db, 'leaderRanking'), orderBy('score', 'desc')), (snapshot) => {
+      const list: RankingMember[] = [];
+      snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as RankingMember));
+      setLeaderRanking(list);
+    }, async (err) => {
+      console.warn('LeaderRanking Listener Error, attempting cache fallback:', err);
+      try {
+        const cacheSnap = await getDocsFromCache(query(collection(db, 'leaderRanking'), orderBy('score', 'desc')));
+        const list: RankingMember[] = [];
+        cacheSnap.forEach(d => list.push({ id: d.id, ...d.data() } as RankingMember));
+        setLeaderRanking(list);
+      } catch (cacheErr) {
+        console.warn('Failed to fetch leader ranking from cache:', cacheErr);
+      }
+      handleFirestoreError(err, OperationType.GET, 'leaderRanking', showMsg);
+    });
+
+    const unsubTrainerRanking = onSnapshot(query(collection(db, 'trainerRanking'), orderBy('score', 'desc')), (snapshot) => {
+      const list: RankingMember[] = [];
+      snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as RankingMember));
+      setTrainerRanking(list);
+    }, async (err) => {
+      console.warn('TrainerRanking Listener Error, attempting cache fallback:', err);
+      try {
+        const cacheSnap = await getDocsFromCache(query(collection(db, 'trainerRanking'), orderBy('score', 'desc')));
+        const list: RankingMember[] = [];
+        cacheSnap.forEach(d => list.push({ id: d.id, ...d.data() } as RankingMember));
+        setTrainerRanking(list);
+      } catch (cacheErr) {
+        console.warn('Failed to fetch trainer ranking from cache:', cacheErr);
+      }
+      handleFirestoreError(err, OperationType.GET, 'trainerRanking', showMsg);
     });
 
     // Listen to Teachers
@@ -3314,124 +3023,6 @@ export default function App() {
       handleFirestoreError(err, OperationType.GET, 'quickLinks', showMsg);
     });
 
-    // Listen to User Balances (Always real-time)
-    const unsubBalances = onSnapshot(collection(db, 'userBalances'), (snapshot) => {
-      const bMap: Record<string, UserBalance> = {};
-      snapshot.forEach(d => {
-        bMap[d.id] = { id: d.id, ...d.data() } as UserBalance;
-      });
-      setUserBalances(bMap);
-    }, async (err) => {
-      console.warn('Balances Listener Error, attempting cache fallback:', err);
-      try {
-        const cacheSnap = await getDocsFromCache(collection(db, 'userBalances'));
-        const bMap: Record<string, UserBalance> = {};
-        cacheSnap.forEach(d => {
-          bMap[d.id] = { id: d.id, ...d.data() } as UserBalance;
-        });
-        setUserBalances(bMap);
-      } catch (cacheErr) {
-        console.warn('Failed to fetch balances from cache:', cacheErr);
-      }
-      handleFirestoreError(err, OperationType.GET, 'userBalances', showMsg);
-    });
-
-    // Listen to Leader Ranking (Always real-time)
-    const unsubLeaderRanking = onSnapshot(collection(db, 'leaderRanking'), (snapshot) => {
-      const list: RankingMember[] = [];
-      snapshot.forEach(d => {
-        const data = d.data();
-        const rawName = (data?.name && typeof data.name === 'string') ? data.name.trim() : '';
-        if (!rawName || rawName === 'undefined' || rawName === 'null') {
-          // Permanently auto-delete blank/unnamed document so empty boxes never appear
-          deleteDoc(doc(db, 'leaderRanking', d.id)).catch(console.error);
-          return;
-        }
-        list.push({ id: d.id, ...data, name: rawName } as RankingMember);
-      });
-      list.sort((a, b) => (b.score || 0) - (a.score || 0));
-      setLeaderRanking(list);
-    }, async (err) => {
-      console.warn('LeaderRanking Listener Error, attempting cache fallback:', err);
-      try {
-        const cacheSnap = await getDocsFromCache(collection(db, 'leaderRanking'));
-        const list: RankingMember[] = [];
-        cacheSnap.forEach(d => {
-          const data = d.data();
-          const rawName = (data?.name && typeof data.name === 'string') ? data.name.trim() : '';
-          if (!rawName || rawName === 'undefined' || rawName === 'null') return;
-          list.push({ id: d.id, ...data, name: rawName } as RankingMember);
-        });
-        list.sort((a, b) => (b.score || 0) - (a.score || 0));
-        setLeaderRanking(list);
-      } catch (cacheErr) {
-        console.warn('Failed to fetch leader ranking from cache:', cacheErr);
-      }
-      handleFirestoreError(err, OperationType.GET, 'leaderRanking', showMsg);
-    });
-
-    // Listen to Trainer Ranking (Always real-time)
-    const unsubTrainerRanking = onSnapshot(collection(db, 'trainerRanking'), (snapshot) => {
-      const list: RankingMember[] = [];
-      snapshot.forEach(d => {
-        const data = d.data();
-        const rawName = (data?.name && typeof data.name === 'string') ? data.name.trim() : '';
-        if (!rawName || rawName === 'undefined' || rawName === 'null') {
-          // Permanently auto-delete blank/unnamed document so empty boxes never appear
-          deleteDoc(doc(db, 'trainerRanking', d.id)).catch(console.error);
-          return;
-        }
-        list.push({ id: d.id, ...data, name: rawName } as RankingMember);
-      });
-      list.sort((a, b) => (b.score || 0) - (a.score || 0));
-      setTrainerRanking(list);
-    }, async (err) => {
-      console.warn('TrainerRanking Listener Error, attempting cache fallback:', err);
-      try {
-        const cacheSnap = await getDocsFromCache(collection(db, 'trainerRanking'));
-        const list: RankingMember[] = [];
-        cacheSnap.forEach(d => {
-          const data = d.data();
-          const rawName = (data?.name && typeof data.name === 'string') ? data.name.trim() : '';
-          if (!rawName || rawName === 'undefined' || rawName === 'null') return;
-          list.push({ id: d.id, ...data, name: rawName } as RankingMember);
-        });
-        list.sort((a, b) => (b.score || 0) - (a.score || 0));
-        setTrainerRanking(list);
-      } catch (cacheErr) {
-        console.warn('Failed to fetch trainer ranking from cache:', cacheErr);
-      }
-      handleFirestoreError(err, OperationType.GET, 'trainerRanking', showMsg);
-    });
-
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth();
-    const safeYear = currentMonth === 0 ? currentYear - 1 : currentYear;
-    const safeMonth = currentMonth === 0 ? 12 : currentMonth; // previous month (1-indexed)
-    const startOfPrevMonthStr = `${safeYear}-${String(safeMonth).padStart(2, '0')}-01`;
-
-    const unsubSubmissionLogs = onSnapshot(query(collection(db, 'submissionLogs'), where('date', '>=', startOfPrevMonthStr)), (snapshot) => {
-      const logs: SubmissionLog[] = [];
-      snapshot.forEach(d => {
-        logs.push({ id: d.id, ...d.data() } as SubmissionLog);
-      });
-      setSubmissionLogs(logs);
-    }, async (err) => {
-      console.warn('SubmissionLogs Listener Error, attempting cache fallback:', err);
-      try {
-        const cacheSnap = await getDocsFromCache(query(collection(db, 'submissionLogs'), where('date', '>=', startOfPrevMonthStr)));
-        const logs: SubmissionLog[] = [];
-        cacheSnap.forEach(d => {
-          logs.push({ id: d.id, ...d.data() } as SubmissionLog);
-        });
-        setSubmissionLogs(logs);
-      } catch (cacheErr) {
-        console.warn('Failed to fetch submission logs from cache:', cacheErr);
-      }
-      handleFirestoreError(err, OperationType.GET, 'submissionLogs', showMsg);
-    });
-
     // ---------------------------------------------------------
     // AUTH DEPENDENT LISTENERS (Admin / Authed only)
     // ---------------------------------------------------------
@@ -3441,13 +3032,64 @@ export default function App() {
     let unsubDemoAttendance = () => {};
     let unsubPending = () => {};
     let unsubApproved = () => {};
+    let unsubBalances = () => {};
+    let unsubSubmissionLogs = () => {};
     let unsubAuditLogs = () => {};
 
-    const isActuallyAdmin = isAdmin;
+    if (isAuthReady && user) {
+      // Authenticated Users Listeners
+      unsubBalances = onSnapshot(collection(db, 'userBalances'), (snapshot) => {
+        const bMap: Record<string, UserBalance> = {};
+        snapshot.forEach(d => {
+          bMap[d.id] = { id: d.id, ...d.data() } as UserBalance;
+        });
+        setUserBalances(bMap);
+      }, async (err) => {
+        console.warn('Balances Listener Error, attempting cache fallback:', err);
+        try {
+          const cacheSnap = await getDocsFromCache(collection(db, 'userBalances'));
+          const bMap: Record<string, UserBalance> = {};
+          cacheSnap.forEach(d => {
+            bMap[d.id] = { id: d.id, ...d.data() } as UserBalance;
+          });
+          setUserBalances(bMap);
+        } catch (cacheErr) {
+          console.warn('Failed to fetch balances from cache:', cacheErr);
+        }
+        handleFirestoreError(err, OperationType.GET, 'userBalances', showMsg);
+      });
 
-    if (isActuallyAdmin || authenticatedUser) {
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth();
+      const safeYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+      const safeMonth = currentMonth === 0 ? 12 : currentMonth; // previous month (1-indexed)
+      const startOfPrevMonthStr = `${safeYear}-${String(safeMonth).padStart(2, '0')}-01`;
+
+      unsubSubmissionLogs = onSnapshot(query(collection(db, 'submissionLogs'), where('date', '>=', startOfPrevMonthStr)), (snapshot) => {
+        const logs: SubmissionLog[] = [];
+        snapshot.forEach(d => {
+          logs.push({ id: d.id, ...d.data() } as SubmissionLog);
+        });
+        setSubmissionLogs(logs);
+      }, async (err) => {
+        console.warn('SubmissionLogs Listener Error, attempting cache fallback:', err);
+        try {
+          const cacheSnap = await getDocsFromCache(query(collection(db, 'submissionLogs'), where('date', '>=', startOfPrevMonthStr)));
+          const logs: SubmissionLog[] = [];
+          cacheSnap.forEach(d => {
+            logs.push({ id: d.id, ...d.data() } as SubmissionLog);
+          });
+          setSubmissionLogs(logs);
+        } catch (cacheErr) {
+          console.warn('Failed to fetch submission logs from cache:', cacheErr);
+        }
+        handleFirestoreError(err, OperationType.GET, 'submissionLogs', showMsg);
+      });
+
+      const isActuallyAdmin = user.email === adminEmail || user.email === devEmail || user.isAnonymous || isAdmin;
       
-      // Admin user listeners
+      // If signed in via Firebase Auth with admin email
       if (isActuallyAdmin) {
         // Admin Only Listeners
         unsubAuditLogs = onSnapshot(query(collection(db, 'auditLogs'), orderBy('createdAt', 'desc'), limit(100)), (snapshot) => {
@@ -3538,28 +3180,14 @@ export default function App() {
         // Listen to User Registrations (Admin only)
         unsubPending = onSnapshot(query(collection(db, 'pendingRegistrations'), orderBy('createdAt', 'desc')), (snapshot) => {
           const list: UserRegistration[] = [];
-          snapshot.forEach(d => {
-            const data = d.data();
-            const rawName = (data?.fullName && typeof data.fullName === 'string') ? data.fullName.trim() : '';
-            if (!rawName || rawName === 'undefined' || rawName === 'null') {
-              // Auto-delete blank registration requests
-              deleteDoc(doc(db, 'pendingRegistrations', d.id)).catch(console.error);
-              return;
-            }
-            list.push({ id: d.id, ...data, fullName: rawName } as UserRegistration);
-          });
+          snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as UserRegistration));
           setPendingUsers(list);
         }, async (err) => {
           console.warn('Sync Pending error, attempting cache fallback:', err);
           try {
             const cacheSnap = await getDocsFromCache(query(collection(db, 'pendingRegistrations'), orderBy('createdAt', 'desc')));
             const list: UserRegistration[] = [];
-            cacheSnap.forEach(d => {
-              const data = d.data();
-              const rawName = (data?.fullName && typeof data.fullName === 'string') ? data.fullName.trim() : '';
-              if (!rawName || rawName === 'undefined' || rawName === 'null') return;
-              list.push({ id: d.id, ...data, fullName: rawName } as UserRegistration);
-            });
+            cacheSnap.forEach(d => list.push({ id: d.id, ...d.data() } as UserRegistration));
             setPendingUsers(list);
           } catch (cacheErr) {
             console.warn('Failed to fetch pending users from cache:', cacheErr);
@@ -3568,26 +3196,14 @@ export default function App() {
 
         unsubApproved = onSnapshot(collection(db, 'registeredUsers'), (snapshot) => {
           const list: UserRegistration[] = [];
-          snapshot.forEach(d => {
-            const data = d.data();
-            const rawName = (data?.fullName && typeof data.fullName === 'string') ? data.fullName.trim() : '';
-            // Note: We don't auto-delete approved users because it might be a partial update or migration
-            // but we filter them from the UI.
-            if (!rawName || rawName === 'undefined' || rawName === 'null') return;
-            list.push({ id: d.id, ...data, fullName: rawName } as UserRegistration);
-          });
+          snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as UserRegistration));
           setApprovedUsers(list);
         }, async (err) => {
           console.warn('Sync Approved error, attempting cache fallback:', err);
           try {
             const cacheSnap = await getDocsFromCache(collection(db, 'registeredUsers'));
             const list: UserRegistration[] = [];
-            cacheSnap.forEach(d => {
-              const data = d.data();
-              const rawName = (data?.fullName && typeof data.fullName === 'string') ? data.fullName.trim() : '';
-              if (!rawName || rawName === 'undefined' || rawName === 'null') return;
-              list.push({ id: d.id, ...data, fullName: rawName } as UserRegistration);
-            });
+            cacheSnap.forEach(d => list.push({ id: d.id, ...d.data() } as UserRegistration));
             setApprovedUsers(list);
           } catch (cacheErr) {
             console.warn('Failed to fetch approved users from cache:', cacheErr);
@@ -3601,13 +3217,13 @@ export default function App() {
       unsubMembers();
       unsubResults();
       unsubPicking();
+      unsubLeaderRanking();
+      unsubTrainerRanking();
       unsubTeachers();
       unsubStlMembers();
       unsubDemoMembers();
       unsubQuickLinks();
       unsubBalances();
-      unsubLeaderRanking();
-      unsubTrainerRanking();
       unsubSubmissionLogs();
       unsubAuditLogs();
       unsubApps();
@@ -3617,48 +3233,25 @@ export default function App() {
       unsubPending();
       unsubApproved();
     };
-  }, [isAuthReady, isAdmin, authenticatedUser]);
+  }, [isAuthReady, isAdmin, user]);
 
   // Timer Logic
   useEffect(() => {
     if (config.timerActive && config.timerEndTime) {
-      if (timerStartedNotifiedRef.current !== config.timerStartedAt) {
-        timerStartedNotifiedRef.current = config.timerStartedAt || Date.now();
-        fiveMinWarningTriggeredRef.current = false;
-        timerEndedTriggeredRef.current = false;
-
-        // Trigger start notification on EVERY user's device when timer starts
-        // Timer started
-      }
-
       const updateRemaining = () => {
         const now = Date.now();
         const diff = config.timerEndTime - now;
         const remaining = Math.max(0, Math.floor(diff / 1000));
         setTimeLeft(remaining);
 
-        // 5 Minutes Left Notification (Trigger once per timer session on all devices)
-        if (remaining <= 300 && remaining > 0 && !fiveMinWarningTriggeredRef.current) {
-          fiveMinWarningTriggeredRef.current = true;
-        }
-
-        // When timer reaches 0, auto turn it off & send performance summary notification
+        // When timer reaches 0, auto turn it off
         if (remaining <= 0) {
           if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-          if (!timerEndedTriggeredRef.current) {
-            timerEndedTriggeredRef.current = true;
-            
-            // Only notify if it ended recently (within 60 seconds) to avoid reload spam
-            const endedRecently = config.timerEndTime && (Date.now() - config.timerEndTime < 60000);
-            
-            // Timer ended
-            // Only update doc if still active to prevent multi-tab write loops
-            if (isAdmin && config.timerActive) {
-              updateDoc(doc(db, 'config', 'global'), {
-                timerActive: false,
-                timerEndTime: 0
-              }).catch(console.error);
-            }
+          if (isAdmin) {
+            updateDoc(doc(db, 'config', 'global'), {
+              timerActive: false,
+              timerEndTime: 0
+            }).catch(console.error);
           }
         }
       };
@@ -3669,20 +3262,12 @@ export default function App() {
     } else {
       setTimeLeft(0);
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-
-      // Trigger notification when timer is manually stopped by admin across all devices
-      if (lastTimerActiveRef.current === true && !timerEndedTriggeredRef.current) {
-        timerEndedTriggeredRef.current = true;
-        // Timer stopped
-      }
     }
-
-    lastTimerActiveRef.current = Boolean(config.timerActive);
 
     return () => {
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
     };
-  }, [config.timerActive, config.timerEndTime, config.timerStartedAt, config.timerNotificationsActive, isAdmin]);
+  }, [config.timerActive, config.timerEndTime, isAdmin]);
 
   // Auto-timer Logic
   const configRef = useRef(config);
@@ -3735,76 +3320,59 @@ export default function App() {
     return `${mins}:${secs}`;
   };
 
-  const showMsg = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
-    setToast({ message, type });
+  const showMsg = (message: string, type: 'success' | 'error' = 'success') => {
+    // Notifications disabled by user request
+    console.log(`[Notification Silenced] ${type}: ${message}`);
   };
 
   // Actions
   const login = async (useRedirect = false, typedPassword?: string) => {
     try {
-      const cleanPass = (typedPassword || '').trim();
-      if (!cleanPass) {
-        showMsg('এডমিন পাসওয়ার্ড প্রদান করুন!', 'error');
+      if (!typedPassword) {
+        showMsg('Please enter the Admin Password first!', 'error');
         return;
       }
 
-      const cachedPass = localStorage.getItem('cachedAdminPassword') || initialAdminPass;
-
-      // 1. Instant local password check (Zero latency, never hangs)
-      if (
-        cleanPass === '212650' ||
-        cleanPass === initialAdminPass ||
-        comparePasswords(cleanPass, cachedPass) ||
-        comparePasswords(cleanPass, initialAdminPass)
-      ) {
-        setIsAdmin(true);
-        localStorage.setItem('isAdmin', 'true');
-        sessionStorage.setItem('isAdmin', 'true');
-        setSiteAuthenticated(true);
-        showMsg('সফলভাবে এডমিন লগইন হয়েছে!', 'success');
-        return;
-      }
-
-      // 2. If not matched, try remote database with safety
-      let remotePass: string | null = null;
+      let currentAdminPass = initialAdminPass;
       try {
         const configDoc = await getDoc(doc(db, 'systemConfig', 'adminAuth'));
-        if (configDoc && configDoc.exists() && configDoc.data()?.password) {
-          remotePass = String(configDoc.data().password).trim();
-          localStorage.setItem('cachedAdminPassword', remotePass);
+        if (configDoc.exists() && configDoc.data().password) {
+          currentAdminPass = configDoc.data().password;
         }
       } catch (e) {
-        console.warn("Remote check failed:", e);
+        console.warn("Using fallback admin password");
       }
 
-      if (remotePass && comparePasswords(cleanPass, remotePass)) {
-        setIsAdmin(true);
-        localStorage.setItem('isAdmin', 'true');
-        sessionStorage.setItem('isAdmin', 'true');
-        setSiteAuthenticated(true);
-        showMsg('সফলভাবে এডমিন লগইন হয়েছে!', 'success');
-      } else {
-        showMsg('ভুল এডমিন পাসওয়ার্ড! সঠিক পাসওয়ার্ড দিন। (ডিফল্ট: 212650)', 'error');
+      if (typedPassword !== currentAdminPass) {
+        showMsg('Invalid Admin Password!', 'error');
+        return;
       }
+
+      try {
+        await signInAnonymously(auth);
+      } catch (authErr) {
+        console.warn("Failed to sign in anonymously:", authErr);
+      }
+
+      setIsAdmin(true);
+      localStorage.setItem('isAdmin', 'true');
+      setSiteAuthenticated(true);
     } catch (err: any) {
       console.error('Login error details:', err);
-      showMsg(`লগইন ব্যর্থ হয়েছে: ${err?.message || 'অজানা ত্রুটি'}`, 'error');
+      showMsg(`Login failed: ${err.message}`, 'error');
     }
   };
 
   const logout = async () => {
     try {
-      // Logged out from Supabase session
+      await signOut(auth);
       setIsAdmin(false);
       localStorage.removeItem('isAdmin');
-      sessionStorage.removeItem('isAdmin');
       setShowAdminPanel(false);
       setSiteAuthenticated(false);
       setAuthenticatedUser(null);
       localStorage.removeItem('stlAuth');
-      sessionStorage.removeItem('stlAuth');
       localStorage.removeItem('unity_user');
-      sessionStorage.removeItem('unity_session_user');
       setTimeout(() => {
         window.location.reload();
       }, 500);
@@ -3850,7 +3418,14 @@ export default function App() {
 
       await setDoc(doc(db, 'pendingRegistrations', whatsapp), registrationData);
       
-      // User registration
+      // Ensure Firebase Auth session
+      try {
+        if (!auth.currentUser) {
+          await signInAnonymously(auth);
+        }
+      } catch (authErr) {
+        console.warn("Auth error during registration:", authErr);
+      }
 
       showMsg('Registration submitted! Wait for admin approval.', 'success');
       return true;
@@ -3862,136 +3437,83 @@ export default function App() {
   };
 
   const loginUser = async (whatsapp: string, pass: string) => {
-    const rawWa = (whatsapp || '').trim();
-    const sanitizedWhatsapp = normalizePhoneNumber(rawWa);
+    const sanitizedWhatsapp = whatsapp.trim().replace(/\s+/g, '');
     console.log('Login attempt for (sanitized):', sanitizedWhatsapp);
     try {
-      // 1. Admin manual login check (email, 'admin', or admin phone)
-      const cleanWaLower = sanitizedWhatsapp.toLowerCase();
-      const adminEmailLower = adminEmail.toLowerCase();
-      if (cleanWaLower === adminEmailLower || cleanWaLower === 'admin' || cleanWaLower === '212650') {
+      // Admin manual login check
+      if (sanitizedWhatsapp === adminEmail) {
         console.log('Checking admin login');
-        const cleanPass = (pass || '').trim();
-        const cachedPass = localStorage.getItem('cachedAdminPassword') || initialAdminPass;
-
-        if (
-          cleanPass === '212650' ||
-          cleanPass === initialAdminPass ||
-          comparePasswords(cleanPass, cachedPass) ||
-          comparePasswords(cleanPass, initialAdminPass)
-        ) {
-          setIsAdmin(true);
-          sessionStorage.setItem('isAdmin', 'true');
-          localStorage.setItem('isAdmin', 'true');
-          setSiteAuthenticated(true);
-          showMsg('এডমিন হিসেবে সফলভাবে লগইন হয়েছে!', 'success');
-          return true;
-        }
-
-        let remotePass: string | null = null;
+        let currentAdminPass = initialAdminPass;
         try {
-          const configDoc = await getDoc(doc(db, 'systemConfig', 'adminAuth'));
-          if (configDoc && configDoc.exists() && configDoc.data()?.password) {
-            remotePass = String(configDoc.data().password).trim();
-            localStorage.setItem('cachedAdminPassword', remotePass);
+          let configDoc;
+          try {
+            configDoc = await getDoc(doc(db, 'systemConfig', 'adminAuth'));
+          } catch (e) {
+            console.warn("Network fetch failed for admin password config, trying cache:", e);
+            configDoc = await getDocFromCache(doc(db, 'systemConfig', 'adminAuth'));
+          }
+          if (configDoc && configDoc.exists() && configDoc.data().password) {
+            currentAdminPass = configDoc.data().password;
           }
         } catch (e) {
           console.warn("Using fallback admin password:", e);
         }
 
-        if (remotePass && comparePasswords(cleanPass, remotePass)) {
+        if (pass === currentAdminPass) {
           setIsAdmin(true);
-          sessionStorage.setItem('isAdmin', 'true');
           localStorage.setItem('isAdmin', 'true');
           setSiteAuthenticated(true);
-          showMsg('এডমিন হিসেবে সফলভাবে লগইন হয়েছে!', 'success');
           return true;
         } else {
-          showMsg('ভুল এডমিন পাসওয়ার্ড! সঠিক পাসওয়ার্ড দিন। (ডিফল্ট: 212650)', 'error');
+          showMsg('Invalid admin credentials', 'error');
           return false;
         }
       }
 
-      // 2. Look for regular user in registeredUsers
-      let foundUser: UserRegistration | null = null;
-      const cleanDigits = getCleanDigits(rawWa);
-      const last10 = cleanDigits.length >= 10 ? cleanDigits.slice(-10) : cleanDigits;
-
-      // FIRST: Check in-memory approvedUsers state (Realtime sync)
-      // This is near-instant and should cover most cases
-      if (approvedUsers && approvedUsers.length > 0) {
-        foundUser = approvedUsers.find(u => {
-          const uDigits = getCleanDigits(u.whatsapp);
-          if (cleanDigits && uDigits && cleanDigits === uDigits) return true;
-          if (last10 && uDigits && uDigits.endsWith(last10)) return true;
-          return false;
-        }) || null;
-      }
-
-      // SECOND: If not in memory, try direct lookups in parallel for maximum speed
-      if (!foundUser) {
-        const candidates = generatePhoneCandidates(rawWa);
-        // We know docs are keyed by whatsapp number. Let's check them all in parallel.
+      console.log('Fetching user from registeredUsers:', sanitizedWhatsapp);
+      let userSnap;
+      try {
+        userSnap = await getDoc(doc(db, 'registeredUsers', sanitizedWhatsapp));
+      } catch (err) {
+        console.warn('Network getDoc failed for login, trying cache fallback:', err);
         try {
-          const results = await Promise.all(candidates.map(async (candidate) => {
-            try {
-              const snap = await getDoc(doc(db, 'registeredUsers', candidate));
-              if (snap.exists()) return { id: snap.id, ...snap.data() } as UserRegistration;
-            } catch (e) {
-              // Try cache if network fails
-              const cSnap = await getDocFromCache(doc(db, 'registeredUsers', candidate));
-              if (cSnap.exists()) return { id: cSnap.id, ...cSnap.data() } as UserRegistration;
-            }
-            return null;
-          }));
-          foundUser = results.find(u => u !== null) || null;
-        } catch (err) {
-          console.warn("Parallel lookup failed:", err);
+          userSnap = await getDocFromCache(doc(db, 'registeredUsers', sanitizedWhatsapp));
+        } catch (cacheErr) {
+          console.warn('Cache getDoc also failed (likely expected):', cacheErr);
+          throw err; // throw original network error if cache also failed
         }
       }
-
-      // THIRD: Fallback to query if doc ID lookup failed (e.g. if doc ID is NOT the whatsapp)
-      if (!foundUser) {
-        try {
-          const cleanWa = getCleanDigits(rawWa);
-          const q = query(collection(db, 'registeredUsers'), where('whatsapp', 'in', [rawWa, cleanWa, ...generatePhoneCandidates(rawWa)]), limit(1));
-          const qSnap = await getDocs(q);
-          if (!qSnap.empty) {
-            const d = qSnap.docs[0];
-            foundUser = { id: d.id, ...d.data() } as UserRegistration;
-          }
-        } catch (err) {
-          console.warn("Query fallback failed:", err);
-        }
-      }
-
-      if (!foundUser) {
+      
+      if (!userSnap.exists()) {
         console.log('User not found in registeredUsers');
-        showMsg('এই নাম্বারে কোনো রেজিস্টার্ড অ্যাকাউন্ট পাওয়া যায়নি! (Account not found)', 'error');
+        showMsg('Invalid WhatsApp or Password!', 'error');
+        return false;
+      }
+      
+      const user = userSnap.data() as UserRegistration;
+      console.log('User found, checking password:', user.password === pass);
+      if (user.password !== pass) {
+        showMsg('Invalid WhatsApp or Password!', 'error');
         return false;
       }
 
-      // Validate password with robust comparison
-      const isPassValid = comparePasswords(pass, foundUser.password);
-      if (!isPassValid) {
-        showMsg('ভুল পাসওয়ার্ড! অনুগ্রহ করে সঠিক পাসওয়ার্ড লিখুন। (Wrong Password)', 'error');
+      if (user.status === 'blocked') {
+        showMsg('Your account is blocked!', 'error');
         return false;
       }
 
-      if (foundUser.status === 'blocked') {
-        showMsg('আপনার অ্যাকাউন্টটি সাময়িকভাবে বন্ধ (Blocked) আছে! এডমিনের সাথে যোগাযোগ করুন।', 'error');
-        return false;
+      // Ensure Firebase Auth session for Storage/Firestore rules
+      try {
+        if (!auth.currentUser) {
+          await signInAnonymously(auth);
+        }
+      } catch (authErr) {
+        console.warn("Auth error during user login:", authErr);
       }
 
-      // Authenticated via Supabase
-
-      setAuthenticatedUser(foundUser);
-      setShowLoginStatsPopup(true);
-      // Store in sessionStorage so browser exit/closing tab forces re-login, per user instruction
-      sessionStorage.setItem('unity_session_user', JSON.stringify(foundUser));
-      localStorage.removeItem('unity_user');
-      setUserTab('home');
-      showMsg(`স্বাগতম, ${foundUser.fullName}!`, 'success');
+      setAuthenticatedUser(user);
+      localStorage.setItem('unity_user', JSON.stringify(user));
+      showMsg(`Welcome back, ${user.fullName}!`);
       return true;
     } catch (err) {
       handleFirestoreError(err, OperationType.GET, `registeredUsers/${whatsapp}`, showMsg);
@@ -4182,8 +3704,7 @@ export default function App() {
 
                 const updatedUser = { ...currentAuthUser, profilePic: base64 };
                 setAuthenticatedUser(updatedUser);
-                sessionStorage.setItem('unity_session_user', JSON.stringify(updatedUser));
-                localStorage.removeItem('unity_user');
+                localStorage.setItem('unity_user', JSON.stringify(updatedUser));
                 
                 showMsg('প্রোফাইল পিকচার সফলভাবে আপডেট করা হয়েছে!', 'success');
                 cleanup();
@@ -4221,8 +3742,7 @@ export default function App() {
       });
       const updatedUser = { ...currentAuthUser, password: newPassword };
       setAuthenticatedUser(updatedUser);
-      sessionStorage.setItem('unity_session_user', JSON.stringify(updatedUser));
-      localStorage.removeItem('unity_user');
+      localStorage.setItem('unity_user', JSON.stringify(updatedUser));
       showMsg('পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে!', 'success');
       setNewPassword('');
     } catch (err) {
@@ -4258,8 +3778,7 @@ export default function App() {
 
       const updatedUser = { ...currentAuthUser, profilePic: avatarValue };
       setAuthenticatedUser(updatedUser);
-      sessionStorage.setItem('unity_session_user', JSON.stringify(updatedUser));
-      localStorage.removeItem('unity_user');
+      localStorage.setItem('unity_user', JSON.stringify(updatedUser));
       showMsg('কার্টুন অ্যাভাটার সফলভাবে যুক্ত হয়েছে!', 'success');
     } catch (err) {
       showMsg('অ্যাভাটার সেভ করতে সমস্যা হয়েছে', 'error');
@@ -4290,8 +3809,7 @@ export default function App() {
 
       const updatedUser = { ...currentAuthUser, profilePic: '' };
       setAuthenticatedUser(updatedUser);
-      sessionStorage.setItem('unity_session_user', JSON.stringify(updatedUser));
-      localStorage.removeItem('unity_user');
+      localStorage.setItem('unity_user', JSON.stringify(updatedUser));
       showMsg('প্রোফাইল পিকচার মুছে ফেলা হয়েছে, অটো কার্টুন সক্রিয়!', 'success');
     } catch (err) {
       showMsg('ছবি মুছতে সমস্যা হয়েছে', 'error');
@@ -4466,10 +3984,6 @@ export default function App() {
       const now = Date.now();
       const endTime = now + duration * 1000;
       setTimeLeft(duration);
-      timerStartedNotifiedRef.current = now;
-      fiveMinWarningTriggeredRef.current = false;
-      timerEndedTriggeredRef.current = false;
-
       await updateDoc(doc(db, 'config', 'global'), {
         timerActive: true,
         timerStartedAt: now,
@@ -4477,7 +3991,6 @@ export default function App() {
         timerDuration: duration
       });
       showMsg(`Timer started for ${Math.round(duration / 60)} minutes!`, 'success');
-      // Timer started
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'config/global', showMsg);
     }
@@ -4487,14 +4000,10 @@ export default function App() {
     try {
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
       setTimeLeft(0);
-      const wasActive = config.timerActive;
       await updateDoc(doc(db, 'config', 'global'), {
         timerActive: false,
         timerEndTime: 0
       });
-      if (wasActive && !timerEndedTriggeredRef.current) {
-        timerEndedTriggeredRef.current = true;
-      }
       showMsg('Timer stopped', 'error');
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'config/global', showMsg);
@@ -4518,11 +4027,6 @@ export default function App() {
       await updateDoc(doc(db, 'config', 'global'), {
         customLogo: logoUrl || ''
       });
-      if (logoUrl) {
-        localStorage.setItem('unity_custom_logo', logoUrl);
-      } else {
-        localStorage.removeItem('unity_custom_logo');
-      }
       showMsg(logoUrl ? 'ওয়েবসাইট লোগো সফলভাবে আপডেট হয়েছে!' : 'ডিফল্ট লোগোতে রিসেট করা হয়েছে', 'success');
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'config/global', showMsg);
@@ -4850,15 +4354,11 @@ export default function App() {
   };
 
   const addRankingMember = async (type: 'leader' | 'trainer', name: string, score: number, leads: number = 0) => {
-    const cleanName = (name || '').trim();
-    if (!cleanName) {
-      showMsg('সদস্যের নাম ছাড়া র্যাংকিংয়ে যুক্ত করা সম্ভব নয়।', 'error');
-      return;
-    }
+    if (!name.trim()) return;
     const coll = type === 'leader' ? 'leaderRanking' : 'trainerRanking';
     try {
       await addDoc(collection(db, coll), {
-        name: cleanName,
+        name,
         score,
         leads,
         createdAt: serverTimestamp()
@@ -4879,21 +4379,15 @@ export default function App() {
     }
   };
 
-  const updateRankingScore = async (type: 'leader' | 'trainer', id: string, absoluteScore: number, absoluteLeads: number) => {
+  const updateRankingScore = async (type: 'leader' | 'trainer', id: string, diffScore: number, diffLeads: number) => {
     const coll = type === 'leader' ? 'leaderRanking' : 'trainerRanking';
     try {
-      const rankingList = type === 'leader' ? leaderRanking : trainerRanking;
-      const entry = rankingList.find(r => r.id === id);
-      const prevScore = entry ? Number(entry.score || 0) : 0;
-      const diffScore = absoluteScore - prevScore;
-
       const batch = writeBatch(db);
       
-      // Update individual ranking with absolute values directly
+      // Update individual ranking
       batch.update(doc(db, coll, id), { 
-        score: absoluteScore,
-        leads: absoluteLeads,
-        updatedAt: serverTimestamp()
+        score: increment(diffScore),
+        leads: increment(diffLeads)
       });
 
       // Update global total if it's a leader and score changed
@@ -4904,46 +4398,9 @@ export default function App() {
       }
 
       await batch.commit();
-      showMsg('Score updated successfully!', 'success');
+      showMsg('Score updated and synced!');
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `${coll}/${id}`, showMsg);
-    }
-  };
-
-  const updateMultipleRankingScores = async (type: 'leader' | 'trainer', updates: Record<string, { score: number; leads: number }>) => {
-    const coll = type === 'leader' ? 'leaderRanking' : 'trainerRanking';
-    try {
-      const rankingList = type === 'leader' ? leaderRanking : trainerRanking;
-      const batch = writeBatch(db);
-      let totalDiffScore = 0;
-
-      Object.entries(updates).forEach(([id, vals]) => {
-        const entry = rankingList.find(r => r.id === id);
-        if (!entry) return;
-        const prevScore = entry ? Number(entry.score || 0) : 0;
-        const diffScore = vals.score - prevScore;
-
-        batch.update(doc(db, coll, id), { 
-          score: vals.score,
-          leads: vals.leads,
-          updatedAt: serverTimestamp()
-        });
-
-        if (type === 'leader') {
-          totalDiffScore += diffScore;
-        }
-      });
-
-      if (type === 'leader' && totalDiffScore !== 0) {
-        batch.update(doc(db, 'config', 'global'), {
-          totalConverts: increment(totalDiffScore)
-        });
-      }
-
-      await batch.commit();
-      showMsg('সব পরিবর্তন সফলভাবে সেভ হয়েছে!', 'success');
-    } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `${coll}/multiple-update`, showMsg);
     }
   };
 
@@ -5021,112 +4478,42 @@ export default function App() {
       title: 'Clear ALL submitted results?',
       onConfirm: async () => {
         try {
-          // 1. Reset global converts counter in config
-          try {
-            await updateDoc(doc(db, 'config', 'global'), {
-              totalConverts: 0
-            });
-          } catch (configErr) {
-            console.warn('Failed to update config global converts, continuing:', configErr);
+          const resultsSnap = await getDocs(collection(db, 'results'));
+          let batch = writeBatch(db);
+          let count = 0;
+          let updateCount = 0;
+
+          // First update all existing result docs
+          for (const resDoc of resultsSnap.docs) {
+            const data = resDoc.data();
+            // Only update if they actually have data to clear
+            if (data.submitted === true || data.lead > 0 || data.convert > 0 || data.personalLead > 0) {
+              batch.set(resDoc.ref, {
+                memberId: resDoc.id,
+                lead: 0,
+                convert: 0,
+                personalLead: 0,
+                submitted: false,
+                updatedAt: serverTimestamp()
+              });
+              count++;
+              updateCount++;
+              if (count >= 490) {
+                await batch.commit();
+                batch = writeBatch(db);
+                count = 0;
+              }
+            }
+          }
+          if (count > 0) {
+            await batch.commit();
           }
 
-          // 2. Perform lightning-fast bulk delete on the entire 'results' table
-          await clearCollection('results');
-
-          showMsg('All results cleared successfully!');
+          showMsg(`All results cleared! (${updateCount} records reset)`);
           setShowConfirm(null);
         } catch (err) {
           console.error('Error in clearResults:', err);
           handleFirestoreError(err, OperationType.WRITE, 'results', showMsg);
-        }
-      }
-    });
-  };
-
-  const auditAllRankings = async () => {
-    if (!isAdmin) return;
-    
-    setShowConfirm({
-      title: 'Recalculate All Rankings?',
-      message: 'This will scan all submission logs and rebuild ranking scores. This is helpful if data seems inconsistent.',
-      onConfirm: async () => {
-        try {
-          showMsg('Auditing rankings, please wait...', 'info');
-          
-          // 1. Fetch all submission logs (paginated for safety)
-          let allLogs: any[] = [];
-          let lastDoc = null;
-          let hasMore = true;
-          
-          while (hasMore) {
-            const q = lastDoc 
-              ? query(collection(db, 'submissionLogs'), limit(1000), startAfter(lastDoc))
-              : query(collection(db, 'submissionLogs'), limit(1000));
-            const snap = await getDocs(q);
-            if (snap.empty) {
-              hasMore = false;
-            } else {
-              snap.forEach(d => allLogs.push({ id: d.id, ...d.data() }));
-              lastDoc = snap.docs[snap.docs.length - 1];
-            }
-          }
-
-          // 2. Aggregate scores by memberId
-          const scoreMap: Record<string, { converts: number, leads: number }> = {};
-          let grandTotalConverts = 0;
-
-          allLogs.forEach(log => {
-            const mid = log.memberId;
-            if (!mid) return;
-            if (!scoreMap[mid]) scoreMap[mid] = { converts: 0, leads: 0 };
-            
-            // Use the largest convert value seen for a member on a specific date?
-            // Actually, submissionLogs are keyed by targetId_todayStr, so they are already unique per day.
-            scoreMap[mid].converts += (log.convert || 0);
-            scoreMap[mid].leads += (log.personalLead || 0);
-            
-            // Only count converts from Leaders for the grand total?
-            // The existing logic only counts leaders for config.totalConverts
-            const isLeader = leaderRanking.some(r => r.id === mid) || (members.find(m => m.id === mid)?.type === 'leader');
-            if (isLeader) {
-              grandTotalConverts += (log.convert || 0);
-            }
-          });
-
-          // 3. Batch update rankings
-          const batch = writeBatch(db);
-          
-          // Update Leaders
-          leaderRanking.forEach(r => {
-            const totals = scoreMap[r.id] || { converts: 0, leads: 0 };
-            batch.update(doc(db, 'leaderRanking', r.id), {
-              score: totals.converts,
-              leads: totals.leads,
-              updatedAt: serverTimestamp()
-            });
-          });
-
-          // Update Trainers
-          trainerRanking.forEach(r => {
-            const totals = scoreMap[r.id] || { converts: 0, leads: 0 };
-            batch.update(doc(db, 'trainerRanking', r.id), {
-              score: totals.converts,
-              leads: totals.leads,
-              updatedAt: serverTimestamp()
-            });
-          });
-
-          // Update Global Config
-          batch.update(doc(db, 'config', 'global'), {
-            totalConverts: grandTotalConverts
-          });
-
-          await batch.commit();
-          showMsg('Ranking audit and recalculation complete!', 'success');
-          setShowConfirm(null);
-        } catch (err) {
-          console.error('Audit failed:', err);
-          showMsg('Audit failed: ' + (err instanceof Error ? err.message : 'Unknown error'), 'error');
         }
       }
     });
@@ -5139,56 +4526,15 @@ export default function App() {
       return;
     }
     try {
-      // Find matching member from members OR approvedUsers
-      const cleanWa = currentAuthUser?.whatsapp ? currentAuthUser.whatsapp.replace(/\s+/g, '') : '';
-      const cleanAuthName = currentAuthUser?.fullName ? normalizeName(currentAuthUser.fullName) : '';
-      
-      const member = members.find(m => 
-        m.id === memberId ||
-        (cleanWa && m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanWa) ||
-        (cleanAuthName && normalizeName(m.name) === cleanAuthName)
-      );
+      const prevResult = results[memberId] || { lead: 0, convert: 0, personalLead: 0 };
+      const diffScore = convert - (prevResult.convert || 0);
+      const diffLeads = personalLead - (prevResult.personalLead || 0);
+      const member = members.find(m => m.id === memberId);
 
-      const matchedUser = approvedUsers.find(u => 
-        (cleanWa && u.whatsapp && u.whatsapp.replace(/\s+/g, '') === cleanWa) ||
-        (cleanAuthName && normalizeName(u.fullName) === cleanAuthName)
-      );
-
-      const targetName = member?.name || matchedUser?.fullName || currentAuthUser?.fullName || 'Leader';
-      const targetWhatsapp = member?.whatsapp || matchedUser?.whatsapp || currentAuthUser?.whatsapp || '';
-      const targetId = member?.id || memberId || (targetWhatsapp ? `user-${targetWhatsapp}` : 'unknown');
-
-      // 1. Fetch current database state for this member's result to ensure correct diff calculation
-      const todayStr = format(new Date(), 'yyyy-MM-dd');
-      const resultDocRef = doc(db, 'results', targetId);
-      const resultSnap = await getDoc(resultDocRef);
-      const dbResult = resultSnap.exists() ? resultSnap.data() as any : { lead: 0, convert: 0, personalLead: 0, updatedAt: null };
-      
-      // CRITICAL DATA FIX: Only calculate diff if the record in 'results' is from TODAY.
-      // If dbResult is from a previous day (or doesn't exist), we treat the old score as 0 
-      // for the purpose of lifetime accumulation. This prevents subtracting yesterday's converts 
-      // from the total lifetime ranking score when a user makes their first submission of a new day.
-      let lastUpdateDate = '';
-      if (dbResult.updatedAt) {
-        try {
-          const dt = typeof (dbResult.updatedAt as any).toDate === 'function' 
-            ? (dbResult.updatedAt as any).toDate() 
-            : new Date((dbResult.updatedAt as any).seconds ? (dbResult.updatedAt as any).seconds * 1000 : dbResult.updatedAt);
-          lastUpdateDate = format(dt, 'yyyy-MM-dd');
-        } catch (_) {}
-      }
-
-      const isSameDay = lastUpdateDate === todayStr;
-      const effectiveOldConvert = isSameDay ? (dbResult.convert || 0) : 0;
-      const effectiveOldLeads = isSameDay ? (dbResult.personalLead || 0) : 0;
-
-      const diffScore = convert - effectiveOldConvert;
-      const diffLeads = personalLead - effectiveOldLeads;
-
+      // Use memberId as the document ID for predictable updates
+      const resultRef = doc(db, 'results', memberId);
       const data = {
-        memberId: targetId,
-        memberName: targetName,
-        whatsapp: targetWhatsapp,
+        memberId,
         lead,
         convert,
         personalLead,
@@ -5196,29 +4542,15 @@ export default function App() {
         updatedAt: serverTimestamp()
       };
       
-      await setDoc(resultDocRef, data);
-      if (memberId && memberId !== targetId) {
-        await setDoc(doc(db, 'results', memberId), data);
-      }
+      await setDoc(resultRef, data);
 
-      // Optimistic local update
-      const localResultData = {
-        ...data,
-        updatedAt: { seconds: Math.floor(Date.now() / 1000) }
-      } as any;
-
-      setResults(prev => ({
-        ...prev,
-        [targetId]: localResultData,
-        ...(memberId !== targetId ? { [memberId]: localResultData } : {})
-      }));
-
-      // Save in submissionLogs
-      const logRef = doc(db, 'submissionLogs', `${targetId}_${todayStr}`);
+      // Save in submissionLogs for permanent historical daily logging
+      const todayStr = format(new Date(), 'yyyy-MM-dd');
+      const logRef = doc(db, 'submissionLogs', `${memberId}_${todayStr}`);
       await setDoc(logRef, {
-        whatsapp: targetWhatsapp,
-        memberId: targetId,
-        memberName: targetName,
+        whatsapp: currentAuthUser?.whatsapp || '',
+        memberId,
+        memberName: member?.name || '',
         date: todayStr,
         lead,
         convert,
@@ -5226,64 +4558,45 @@ export default function App() {
         submittedAt: serverTimestamp()
       }, { merge: true });
 
-      // Determine if STL (STLs are completely excluded from leader/trainer ranking updates)
-      const isSTL = matchedUser?.position === 'STL' || currentAuthUser?.position === 'STL' || targetName.toLowerCase().includes('stl') || (stlMembers && stlMembers.some(s => normalizeName(s.name) === normalizeName(targetName)));
-
-      // Determine user type (excluding STL from leader/trainer categorization)
-      const isLeader = !isSTL && (member?.type === 'leader' || matchedUser?.position === 'Team Leader' || currentAuthUser?.position === 'Team Leader');
-      const isTrainer = !isSTL && (member?.type === 'trainer' || matchedUser?.position === 'Team Trainer' || currentAuthUser?.position === 'Team Trainer');
-      const userType = isLeader ? 'leader' : (isTrainer ? 'trainer' : null);
-
-      // Update ranking scores using diff derived from DATABASE values (only if NOT an STL and userType is valid)
-      if (!isSTL && userType && (diffScore !== 0 || diffLeads !== 0)) {
-        if (userType === 'leader' && diffScore !== 0) {
+      // Update global total and individual ranking score
+      if (diffScore !== 0 || diffLeads !== 0) {
+        // Update global total (Only for Leaders)
+        if (member?.type === 'leader' && diffScore !== 0) {
           await updateDoc(doc(db, 'config', 'global'), {
             totalConverts: increment(diffScore)
           });
         }
 
-        const coll = userType === 'leader' ? 'leaderRanking' : 'trainerRanking';
-        const rankingList = userType === 'leader' ? leaderRanking : trainerRanking;
-        
-        // Find correct ranking doc
-        const rankingEntry = rankingList.find(r => 
-          r.id === targetId ||
-          r.id === memberId ||
-          (cleanWa && r.whatsapp && r.whatsapp.replace(/\s+/g, '') === cleanWa) ||
-          normalizeName(r.name) === normalizeName(targetName)
-        );
+        // Update individual ranking score if names match
+        if (member) {
+          const rankingList = member.type === 'leader' ? leaderRanking : trainerRanking;
+          const cleanMemberName = normalizeName(member.name);
+          const rankingEntry = rankingList.find(r => 
+            r.id === member.id ||
+            r.name.trim().toLowerCase() === member.name.trim().toLowerCase() ||
+            (cleanMemberName && normalizeName(r.name) === cleanMemberName)
+          );
+          
+          const coll = member.type === 'leader' ? 'leaderRanking' : 'trainerRanking';
 
-        if (rankingEntry) {
-          await updateDoc(doc(db, coll, rankingEntry.id), {
-            score: increment(diffScore),
-            leads: increment(diffLeads),
-            updatedAt: serverTimestamp()
-          });
-        } else {
-          // Auto-create if missing
-          await addDoc(collection(db, coll), {
-            name: targetName,
-            whatsapp: targetWhatsapp,
-            score: convert,
-            leads: personalLead,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp()
-          });
+          if (rankingEntry) {
+            await updateDoc(doc(db, coll, rankingEntry.id), {
+              score: increment(diffScore),
+              leads: increment(diffLeads)
+            });
+          } else {
+            // Auto-create ranking entry if missing, so their score is tracked
+            await addDoc(collection(db, coll), {
+              name: member.name,
+              score: convert, // Starting score is their current total
+              leads: personalLead,
+              createdAt: serverTimestamp()
+            });
+          }
         }
       }
 
-      showMsg('Result submitted successfully!', 'success');
-
-      // Trigger Animated Appreciation Popup for both Trainer & Team Leader
-      const displayRole = isLeader ? 'Team Leader' : (isTrainer ? 'Trainer' : (member?.type === 'trainer' ? 'Trainer' : 'Team Leader'));
-      setAppreciationData({
-        isOpen: true,
-        convert,
-        personalLead,
-        lead,
-        memberName: targetName,
-        role: displayRole
-      });
+      showMsg('Result submitted!');
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'results', showMsg);
     }
@@ -5341,47 +4654,25 @@ export default function App() {
         totalConverts: 0
       });
 
-      // 2. Reset userBalances for all members & approvedUsers
+      // 2. Reset userBalances for all members
       const batch = writeBatch(db);
-      const processedKeys = new Set<string>();
-
       members.forEach(m => {
-        if (m.id) {
-          processedKeys.add(m.id);
-          const uRef = doc(db, 'userBalances', m.id);
-          batch.set(uRef, {
-            whatsapp: m.whatsapp || '',
-            userName: m.name,
-            waivedFines: 0,
-            waivedDays: [],
-            manualAdjustments: 0,
-            balance: 0,
-            updatedAt: serverTimestamp()
-          }, { merge: true });
-        }
+        const uRef = doc(db, 'userBalances', m.id);
+        batch.set(uRef, {
+          whatsapp: m.whatsapp || '',
+          userName: m.name,
+          waivedFines: 0,
+          waivedDays: [],
+          manualAdjustments: 0,
+          balance: 0,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
 
         if (m.whatsapp) {
-          processedKeys.add(m.whatsapp);
           const uRefWa = doc(db, 'userBalances', m.whatsapp);
           batch.set(uRefWa, {
             whatsapp: m.whatsapp,
             userName: m.name,
-            waivedFines: 0,
-            waivedDays: [],
-            manualAdjustments: 0,
-            balance: 0,
-            updatedAt: serverTimestamp()
-          }, { merge: true });
-        }
-      });
-
-      approvedUsers.forEach(u => {
-        if (u.whatsapp && !processedKeys.has(u.whatsapp)) {
-          processedKeys.add(u.whatsapp);
-          const uRefWa = doc(db, 'userBalances', u.whatsapp);
-          batch.set(uRefWa, {
-            whatsapp: u.whatsapp,
-            userName: u.fullName,
             waivedFines: 0,
             waivedDays: [],
             manualAdjustments: 0,
@@ -5500,58 +4791,26 @@ export default function App() {
   const adminUpdateBalance = async (userKey: string, userName: string, amount: number, isDeduct: boolean, reason: string) => {
     try {
       const cleanName = userName.trim().toLowerCase();
-      const cleanKey = (userKey || '').replace(/\s+/g, '');
-      const matchedApproved = approvedUsers.find(u => 
-        (u.whatsapp && u.whatsapp.replace(/\s+/g, '') === cleanKey) ||
-        u.fullName.trim().toLowerCase() === cleanName
-      );
-      const matchedMember = members.find(m => 
-        m.id === userKey ||
-        (m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanKey) ||
-        m.name.trim().toLowerCase() === cleanName
-      );
-
-      const targetWhatsapp = matchedApproved?.whatsapp || matchedMember?.whatsapp || (userKey.startsWith('01') || userKey.startsWith('+') ? userKey : '');
-      const targetMemberId = matchedMember?.id || (userKey.startsWith('01') || userKey.startsWith('+') ? '' : userKey);
-      const primaryKey = targetWhatsapp || targetMemberId || userKey;
+      const matchedUser = approvedUsers.find(u => u.fullName.trim().toLowerCase() === cleanName) ||
+                          members.find(m => m.name.trim().toLowerCase() === cleanName);
+      
+      const primaryKey = (matchedUser && 'whatsapp' in matchedUser && matchedUser.whatsapp) ? matchedUser.whatsapp : userKey;
       const userBalRef = doc(db, 'userBalances', primaryKey);
       
-      const existing = (primaryKey && userBalances[primaryKey]) ||
-                       (targetWhatsapp && userBalances[targetWhatsapp]) ||
-                       (targetMemberId && userBalances[targetMemberId]) ||
-                       (userKey && userBalances[userKey]) ||
-                       Object.values(userBalances).find(b => {
-                         const bal = b as UserBalance;
-                         return (targetWhatsapp && bal.whatsapp === targetWhatsapp) ||
-                                (targetMemberId && bal.id === targetMemberId) ||
-                                (bal.userName && bal.userName.trim().toLowerCase() === cleanName);
-                       }) ||
-                       { whatsapp: targetWhatsapp || primaryKey, id: targetMemberId, userName, balance: 1500, waivedFines: 0, manualAdjustments: 0, waivedDays: [] };
+      const existing = userBalances[primaryKey] || 
+                       userBalances[userKey] || 
+                       Object.values(userBalances).find(b => (b as UserBalance).userName?.trim().toLowerCase() === cleanName) || 
+                       { whatsapp: primaryKey, userName, balance: 1500, waivedFines: 0, manualAdjustments: 0 };
       
       const currentManual = existing.manualAdjustments || 0;
       const diff = isDeduct ? -amount : amount;
       const newManual = currentManual + diff;
 
-      const updatedBalance: UserBalance = {
-        ...existing,
-        id: targetMemberId || existing.id,
-        whatsapp: targetWhatsapp || existing.whatsapp || primaryKey,
-        userName: userName || existing.userName,
-        manualAdjustments: newManual,
-        updatedAt: new Date().toISOString()
-      };
-
-      // Immediate optimistic update in state so UI updates in 0ms!
-      setUserBalances(prev => {
-        const next = { ...prev, [primaryKey]: updatedBalance };
-        if (targetWhatsapp && targetWhatsapp !== primaryKey) next[targetWhatsapp] = updatedBalance;
-        if (targetMemberId && targetMemberId !== primaryKey) next[targetMemberId] = updatedBalance;
-        if (userKey && userKey !== primaryKey) next[userKey] = updatedBalance;
-        return next;
-      });
-
       await setDoc(userBalRef, {
-        ...updatedBalance,
+        ...existing,
+        whatsapp: primaryKey,
+        userName,
+        manualAdjustments: newManual,
         updatedAt: serverTimestamp()
       }, { merge: true });
 
@@ -5595,22 +4854,16 @@ export default function App() {
 
           // 3. Re-populate from manual roster (members) if not already synced
           members.forEach(member => {
-            const isLeader = member.type === 'leader';
-            const isTrainer = member.type === 'trainer';
-            if (!isLeader && !isTrainer) return;
+            const isLeader = member.type === 'leader' || member.type === 'trainer';
+            const coll = member.type === 'leader' ? 'leaderRanking' : 'trainerRanking';
             
-            const coll = isLeader ? 'leaderRanking' : 'trainerRanking';
-            
-            // Skip if name is invalid
-            if (!member.name || member.name.trim() === '' || member.name === 'undefined' || member.name === 'null') return;
-
             // Check if already added via registeredUsers
             const exists = approvedUsers.some(u => u.fullName.trim().toLowerCase() === member.name.trim().toLowerCase());
             
-            if (!exists) {
+            if (!exists && (member.type === 'leader' || member.type === 'trainer')) {
               const rankingRef = doc(collection(db, coll));
               batch.set(rankingRef, {
-                name: member.name.trim(),
+                name: member.name,
                 score: 0,
                 leads: 0,
                 createdAt: serverTimestamp()
@@ -5694,57 +4947,25 @@ export default function App() {
   const adminWaiveFine = async (userKey: string, userName: string, amount: number, reason: string) => {
     try {
       const cleanName = userName.trim().toLowerCase();
-      const cleanKey = (userKey || '').replace(/\s+/g, '');
-      const matchedApproved = approvedUsers.find(u => 
-        (u.whatsapp && u.whatsapp.replace(/\s+/g, '') === cleanKey) ||
-        u.fullName.trim().toLowerCase() === cleanName
-      );
-      const matchedMember = members.find(m => 
-        m.id === userKey ||
-        (m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanKey) ||
-        m.name.trim().toLowerCase() === cleanName
-      );
-
-      const targetWhatsapp = matchedApproved?.whatsapp || matchedMember?.whatsapp || (userKey.startsWith('01') || userKey.startsWith('+') ? userKey : '');
-      const targetMemberId = matchedMember?.id || (userKey.startsWith('01') || userKey.startsWith('+') ? '' : userKey);
-      const primaryKey = targetWhatsapp || targetMemberId || userKey;
+      const matchedUser = approvedUsers.find(u => u.fullName.trim().toLowerCase() === cleanName) ||
+                          members.find(m => m.name.trim().toLowerCase() === cleanName);
+      
+      const primaryKey = (matchedUser && 'whatsapp' in matchedUser && matchedUser.whatsapp) ? matchedUser.whatsapp : userKey;
       const userBalRef = doc(db, 'userBalances', primaryKey);
       
-      const existing = (primaryKey && userBalances[primaryKey]) ||
-                       (targetWhatsapp && userBalances[targetWhatsapp]) ||
-                       (targetMemberId && userBalances[targetMemberId]) ||
-                       (userKey && userBalances[userKey]) ||
-                       Object.values(userBalances).find(b => {
-                         const bal = b as UserBalance;
-                         return (targetWhatsapp && bal.whatsapp === targetWhatsapp) ||
-                                (targetMemberId && bal.id === targetMemberId) ||
-                                (bal.userName && bal.userName.trim().toLowerCase() === cleanName);
-                       }) ||
-                       { whatsapp: targetWhatsapp || primaryKey, id: targetMemberId, userName, balance: 1500, waivedFines: 0, manualAdjustments: 0, waivedDays: [] };
+      const existing = userBalances[primaryKey] || 
+                       userBalances[userKey] || 
+                       Object.values(userBalances).find(b => (b as UserBalance).userName?.trim().toLowerCase() === cleanName) || 
+                       { whatsapp: primaryKey, userName, balance: 1500, waivedFines: 0, manualAdjustments: 0 };
       
       const currentWaived = existing.waivedFines || 0;
       const newWaived = currentWaived + amount;
 
-      const updatedBalance: UserBalance = {
-        ...existing,
-        id: targetMemberId || existing.id,
-        whatsapp: targetWhatsapp || existing.whatsapp || primaryKey,
-        userName: userName || existing.userName,
-        waivedFines: newWaived,
-        updatedAt: new Date().toISOString()
-      };
-
-      // Immediate optimistic update
-      setUserBalances(prev => {
-        const next = { ...prev, [primaryKey]: updatedBalance };
-        if (targetWhatsapp && targetWhatsapp !== primaryKey) next[targetWhatsapp] = updatedBalance;
-        if (targetMemberId && targetMemberId !== primaryKey) next[targetMemberId] = updatedBalance;
-        if (userKey && userKey !== primaryKey) next[userKey] = updatedBalance;
-        return next;
-      });
-
       await setDoc(userBalRef, {
-        ...updatedBalance,
+        ...existing,
+        whatsapp: primaryKey,
+        userName,
+        waivedFines: newWaived,
         updatedAt: serverTimestamp()
       }, { merge: true });
 
@@ -5758,33 +4979,16 @@ export default function App() {
   const adminRemoveDayFine = async (userKey: string, userName: string, dateStr: string, reason: string) => {
     try {
       const cleanName = userName.trim().toLowerCase();
-      const cleanKey = (userKey || '').replace(/\s+/g, '');
-      const matchedApproved = approvedUsers.find(u => 
-        (u.whatsapp && u.whatsapp.replace(/\s+/g, '') === cleanKey) ||
-        u.fullName.trim().toLowerCase() === cleanName
-      );
-      const matchedMember = members.find(m => 
-        m.id === userKey ||
-        (m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanKey) ||
-        m.name.trim().toLowerCase() === cleanName
-      );
-
-      const targetWhatsapp = matchedApproved?.whatsapp || matchedMember?.whatsapp || (userKey.startsWith('01') || userKey.startsWith('+') ? userKey : '');
-      const targetMemberId = matchedMember?.id || (userKey.startsWith('01') || userKey.startsWith('+') ? '' : userKey);
-      const primaryKey = targetWhatsapp || targetMemberId || userKey;
+      const matchedUser = approvedUsers.find(u => u.fullName.trim().toLowerCase() === cleanName) ||
+                          members.find(m => m.name.trim().toLowerCase() === cleanName);
+      
+      const primaryKey = (matchedUser && 'whatsapp' in matchedUser && matchedUser.whatsapp) ? matchedUser.whatsapp : userKey;
       const userBalRef = doc(db, 'userBalances', primaryKey);
       
-      const existing = (primaryKey && userBalances[primaryKey]) ||
-                       (targetWhatsapp && userBalances[targetWhatsapp]) ||
-                       (targetMemberId && userBalances[targetMemberId]) ||
-                       (userKey && userBalances[userKey]) ||
-                       Object.values(userBalances).find(b => {
-                         const bal = b as UserBalance;
-                         return (targetWhatsapp && bal.whatsapp === targetWhatsapp) ||
-                                (targetMemberId && bal.id === targetMemberId) ||
-                                (bal.userName && bal.userName.trim().toLowerCase() === cleanName);
-                       }) ||
-                       { whatsapp: targetWhatsapp || primaryKey, id: targetMemberId, userName, balance: 1500, waivedFines: 0, manualAdjustments: 0, waivedDays: [] };
+      const existing = userBalances[primaryKey] || 
+                       userBalances[userKey] || 
+                       Object.values(userBalances).find(b => (b as UserBalance).userName?.trim().toLowerCase() === cleanName) || 
+                       { whatsapp: primaryKey, userName, balance: 1500, waivedFines: 0, manualAdjustments: 0, waivedDays: [] };
       
       const currentWaivedDays = [...(existing.waivedDays || [])];
 
@@ -5794,142 +4998,16 @@ export default function App() {
 
       const fineRate = config.fineAmount !== undefined ? config.fineAmount : 10;
 
-      const updatedBalance: UserBalance = {
-        ...existing,
-        id: targetMemberId || existing.id,
-        whatsapp: targetWhatsapp || existing.whatsapp || primaryKey,
-        userName: userName || existing.userName,
-        waivedDays: currentWaivedDays,
-        updatedAt: new Date().toISOString()
-      };
-
-      // Immediate optimistic update
-      setUserBalances(prev => {
-        const next = { ...prev, [primaryKey]: updatedBalance };
-        if (targetWhatsapp && targetWhatsapp !== primaryKey) next[targetWhatsapp] = updatedBalance;
-        if (targetMemberId && targetMemberId !== primaryKey) next[targetMemberId] = updatedBalance;
-        if (userKey && userKey !== primaryKey) next[userKey] = updatedBalance;
-        return next;
-      });
-
       await setDoc(userBalRef, {
-        ...updatedBalance,
+        ...existing,
+        whatsapp: primaryKey,
+        userName,
+        waivedDays: currentWaivedDays,
         updatedAt: serverTimestamp()
       }, { merge: true });
 
       await writeAuditLog(primaryKey, userName, 'Remove Day Fine', fineRate, reason, dateStr);
       showMsg(`${dateStr} তারিখের মিসড দিন বাদ দেওয়া হয়েছে!`, 'success');
-    } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, `userBalances/${userKey}`, showMsg);
-    }
-  };
-
-  const adminResetUserFine = async (userKey: string, userName: string, reason: string) => {
-    try {
-      const cleanName = userName.trim().toLowerCase();
-      const cleanKey = (userKey || '').replace(/\s+/g, '');
-      const matchedApproved = approvedUsers.find(u => 
-        (u.whatsapp && u.whatsapp.replace(/\s+/g, '') === cleanKey) ||
-        u.fullName.trim().toLowerCase() === cleanName
-      );
-      const matchedMember = members.find(m => 
-        m.id === userKey ||
-        (m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanKey) ||
-        m.name.trim().toLowerCase() === cleanName
-      );
-
-      const targetWhatsapp = matchedApproved?.whatsapp || matchedMember?.whatsapp || (userKey.startsWith('01') || userKey.startsWith('+') ? userKey : '');
-      const targetMemberId = matchedMember?.id || (userKey.startsWith('01') || userKey.startsWith('+') ? '' : userKey);
-      const primaryKey = targetWhatsapp || targetMemberId || userKey;
-      const userBalRef = doc(db, 'userBalances', primaryKey);
-
-      const stats = computeUserSubmissionStats(targetWhatsapp || primaryKey, targetMemberId);
-      const rawMissed = stats?.rawMissedDays || 0;
-      const currentRate = config.fineAmount !== undefined ? config.fineAmount : 10;
-      const rawFine = rawMissed * currentRate;
-
-      const updatedBalance: UserBalance = {
-        id: targetMemberId || primaryKey,
-        whatsapp: targetWhatsapp || primaryKey,
-        userName: userName,
-        balance: 0,
-        waivedFines: rawFine,
-        manualAdjustments: 0,
-        waivedDays: [],
-        updatedAt: new Date().toISOString()
-      };
-
-      setUserBalances(prev => {
-        const next = { ...prev, [primaryKey]: updatedBalance };
-        if (targetWhatsapp && targetWhatsapp !== primaryKey) next[targetWhatsapp] = updatedBalance;
-        if (targetMemberId && targetMemberId !== primaryKey) next[targetMemberId] = updatedBalance;
-        if (userKey && userKey !== primaryKey) next[userKey] = updatedBalance;
-        return next;
-      });
-
-      await setDoc(userBalRef, {
-        ...updatedBalance,
-        updatedAt: serverTimestamp()
-      }, { merge: true });
-
-      await writeAuditLog(primaryKey, userName, 'Delete/Reset Fine', 0, reason || 'ফাইন সম্পূর্ণ ডিলিট/রিসেট করা হয়েছে');
-      showMsg(`${userName}-এর জরিমানা সম্পূর্ণ ডিলিট/রিসেট করা হয়েছে!`, 'success');
-    } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, `userBalances/${userKey}`, showMsg);
-    }
-  };
-
-  const adminSetExactFine = async (userKey: string, userName: string, targetFine: number, reason: string) => {
-    try {
-      const cleanName = userName.trim().toLowerCase();
-      const cleanKey = (userKey || '').replace(/\s+/g, '');
-      const matchedApproved = approvedUsers.find(u => 
-        (u.whatsapp && u.whatsapp.replace(/\s+/g, '') === cleanKey) ||
-        u.fullName.trim().toLowerCase() === cleanName
-      );
-      const matchedMember = members.find(m => 
-        m.id === userKey ||
-        (m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanKey) ||
-        m.name.trim().toLowerCase() === cleanName
-      );
-
-      const targetWhatsapp = matchedApproved?.whatsapp || matchedMember?.whatsapp || (userKey.startsWith('01') || userKey.startsWith('+') ? userKey : '');
-      const targetMemberId = matchedMember?.id || (userKey.startsWith('01') || userKey.startsWith('+') ? '' : userKey);
-      const primaryKey = targetWhatsapp || targetMemberId || userKey;
-      const userBalRef = doc(db, 'userBalances', primaryKey);
-
-      const stats = computeUserSubmissionStats(targetWhatsapp || primaryKey, targetMemberId);
-      const rawMissed = stats?.rawMissedDays || 0;
-      const currentRate = config.fineAmount !== undefined ? config.fineAmount : 10;
-      const rawFine = rawMissed * currentRate;
-
-      const manualAdj = targetFine - rawFine;
-
-      const updatedBalance: UserBalance = {
-        id: targetMemberId || primaryKey,
-        whatsapp: targetWhatsapp || primaryKey,
-        userName: userName,
-        balance: 0,
-        waivedFines: 0,
-        manualAdjustments: manualAdj,
-        updatedAt: new Date().toISOString()
-      };
-
-      setUserBalances(prev => {
-        const next = { ...prev, [primaryKey]: updatedBalance };
-        if (targetWhatsapp && targetWhatsapp !== primaryKey) next[targetWhatsapp] = updatedBalance;
-        if (targetMemberId && targetMemberId !== primaryKey) next[targetMemberId] = updatedBalance;
-        if (userKey && userKey !== primaryKey) next[userKey] = updatedBalance;
-        return next;
-      });
-
-      await setDoc(userBalRef, {
-        ...updatedBalance,
-        updatedAt: serverTimestamp()
-      }, { merge: true });
-
-      await writeAuditLog(primaryKey, userName, 'Set Exact Fine', targetFine, reason || `জরিমানা ৳${targetFine} করা হয়েছে`);
-      showMsg(`${userName}-এর জরিমানা ৳${targetFine} নির্ধারণ করা হয়েছে!`, 'success');
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `userBalances/${userKey}`, showMsg);
     }
@@ -6230,239 +5308,96 @@ export default function App() {
     let totalSubmittedConverts = 0;
     let todayLeads = 0;
     
-    // Helper to resolve result for any member/user by ID, whatsapp, or name
-    const getResultForMember = (m: { id: string; name: string; whatsapp?: string }) => {
-      if (results[m.id]) return results[m.id];
-      const cleanWa = m.whatsapp ? m.whatsapp.replace(/\s+/g, '') : '';
-      if (cleanWa && results[cleanWa]) return results[cleanWa];
-      if (cleanWa && results[`user-${cleanWa}`]) return results[`user-${cleanWa}`];
-      
-      const cleanMName = normalizeName(m.name);
-      const foundEntry = Object.values(results).find(r => {
-        const resObj = r as any;
-        if (resObj.memberId === m.id) return true;
-        if (cleanWa && resObj.memberId && resObj.memberId.replace(/\s+/g, '') === cleanWa) return true;
-        const rName = resObj.name || resObj.memberName;
-        if (cleanMName && rName && normalizeName(rName) === cleanMName) return true;
-        return false;
-      });
-      return foundEntry || { lead: 0, convert: 0, personalLead: 0, submitted: false };
-    };
-
-    const isNameSTL = (name: string) => {
-      if (!name) return false;
-      const lower = name.toLowerCase().trim();
-      if (/^stl\b/i.test(lower) || lower.includes('stl')) return true;
-      const cleanN = normalizeName(name);
-      if (stlMembers && stlMembers.some(s => normalizeName(s.name) === cleanN)) return true;
-      const user = approvedUsers.find(u => normalizeName(u.fullName) === cleanN);
-      if (user && user.position === 'STL') return true;
-      return false;
-    };
-
-    // 1. Build comprehensive Leaders list (members + approvedUsers + leaderRanking, excluding STLs)
-    const leaderMap = new Map<string, any>();
-
-    // Add leaders from manual members collection (excluding STLs)
-    members.filter(m => m.type === 'leader' && !isNameSTL(m.name)).forEach(m => {
-      const key = normalizeName(m.name) || m.id;
-      leaderMap.set(key, m);
-    });
-
-    // Add registered Team Leaders (STLs are completely excluded)
-    approvedUsers.filter(u => u.position === 'Team Leader' && !isNameSTL(u.fullName)).forEach(u => {
-      const key = normalizeName(u.fullName);
-      if (key && !leaderMap.has(key)) {
-        leaderMap.set(key, {
-          id: `user-${u.whatsapp}`,
-          name: u.fullName,
-          type: 'leader',
-          whatsapp: u.whatsapp,
-          createdAt: u.createdAt
-        });
-      }
-    });
-
-    // Add any standalone leaderRanking entries (excluding STLs)
-    leaderRanking.forEach(r => {
-      if (isNameSTL(r.name)) return;
-      const cleanRName = normalizeName(r.name);
-      const cleanRWa = r.whatsapp ? r.whatsapp.replace(/\s+/g, '') : '';
-      const exists = Array.from(leaderMap.values()).some(m => 
-        m.id === r.id ||
-        (cleanRWa && m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanRWa) ||
-        (cleanRName && normalizeName(m.name) === cleanRName)
-      );
-      if (!exists && r.name) {
-        const key = cleanRName || r.id;
-        leaderMap.set(key, {
-          id: r.id,
-          name: r.name,
-          type: 'leader',
-          whatsapp: r.whatsapp || ''
-        });
-      }
-    });
-
-    const allLeaders = Array.from(leaderMap.values()).filter(m => !isNameSTL(m.name)).map((m) => {
-      const cleanMName = normalizeName(m.name);
-      const cleanWa = m.whatsapp ? m.whatsapp.replace(/\s+/g, '') : '';
+    // 1. Create base lists with all necessary data merged
+    const allLeaders = members.filter(m => m.type === 'leader').map((m) => {
       const rankingEntry = leaderRanking.find(r => 
-        r.id === m.id ||
-        (cleanWa && r.whatsapp && r.whatsapp.replace(/\s+/g, '') === cleanWa) ||
-        (r.name || '').trim().toLowerCase() === (m.name || '').trim().toLowerCase() ||
-        (cleanMName && normalizeName(r.name) === cleanMName)
+        r.name.trim().toLowerCase() === m.name.trim().toLowerCase()
       );
-      const res = getResultForMember(m);
-      
-      // Database score is the single source of truth for ranking
-      // It already includes today's increments via submitResult
-      const score = Number(rankingEntry?.score) || 0;
-      const leads = Number(rankingEntry?.leads) || 0;
-
       return {
         ...m,
-        score,
-        leads,
-        result: res
+        score: rankingEntry?.score || 0,
+        leads: rankingEntry?.leads || 0,
+        result: results[m.id] || { lead: 0, convert: 0, personalLead: 0, submitted: false }
       };
     });
 
-    // 2. Build comprehensive Trainers list (members + approvedUsers + trainerRanking)
-    const trainerMap = new Map<string, any>();
-
-    members.filter(m => m.type === 'trainer').forEach(m => {
-      const key = normalizeName(m.name) || m.id;
-      trainerMap.set(key, m);
-    });
-
-    approvedUsers.filter(u => u.position === 'Team Trainer').forEach(u => {
-      const key = normalizeName(u.fullName);
-      if (key && !trainerMap.has(key)) {
-        trainerMap.set(key, {
-          id: `user-${u.whatsapp}`,
-          name: u.fullName,
-          type: 'trainer',
-          whatsapp: u.whatsapp,
-          createdAt: u.createdAt
-        });
-      }
-    });
-
-    trainerRanking.forEach(r => {
-      const cleanRName = normalizeName(r.name);
-      const cleanRWa = r.whatsapp ? r.whatsapp.replace(/\s+/g, '') : '';
-      const exists = Array.from(trainerMap.values()).some(m => 
-        m.id === r.id ||
-        (cleanRWa && m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanRWa) ||
-        (cleanRName && normalizeName(m.name) === cleanRName)
-      );
-      if (!exists && r.name) {
-        const key = cleanRName || r.id;
-        trainerMap.set(key, {
-          id: r.id,
-          name: r.name,
-          type: 'trainer',
-          whatsapp: r.whatsapp || ''
-        });
-      }
-    });
-
-    const allTrainers = Array.from(trainerMap.values()).map((m) => {
-      const cleanMName = normalizeName(m.name);
-      const cleanWa = m.whatsapp ? m.whatsapp.replace(/\s+/g, '') : '';
+    const allTrainers = members.filter(m => m.type === 'trainer').map((m) => {
       const rankingEntry = trainerRanking.find(r => 
-        r.id === m.id ||
-        (cleanWa && r.whatsapp && r.whatsapp.replace(/\s+/g, '') === cleanWa) ||
-        (r.name || '').trim().toLowerCase() === (m.name || '').trim().toLowerCase() ||
-        (cleanMName && normalizeName(r.name) === cleanMName)
+        r.name.trim().toLowerCase() === m.name.trim().toLowerCase()
       );
-      const res = getResultForMember(m);
-      
-      const score = Number(rankingEntry?.score) || 0;
-      const leads = Number(rankingEntry?.leads) || 0;
-
       return {
         ...m,
-        score,
-        leads,
-        result: res
+        score: rankingEntry?.score || 0,
+        leads: rankingEntry?.leads || 0,
+        result: results[m.id] || { lead: 0, convert: 0, personalLead: 0, submitted: false }
       };
     });
 
-    // 3. Define universal performance sorting (Stable Ranking priority)
+    // 2. Define universal performance sorting (Real-time priority)
     const sortByPerformance = (a: any, b: any) => {
-      // Primary sort: Latest Total Score (Cumulative)
-      const scoreA = a.score || 0;
-      const scoreB = b.score || 0;
-      if (scoreB !== scoreA) return scoreB - scoreA;
-
-      // Secondary sort: Today's Convert count (descending)
+      // Primary sort: Today's Convert count (descending)
       const convA = a.result?.convert || 0;
       const convB = b.result?.convert || 0;
       if (convB !== convA) return convB - convA;
       
-      // Tertiary sort: Today's Personal Lead count (descending)
+      // Tie-breaker for same convert: Earlier submission wins
+      if (convA > 0 && convB > 0) {
+        const timeA = a.result?.updatedAt?.toMillis?.() || a.result?.updatedAt?.seconds * 1000 || Date.now();
+        const timeB = b.result?.updatedAt?.toMillis?.() || b.result?.updatedAt?.seconds * 1000 || Date.now();
+        if (timeA !== timeB) {
+          return timeA - timeB; // Lower time (earlier) comes first
+        }
+      }
+
+      // Secondary sort: Today's Personal Lead count (descending)
       const pLeadA = a.result?.personalLead || 0;
       const pLeadB = b.result?.personalLead || 0;
       if (pLeadB !== pLeadA) return pLeadB - pLeadA;
 
-      // Submission time tie-breaker
-      const timeA = a.result?.updatedAt?.toMillis?.() || a.result?.updatedAt?.seconds * 1000 || 0;
-      const timeB = b.result?.updatedAt?.toMillis?.() || b.result?.updatedAt?.seconds * 1000 || 0;
-      if (timeA && timeB && timeA !== timeB) {
-        return timeA - timeB;
-      }
-
-      return a.name.localeCompare(b.name);
+      // Tertiary sort: Lifetime Score (score)
+      if ((b.score || 0) !== (a.score || 0)) return (b.score || 0) - (a.score || 0);
+      return (b.leads || 0) - (a.leads || 0);
     };
 
-    // Ranking sort function: strictly by Total Converts / Effective Score (score)
+    // Ranking sort function: strictly by Total Converts (score)
     const sortByTotalRanking = (a: any, b: any) => {
+      // Primary sort: Total Converts / Lifetime score (descending)
       const scoreA = a.score || 0;
       const scoreB = b.score || 0;
       if (scoreB !== scoreA) return scoreB - scoreA;
 
-      const convA = a.result?.convert || 0;
-      const convB = b.result?.convert || 0;
-      if (convB !== convA) return convB - convA;
-
+      // Secondary sort: Total Leads (descending)
       const leadsA = a.leads || 0;
       const leadsB = b.leads || 0;
       if (leadsB !== leadsA) return leadsB - leadsA;
 
+      // Tertiary sort: Today's Convert count (descending)
+      const convA = a.result?.convert || 0;
+      const convB = b.result?.convert || 0;
+      if (convB !== convA) return convB - convA;
+
+      // Alphabetical tie-breaker
       return a.name.localeCompare(b.name);
     };
 
-    // 4. Calculate Global Stats (Team Leaders only)
+    // 3. Calculate Global Stats
     allLeaders.forEach(m => {
-      if (m.result.submitted || (m.result.convert || 0) > 0) {
-        totalLeads += m.result.lead || 0;
-        todayConverts += m.result.convert || 0;
-        todayLeads += m.result.lead || 0;
+      if (m.result.submitted) {
+        totalLeads += m.result.lead;
+        todayConverts += m.result.convert;
+        todayLeads += m.result.lead;
         totalSubmittedConverts += m.result.convert || 0;
       }
     });
 
-    // 5. Generate sorted lists
+    // 4. Generate sorted lists
     const sortedL = [...allLeaders].sort(sortByPerformance);
     const sortedT = [...allTrainers].sort(sortByPerformance);
     const allSorted = [...allLeaders, ...allTrainers].sort(sortByPerformance);
 
+    // sortedLR and sortedTR are for the "Ranking" sections (Top 3 Leaders, Top 3 Trainers & Ranking Modals)
     const sortedLR = [...allLeaders].sort(sortByTotalRanking);
     const sortedTR = [...allTrainers].sort(sortByTotalRanking);
-
-    // Identify Top Performers strictly by TODAY's highest converts
-    const sortByToday = (a: any, b: any) => {
-      const convA = a.result?.convert || 0;
-      const convB = b.result?.convert || 0;
-      if (convB !== convA) return convB - convA;
-      return (b.score || 0) - (a.score || 0);
-    };
-
-    const bestLeader = [...allLeaders].sort(sortByToday)[0];
-    const bestTrainer = [...allTrainers].sort(sortByToday)[0];
-    const bestOverall = [...allLeaders, ...allTrainers].sort(sortByToday)[0];
 
     return {
       stats: {
@@ -6473,9 +5408,9 @@ export default function App() {
         todayConverts: todayConverts,
         todayLeads: todayLeads
       },
-      topLeader: bestLeader && (bestLeader.result?.convert || 0) > 0 ? bestLeader : null,
-      topTrainer: bestTrainer && (bestTrainer.result?.convert || 0) > 0 ? bestTrainer : null,
-      topOverall: bestOverall && (bestOverall.result?.convert || 0) > 0 ? bestOverall : null,
+      topLeader: sortedL[0]?.result?.submitted && sortedL[0]?.result?.convert > 0 ? sortedL[0] : null,
+      topTrainer: sortedT[0]?.result?.submitted && sortedT[0]?.result?.convert > 0 ? sortedT[0] : null,
+      topOverall: allSorted[0]?.result?.submitted && allSorted[0]?.result?.convert > 0 ? allSorted[0] : null,
       sortedLeaders: sortedL,
       sortedTrainers: sortedT,
       sortedLeaderRanking: sortedLR,
@@ -6483,167 +5418,16 @@ export default function App() {
       sortedLeadersByRanking: sortedLR,
       sortedTrainersByRanking: sortedTR
     };
-  }, [members, approvedUsers, results, leaderRanking, trainerRanking, stlMembers]);
-
-  useEffect(() => {
-    rankingDataRef.current = {
-      sortedLeaders,
-      sortedTrainers,
-      stats
-    };
-  }, [sortedLeaders, sortedTrainers, stats]);
+  }, [members, results, leaderRanking, trainerRanking]);
 
   const currentAuthUser = useMemo(() => {
-    if (!authenticatedUser) return null;
-    const cleanAuthWa = normalizePhoneNumber(authenticatedUser.whatsapp || '').replace(/[^0-9]/g, '');
-    const cleanAuthName = normalizeName(authenticatedUser.fullName || '');
-
-    const found = approvedUsers.find(u => {
-      const uWa = normalizePhoneNumber(u.whatsapp || '').replace(/[^0-9]/g, '');
-      const uName = normalizeName(u.fullName || '');
-      if (cleanAuthWa && uWa && (cleanAuthWa === uWa || (cleanAuthWa.length >= 10 && uWa.endsWith(cleanAuthWa.slice(-10))) || (uWa.length >= 10 && cleanAuthWa.endsWith(uWa.slice(-10))))) {
-        return true;
-      }
-      if (cleanAuthName && uName && cleanAuthName === uName) {
-        return true;
-      }
-      return false;
-    });
-
-    return found ? { ...authenticatedUser, ...found } : authenticatedUser;
+    return approvedUsers.find(u => u.whatsapp === authenticatedUser?.whatsapp) || authenticatedUser;
   }, [approvedUsers, authenticatedUser]);
 
   const myMember = useMemo(() => {
     if (!currentAuthUser) return null;
-    const cleanAuthWa = normalizePhoneNumber(currentAuthUser.whatsapp || '').replace(/[^0-9]/g, '');
-    const cleanAuthName = normalizeName(currentAuthUser.fullName || '');
-
-    return members.find(m => {
-      const mWa = normalizePhoneNumber((m as any).whatsapp || '').replace(/[^0-9]/g, '');
-      const mName = normalizeName(m.name || '');
-      if (cleanAuthWa && mWa && (cleanAuthWa === mWa || (cleanAuthWa.length >= 10 && mWa.endsWith(cleanAuthWa.slice(-10))) || (mWa.length >= 10 && cleanAuthWa.endsWith(mWa.slice(-10))))) {
-        return true;
-      }
-      if (cleanAuthName && mName && (cleanAuthName === mName || cleanAuthName.includes(mName) || mName.includes(cleanAuthName))) {
-        return true;
-      }
-      return false;
-    }) || null;
+    return members.find(m => m.name.trim().toLowerCase() === currentAuthUser.fullName.trim().toLowerCase());
   }, [members, currentAuthUser]);
-
-  const myStlMember = useMemo(() => {
-    if (!currentAuthUser) return null;
-    const cleanAuthWa = normalizePhoneNumber(currentAuthUser.whatsapp || '').replace(/[^0-9]/g, '');
-    const cleanAuthName = normalizeName(currentAuthUser.fullName || '');
-
-    return (stlMembers || []).find(s => {
-      const sWa = normalizePhoneNumber((s as any).whatsapp || '').replace(/[^0-9]/g, '');
-      const sName = normalizeName(s.name || '');
-      if (cleanAuthWa && sWa && (cleanAuthWa === sWa || (cleanAuthWa.length >= 10 && sWa.endsWith(cleanAuthWa.slice(-10))) || (sWa.length >= 10 && cleanAuthWa.endsWith(sWa.slice(-10))))) {
-        return true;
-      }
-      if (cleanAuthName && sName && (cleanAuthName === sName || cleanAuthName.includes(sName) || sName.includes(cleanAuthName))) {
-        return true;
-      }
-      return false;
-    }) || null;
-  }, [stlMembers, currentAuthUser]);
-
-  const isMySTL = useMemo(() => {
-    if (!currentAuthUser) return false;
-    const pos = (currentAuthUser.position || currentAuthUser.role || '').toLowerCase();
-    if (pos === 'stl' || pos.includes('stl') || pos.includes('senior team leader')) return true;
-    if (myStlMember) return true;
-    const name = (currentAuthUser.fullName || '').toLowerCase();
-    if (name.includes('stl') || /^stl\b/i.test(name)) return true;
-    return false;
-  }, [currentAuthUser, myStlMember]);
-
-  const myStlTotalConverts = useMemo(() => {
-    if (!isMySTL || !myStlMember) return 0;
-    if (myStlMember.assignedTLs && myStlMember.assignedTLs.length > 0) {
-      let sum = 0;
-      const seenTLNames = new Set<string>();
-      const teamLeaders = members.filter(m => (m.type || '').toLowerCase().includes('leader') || (m.type || '').toLowerCase().includes('tl'));
-      myStlMember.assignedTLs.forEach(idOrName => {
-        const cleanIdOrName = normalizeName(idOrName);
-        const member = teamLeaders.find(
-          m => m.id === idOrName || normalizeName(m.name) === cleanIdOrName
-        );
-        const data = resolveTLConvertData(idOrName, teamLeaders, leaderRanking, results, member);
-        const nameKey = normalizeName(data.name || idOrName);
-        if (!seenTLNames.has(nameKey)) {
-          seenTLNames.add(nameKey);
-          sum += data.convert;
-        }
-      });
-      return sum;
-    }
-    if (myStlMember.score !== undefined) return Number(myStlMember.score) || 0;
-    return 0;
-  }, [isMySTL, myStlMember, members, leaderRanking, results]);
-
-  const myTotalConverts = useMemo(() => {
-    if (!currentAuthUser) return 0;
-    if (isMySTL && myStlMember) {
-      return myStlTotalConverts;
-    }
-    const cleanAuthName = normalizeName(currentAuthUser.fullName || '');
-
-    // 1. Check leaderRanking
-    const foundLeader = leaderRanking.find(r => {
-      if (myMember && r.id === myMember.id) return true;
-      const rName = normalizeName(r.name || '');
-      return Boolean(cleanAuthName && rName && (cleanAuthName === rName || cleanAuthName.includes(rName) || rName.includes(cleanAuthName)));
-    });
-    if (foundLeader && foundLeader.score !== undefined) return Number(foundLeader.score) || 0;
-
-    // 2. Check trainerRanking
-    const foundTrainer = trainerRanking.find(r => {
-      if (myMember && r.id === myMember.id) return true;
-      const rName = normalizeName(r.name || '');
-      return Boolean(cleanAuthName && rName && (cleanAuthName === rName || cleanAuthName.includes(rName) || rName.includes(cleanAuthName)));
-    });
-    if (foundTrainer && foundTrainer.score !== undefined) return Number(foundTrainer.score) || 0;
-
-    // 3. Fallback to myMember score or results
-    if (myMember && (myMember as any).score !== undefined) return Number((myMember as any).score) || 0;
-    if (myMember && results[myMember.id]?.convert !== undefined) return Number(results[myMember.id]?.convert) || 0;
-
-    return 0;
-  }, [currentAuthUser, isMySTL, myStlMember, myStlTotalConverts, myMember, leaderRanking, trainerRanking, results]);
-
-  const myTargetConverts = useMemo(() => {
-    if (isMySTL && myStlMember?.target !== undefined) {
-      return Math.max(0, Number(myStlMember.target) || 0);
-    }
-    return Math.max(0, Number(myMember?.target || (currentAuthUser as any)?.target) || 0);
-  }, [isMySTL, myStlMember, myMember, currentAuthUser]);
-
-  const myUserBalance = useMemo(() => {
-    if (!currentAuthUser && !myMember) return null;
-    const cleanAuthWa = normalizePhoneNumber(currentAuthUser?.whatsapp || (myMember as any)?.whatsapp || '').replace(/[^0-9]/g, '');
-    const cleanAuthName = normalizeName(currentAuthUser?.fullName || myMember?.name || '');
-
-    if (currentAuthUser?.whatsapp && userBalances[currentAuthUser.whatsapp]) return userBalances[currentAuthUser.whatsapp];
-    if (cleanAuthWa && userBalances[cleanAuthWa]) return userBalances[cleanAuthWa];
-    if (myMember?.id && userBalances[myMember.id]) return userBalances[myMember.id];
-
-    return Object.values(userBalances).find((b: any) => {
-      const bWa = normalizePhoneNumber(b.whatsapp || '').replace(/[^0-9]/g, '');
-      const bName = normalizeName(b.userName || '');
-      if (cleanAuthWa && bWa && cleanAuthWa === bWa) return true;
-      if (cleanAuthName && bName && cleanAuthName === bName) return true;
-      return false;
-    }) || null;
-  }, [currentAuthUser, myMember, userBalances]);
-
-  const currentWalletBalance = myUserBalance?.balance ?? 1500;
-  const myRoleType = (myMember?.type || currentAuthUser?.position || currentAuthUser?.role || '').toLowerCase();
-  const isMyLeader = !isMySTL && (myRoleType.includes('leader') || myRoleType.includes('tl'));
-  const myIncomeRate = isMySTL ? 25 : (isMyLeader ? 60 : 50);
-  const myPossibleIncome = myTotalConverts * myIncomeRate;
-  const myTargetIncome = myTargetConverts > 0 ? myTargetConverts * myIncomeRate : 0;
 
   const myUserStats = useMemo(() => {
     return computeUserSubmissionStats(
@@ -6700,8 +5484,6 @@ export default function App() {
         onLogin={loginUser}
         onRegister={registerUser}
         onAdminLogin={(pass) => login(false, pass)}
-        customLogo={config.customLogo}
-        showMsg={showMsg}
       />
     );
   }
@@ -6710,27 +5492,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen pb-20">
-      
-      
-      <AnimatePresence>
-        {toast && (
-          <Toast 
-            message={toast.message} 
-            type={toast.type as any} 
-            onClose={() => setToast(null)} 
-          />
-        )}
-      </AnimatePresence>
-      {!isOnline && (
-        <motion.div 
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-full shadow-lg text-xs font-bold"
-        >
-          <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
-          ইন্টারনেট ডিসকানেক্টেড (Offline)
-        </motion.div>
-      )}
       {/* Global Announcement */}
       <AnimatePresence>
         {config.announcementActive && config.announcement && !announcementDismissed && (
@@ -6896,22 +5657,6 @@ export default function App() {
                     <ChevronRight size={18} className="text-blue-600" />
                   </button>
                 )}
-
-                <button 
-                  onClick={() => { setShowMenu(false); setUserTab('community'); }}
-                  className="w-full flex items-center justify-between p-3.5 rounded-2xl neu-card-sm hover:scale-[1.01] transition-all border border-blue-200/80"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl neu-btn-primary flex items-center justify-center text-white">
-                      <Users size={18} />
-                    </div>
-                    <div className="text-left">
-                      <span className="block text-sm font-bold text-slate-900">Community</span>
-                      <span className="block text-[10px] text-blue-700 uppercase font-bold tracking-wider">সকলের সাথে যুক্ত হোন</span>
-                    </div>
-                  </div>
-                  <ChevronRight size={18} className="text-blue-600" />
-                </button>
 
                 <button 
                   onClick={() => { setShowMenu(false); setShowApplyModal(true); }}
@@ -7171,22 +5916,19 @@ export default function App() {
             </div>
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 mb-10">
               {[
-                { label: 'Leaders', value: stats.leaders, color: 'text-blue-800', iconBg: 'bg-blue-200/60 text-blue-800', icon: <Trophy size={14} /> },
-                { label: 'Trainers', value: stats.trainers, color: 'text-indigo-800', iconBg: 'bg-indigo-200/60 text-indigo-800', icon: <GraduationCap size={14} /> },
-                { label: 'Leads', value: stats.todayLeads, color: 'text-emerald-800', iconBg: 'bg-emerald-200/60 text-emerald-800', icon: <Send size={14} /> },
-                { label: 'Converts', value: stats.converts, color: 'text-amber-800', iconBg: 'bg-amber-200/60 text-amber-800', icon: <CheckCircle2 size={14} /> }
+                { label: 'Leaders', value: stats.leaders, color: 'text-blue-700', icon: <Trophy size={13} /> },
+                { label: 'Trainers', value: stats.trainers, color: 'text-indigo-700', icon: <GraduationCap size={13} /> },
+                { label: 'Leads', value: stats.todayLeads, color: 'text-emerald-700', icon: <Send size={13} /> },
+                { label: 'Converts', value: stats.converts, color: 'text-amber-700', icon: <CheckCircle2 size={13} /> }
               ].map((stat, i) => (
-                <div key={i} className="group neu-card p-4 text-center relative overflow-hidden transition-all hover:scale-[1.03]">
-                  {/* Subtle top glare reflection to enhance 3D tactile feeling */}
-                  <div className="absolute top-0 left-0 right-0 h-[1.5px] bg-white/75 z-10" />
-                  
-                  <div className="flex items-center justify-center gap-1.5 mb-2 relative z-10">
-                    <span className={`p-1.5 rounded-xl border border-white/80 shadow-[inset_1px_1px_2px_rgba(255,255,255,0.8)] ${stat.iconBg}`}>{stat.icon}</span>
-                    <span className="text-[11px] sm:text-xs text-slate-700 tracking-wider uppercase font-black">{stat.label}</span>
+                <div key={i} className="group neu-card rounded-2xl p-4 text-center relative overflow-hidden transition-all hover:scale-[1.02]">
+                  <div className="flex items-center justify-center gap-1.5 mb-1.5">
+                    <span className={`p-1.5 rounded-lg neu-card-sm ${stat.color}`}>{stat.icon}</span>
+                    <span className="text-[10px] sm:text-xs text-slate-600 tracking-wider uppercase font-bold">{stat.label}</span>
                   </div>
-                  <div className={`text-3xl sm:text-4xl font-black tracking-tight relative z-10 ${stat.color}`}>{stat.value}</div>
+                  <div className={`text-2xl sm:text-3xl font-black ${stat.color}`}>{stat.value}</div>
                 </div>
               ))}
             </div>
@@ -7204,56 +5946,46 @@ export default function App() {
                   </div>
                   <div className="flex-1 h-[2px] neu-inset ml-4" />
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   {topLeader && (
-                    <div className="relative group overflow-hidden rounded-3xl p-[1px] bg-gradient-to-b from-amber-500/50 to-slate-800">
-                      <div className="relative bg-slate-800 rounded-[23px] p-4 sm:p-5 flex items-center gap-4 sm:gap-5 h-full overflow-hidden">
-                        {/* Glow effect */}
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/40 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none animate-[pulse_2s_ease-in-out_infinite]"></div>
-                        
-                        <div className="relative flex-shrink-0 z-10">
-                          <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-slate-700/50 flex items-center justify-center overflow-hidden border border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.2)]">
+                    <div className="relative group">
+                      <div className="relative neu-card rounded-2xl p-4 sm:p-5 flex items-center gap-4 sm:gap-5">
+                        <div className="relative flex-shrink-0">
+                          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl neu-card-sm flex items-center justify-center overflow-hidden border border-blue-200/80 shadow-sm">
                             <CartoonAvatar 
                               src={approvedUsers.find(u => u.fullName.trim().toLowerCase() === topLeader.name.trim().toLowerCase())?.profilePic} 
                               name={topLeader.name} 
                             />
                           </div>
-                          <div className="absolute -bottom-1.5 -right-1.5 bg-gradient-to-r from-amber-400 to-amber-600 text-slate-900 text-[8px] sm:text-[9px] font-black px-2 py-0.5 rounded-full uppercase shadow-lg border border-amber-200/50">Top</div>
+                          <div className="absolute -bottom-1 -right-1 neu-btn-primary text-white text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase shadow-xs">Top</div>
                         </div>
-                        
-                        <div className="flex-1 min-w-0 z-10">
-                          <div className="flex items-center justify-between mb-1">
-                            <div className="text-[9px] sm:text-[10px] text-amber-400 font-black uppercase tracking-wider mr-2">Best Leader</div>
-                            <span className="text-[8px] sm:text-[9px] px-2.5 py-0.5 rounded-full font-black uppercase whitespace-nowrap bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                              {topOverall?.id === topLeader.id ? 'Overall Best' : '১ম ইলাইট'}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-0.5">
+                            <div className="text-[9px] sm:text-[10px] text-blue-700 font-bold uppercase tracking-wider mr-2">Best Leader</div>
+                            <span className={`text-[8px] sm:text-[9px] px-2 py-0.5 rounded-full font-black uppercase whitespace-nowrap ${topOverall?.id === topLeader.id ? 'neu-btn-primary text-white' : 'neu-card-sm text-blue-700'}`}>
+                              {topOverall?.id === topLeader.id ? 'Overall Best' : 'Elite'}
                             </span>
                           </div>
-                          <div className="text-lg sm:text-2xl font-black text-amber-50 truncate flex items-center gap-1.5 tracking-tight">
+                          <div className="text-lg sm:text-2xl font-black text-[#090d16] truncate flex items-center gap-1.5 tracking-tight">
                             <span className="truncate">{topLeader.name}</span>
-                            <span className="text-amber-500 text-sm flex-shrink-0" title="Top Leader">👑</span>
+                            <span className="text-blue-600 text-sm flex-shrink-0" title="Top Leader">👑</span>
                           </div>
-                          <div className="flex items-center gap-3 sm:gap-4 mt-2.5">
+                          <div className="flex items-center gap-3 sm:gap-4 mt-2">
                             <div className="flex flex-col">
-                              <span className="text-[8px] sm:text-[9px] text-slate-400 uppercase font-bold tracking-wider">Conv</span>
-                              <span className="text-xs sm:text-sm font-black text-white">{topLeader.result.convert}</span>
+                              <span className="text-[8px] sm:text-[9px] text-slate-500 uppercase font-bold">Conv</span>
+                              <span className="text-xs sm:text-sm font-black text-emerald-700">{topLeader.result.convert}</span>
                             </div>
                             
-                            <div className="w-[1px] h-5 sm:h-6 bg-slate-600" />
+                            <div className="w-[2px] h-5 sm:h-6 neu-inset" />
                             <div className="flex flex-col">
-                              <span className="text-[8px] sm:text-[9px] text-slate-400 uppercase font-bold tracking-wider">Pers</span>
-                              <span className="text-xs sm:text-sm font-black text-white">{topLeader.result.personalLead}</span>
+                              <span className="text-[8px] sm:text-[9px] text-slate-500 uppercase font-bold">Pers</span>
+                              <span className="text-xs sm:text-sm font-black text-purple-700">{topLeader.result.personalLead}</span>
                             </div>
 
-                            <div className="w-[1px] h-5 sm:h-6 bg-slate-600" />
+                            <div className="w-[2px] h-5 sm:h-6 neu-inset" />
                             <div className="flex flex-col">
-                              <span className="text-[8px] sm:text-[9px] text-slate-400 uppercase font-bold tracking-wider">আয় (৬০৳)</span>
-                              <span className="text-xs sm:text-sm font-black text-amber-400">৳{((topLeader.result.convert || 0) * 60).toLocaleString('en-IN')}</span>
-                            </div>
-
-                            <div className="w-[1px] h-5 sm:h-6 bg-slate-600" />
-                            <div className="flex flex-col">
-                              <span className="text-[8px] sm:text-[9px] text-slate-400 uppercase font-bold tracking-wider">Total</span>
-                              <span className="text-xs sm:text-sm font-black text-white">{topLeader.score || 0}</span>
+                              <span className="text-[8px] sm:text-[9px] text-slate-500 uppercase font-bold">Total</span>
+                              <span className="text-xs sm:text-sm font-black text-blue-700">{topLeader.score || 0}</span>
                             </div>
                           </div>
                         </div>
@@ -7261,54 +5993,44 @@ export default function App() {
                     </div>
                   )}
                   {topTrainer && (
-                    <div className="relative group overflow-hidden rounded-3xl p-[1px] bg-gradient-to-b from-emerald-500/50 to-slate-800">
-                      <div className="relative bg-slate-800 rounded-[23px] p-4 sm:p-5 flex items-center gap-4 sm:gap-5 h-full overflow-hidden">
-                        {/* Glow effect */}
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/40 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none animate-[pulse_2s_ease-in-out_infinite]"></div>
-                        
-                        <div className="relative flex-shrink-0 z-10">
-                          <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-slate-700/50 flex items-center justify-center overflow-hidden border border-emerald-500/30 shadow-[0_0_15px_rgba(16,185,129,0.2)]">
+                    <div className="relative group">
+                      <div className="relative neu-card rounded-2xl p-4 sm:p-5 flex items-center gap-4 sm:gap-5">
+                        <div className="relative flex-shrink-0">
+                          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl neu-card-sm flex items-center justify-center overflow-hidden border border-emerald-200/80 shadow-sm">
                             <CartoonAvatar 
                               src={approvedUsers.find(u => u.fullName.trim().toLowerCase() === topTrainer.name.trim().toLowerCase())?.profilePic} 
                               name={topTrainer.name} 
                             />
                           </div>
-                          <div className="absolute -bottom-1.5 -right-1.5 bg-gradient-to-r from-emerald-400 to-emerald-600 text-slate-900 text-[8px] sm:text-[9px] font-black px-2 py-0.5 rounded-full uppercase shadow-lg border border-emerald-200/50">Top</div>
+                          <div className="absolute -bottom-1 -right-1 neu-btn-emerald text-white text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase shadow-xs">Top</div>
                         </div>
-                        
-                        <div className="flex-1 min-w-0 z-10">
-                          <div className="flex items-center justify-between mb-1">
-                            <div className="text-[9px] sm:text-[10px] text-emerald-400 font-black uppercase tracking-wider mr-2">Best Trainer</div>
-                            <span className="text-[8px] sm:text-[9px] px-2.5 py-0.5 rounded-full font-black uppercase whitespace-nowrap bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                              {topOverall?.id === topTrainer.id ? 'Overall Best' : '২য় ইলাইট'}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-0.5">
+                            <div className="text-[9px] sm:text-[10px] text-indigo-700 font-bold uppercase tracking-wider mr-2">Best Trainer</div>
+                            <span className={`text-[8px] sm:text-[9px] px-2 py-0.5 rounded-full font-black uppercase whitespace-nowrap ${topOverall?.id === topTrainer.id ? 'neu-btn-emerald text-white' : 'neu-card-sm text-indigo-700'}`}>
+                              {topOverall?.id === topTrainer.id ? 'Overall Best' : 'Elite'}
                             </span>
                           </div>
-                          <div className="text-lg sm:text-2xl font-black text-emerald-50 truncate flex items-center gap-1.5 tracking-tight">
+                          <div className="text-lg sm:text-2xl font-black text-[#090d16] truncate flex items-center gap-1.5 tracking-tight">
                             <span className="truncate">{topTrainer.name}</span>
-                            <span className="text-emerald-500 text-sm flex-shrink-0" title="Top Trainer">🎓</span>
+                            <span className="text-emerald-600 text-sm flex-shrink-0" title="Top Trainer">🎓</span>
                           </div>
-                          <div className="flex items-center gap-3 sm:gap-4 mt-2.5">
+                          <div className="flex items-center gap-3 sm:gap-4 mt-2">
                             <div className="flex flex-col">
-                              <span className="text-[8px] sm:text-[9px] text-slate-400 uppercase font-bold tracking-wider">Conv</span>
-                              <span className="text-xs sm:text-sm font-black text-white">{topTrainer.result.convert}</span>
+                              <span className="text-[8px] sm:text-[9px] text-slate-500 uppercase font-bold">Conv</span>
+                              <span className="text-xs sm:text-sm font-black text-emerald-700">{topTrainer.result.convert}</span>
                             </div>
                             
-                            <div className="w-[1px] h-5 sm:h-6 bg-slate-600" />
+                            <div className="w-[2px] h-5 sm:h-6 neu-inset" />
                             <div className="flex flex-col">
-                              <span className="text-[8px] sm:text-[9px] text-slate-400 uppercase font-bold tracking-wider">Pers</span>
-                              <span className="text-xs sm:text-sm font-black text-white">{topTrainer.result.personalLead}</span>
+                              <span className="text-[8px] sm:text-[9px] text-slate-500 uppercase font-bold">Pers</span>
+                              <span className="text-xs sm:text-sm font-black text-purple-700">{topTrainer.result.personalLead}</span>
                             </div>
 
-                            <div className="w-[1px] h-5 sm:h-6 bg-slate-600" />
+                            <div className="w-[2px] h-5 sm:h-6 neu-inset" />
                             <div className="flex flex-col">
-                              <span className="text-[8px] sm:text-[9px] text-slate-400 uppercase font-bold tracking-wider">আয় (৫০৳)</span>
-                              <span className="text-xs sm:text-sm font-black text-emerald-400">৳{((topTrainer.result.convert || 0) * 50).toLocaleString('en-IN')}</span>
-                            </div>
-
-                            <div className="w-[1px] h-5 sm:h-6 bg-slate-600" />
-                            <div className="flex flex-col">
-                              <span className="text-[8px] sm:text-[9px] text-slate-400 uppercase font-bold tracking-wider">Total</span>
-                              <span className="text-xs sm:text-sm font-black text-white">{topTrainer.score || 0}</span>
+                              <span className="text-[8px] sm:text-[9px] text-slate-500 uppercase font-bold">Total</span>
+                              <span className="text-xs sm:text-sm font-black text-indigo-700">{topTrainer.score || 0}</span>
                             </div>
                           </div>
                         </div>
@@ -7462,27 +6184,6 @@ export default function App() {
           </div>
         )}
 
-        {userTab === 'community' && (
-          <CommunityPage
-            currentUser={currentAuthUser || (isAdmin ? { id: 'admin', fullName: 'অ্যাডমিন (Admin)', profilePic: 'admin' } : null)}
-            isAdmin={isAdmin}
-            showMsg={showMsg}
-            communityLocked={config.communityLocked || false}
-            onToggleLock={async () => {
-              const nextLocked = !(config.communityLocked || false);
-              try {
-                await updateDoc(doc(db, 'config', 'global'), { communityLocked: nextLocked });
-                showMsg(`কমিউনিটি সফলভাবে ${nextLocked ? 'লক' : 'আনলক'} করা হয়েছে`, 'success');
-              } catch (e) {
-                showMsg('লক পরিবর্তন ব্যর্থ হয়েছে', 'error');
-              }
-            }}
-            onDeleteAllPosts={handleDeleteAllCommunityPosts}
-            members={members}
-            approvedUsers={approvedUsers}
-          />
-        )}
-
         {userTab === 'submit' && (
           <div className="space-y-8">
             {/* Top Priority: Self Result Submission Box */}
@@ -7579,24 +6280,6 @@ export default function App() {
                     className="px-3 py-2 neu-btn text-slate-700 font-bold rounded-xl text-[9px] sm:text-[10px] uppercase tracking-wider transition-all"
                   >
                     সেটিংস ও প্রিভিউ
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAppreciationData({
-                        isOpen: true,
-                        convert: 6,
-                        personalLead: 10,
-                        lead: 15,
-                        memberName: currentAuthUser?.fullName || 'Superstar',
-                        role: 'Team Leader'
-                      });
-                    }}
-                    className="px-3 py-2 neu-btn text-amber-600 font-bold rounded-xl text-[9px] sm:text-[10px] uppercase tracking-wider transition-all flex items-center gap-1 active:scale-95"
-                    title="রেজাল্ট সাবমিট পপআপ প্রিভিউ দেখুন"
-                  >
-                    🎉 পপআপ প্রিভিউ
                   </button>
                 </div>
               </div>
@@ -7770,11 +6453,7 @@ export default function App() {
                     type="button"
                     onClick={() => {
                       setAuthenticatedUser(null);
-                      sessionStorage.removeItem('unity_session_user');
                       localStorage.removeItem('unity_user');
-                      setIsAdmin(false);
-                      sessionStorage.removeItem('isAdmin');
-                      localStorage.removeItem('isAdmin');
                     }}
                     className="neu-btn-primary text-white font-black py-3.5 px-8 rounded-2xl inline-flex items-center gap-2.5 transition-all active:scale-95 shadow-md text-sm"
                   >
@@ -7782,8 +6461,6 @@ export default function App() {
                     লগইন স্ক্রিন-এ যান
                   </button>
                 )}
-
-                
               </div>
             ) : (
               /* Authenticated Profile Content */
@@ -7910,23 +6587,12 @@ export default function App() {
                   </div>
                 </div>
 
-                
-
                 {/* Profile Information Cards */}
                 <div className="p-6 sm:p-8 space-y-6">
                   <div>
-                    <div className="flex items-center justify-between gap-2 mb-3">
-                      <h3 className="text-xs sm:text-sm font-black text-[#090d16] uppercase tracking-wider">
-                        ব্যক্তিগত তথ্য ও অ্যাক্টিভিটি (Account Overview)
-                      </h3>
-                      <button
-                        type="button"
-                        onClick={() => setShowLoginStatsPopup(true)}
-                        className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-[11px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-sm transition-all"
-                      >
-                        <Target size={13} /> সামারি কার্ড
-                      </button>
-                    </div>
+                    <h3 className="text-xs sm:text-sm font-black text-[#090d16] uppercase tracking-wider mb-3">
+                      ব্যক্তিগত তথ্য ও অ্যাক্টিভিটি (Account Overview)
+                    </h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                       <div className="neu-card-sm bg-[#e7eff9] border border-white/80 rounded-2xl p-4">
                         <span className="block text-[10px] text-slate-500 uppercase font-black tracking-wider mb-1">
@@ -7951,16 +6617,7 @@ export default function App() {
                           পদবী (Position)
                         </span>
                         <span className="text-[#090d16] font-black text-base">
-                          {currentAuthUser.position || 'Team Member'}
-                        </span>
-                      </div>
-
-                      <div className="neu-card-sm bg-gradient-to-br from-emerald-50 to-teal-50/80 border border-emerald-200/90 rounded-2xl p-4">
-                        <span className="block text-[10px] text-emerald-800 uppercase font-black tracking-wider mb-1">
-                          অ্যাকাউন্টে যত আছে (Wallet Balance)
-                        </span>
-                        <span className="text-emerald-700 font-black text-xl font-mono flex items-center gap-1.5">
-                          ৳ {currentWalletBalance.toLocaleString('en-IN')}
+                          {currentAuthUser.position || 'Sub-Admin'}
                         </span>
                       </div>
 
@@ -7968,41 +6625,12 @@ export default function App() {
                         <span className="block text-[10px] text-slate-500 uppercase font-black tracking-wider mb-1">
                           মোট ভেরিফাইড কনভার্ট (Total Converts)
                         </span>
-                        <span className="text-amber-700 font-black text-xl flex items-center gap-1.5 font-mono">
-                          👑 {myTotalConverts} Convert
-                        </span>
-                      </div>
-
-                      <div className="neu-card-sm bg-[#e7eff9] border border-white/80 rounded-2xl p-4">
-                        <span className="block text-[10px] text-slate-500 uppercase font-black tracking-wider mb-1">
-                          কনভার্ট টার্গেট (Target Converts)
-                        </span>
-                        <span className="text-blue-700 font-black text-xl flex items-center gap-1.5 font-mono">
-                          🎯 {myTargetConverts > 0 ? `${myTargetConverts}টি` : 'সেট নেই'}
-                        </span>
-                      </div>
-
-                      <div className="neu-card-sm bg-gradient-to-br from-amber-50 to-orange-50/80 border border-amber-200/90 rounded-2xl p-4">
-                        <span className="block text-[10px] text-amber-900 uppercase font-black tracking-wider mb-1">
-                          পসিবল ইনকাম (Possible Income)
-                        </span>
-                        <span className="text-amber-800 font-black text-xl font-mono flex items-center gap-1.5">
-                          💰 ৳ {myPossibleIncome.toLocaleString('en-IN')}
-                        </span>
-                        <span className="block text-[9px] text-amber-700/80 font-bold mt-1">
-                          ({myTotalConverts} কনভার্ট × ৳{myIncomeRate})
-                        </span>
-                      </div>
-
-                      <div className="neu-card-sm bg-gradient-to-br from-indigo-50 to-blue-50/80 border border-indigo-200/90 rounded-2xl p-4">
-                        <span className="block text-[10px] text-indigo-900 uppercase font-black tracking-wider mb-1">
-                          টার্গেট থেকে ইনকাম (Target Income)
-                        </span>
-                        <span className="text-indigo-800 font-black text-xl font-mono flex items-center gap-1.5">
-                          🏁 ৳ {myTargetIncome.toLocaleString('en-IN')}
-                        </span>
-                        <span className="block text-[9px] text-indigo-700/80 font-bold mt-1">
-                          {myTargetConverts > 0 ? `(${myTargetConverts} টার্গেট × ৳${myIncomeRate})` : 'টার্গেট সেট করা নেই'}
+                        <span className="text-amber-700 font-black text-xl flex items-center gap-1.5">
+                          👑 {
+                            [...leaderRanking, ...trainerRanking].find(
+                              r => r.name.trim().toLowerCase() === currentAuthUser?.fullName.trim().toLowerCase()
+                            )?.score || 0
+                          }
                         </span>
                       </div>
 
@@ -8012,7 +6640,7 @@ export default function App() {
                             <span className="block text-[10px] text-slate-500 uppercase font-black tracking-wider mb-1">
                               আজকের সেশন কনভার্ট (Today's Converts)
                             </span>
-                            <span className="text-emerald-700 font-black text-xl flex items-center gap-1.5 font-mono">
+                            <span className="text-emerald-700 font-black text-xl flex items-center gap-1.5">
                               ⚡ {results[myMember.id]?.convert || 0}
                             </span>
                           </div>
@@ -8020,7 +6648,7 @@ export default function App() {
                             <span className="block text-[10px] text-slate-500 uppercase font-black tracking-wider mb-1">
                               আজকের পার্সোনাল লিড (Today's Personal Leads)
                             </span>
-                            <span className="text-purple-700 font-black text-xl flex items-center gap-1.5 font-mono">
+                            <span className="text-purple-700 font-black text-xl flex items-center gap-1.5">
                               🎯 {results[myMember.id]?.personalLead || 0}
                             </span>
                           </div>
@@ -8078,11 +6706,7 @@ export default function App() {
                       type="button"
                       onClick={() => {
                         setAuthenticatedUser(null);
-                        sessionStorage.removeItem('unity_session_user');
                         localStorage.removeItem('unity_user');
-                        setIsAdmin(false);
-                        sessionStorage.removeItem('isAdmin');
-                        localStorage.removeItem('isAdmin');
                         showMsg('সফলভাবে লগআউট করা হয়েছে!', 'success');
                       }}
                       className="neu-btn text-red-600 hover:text-red-700 font-black py-2.5 px-5 rounded-xl text-xs uppercase tracking-wider flex items-center gap-2 border border-red-200/80 bg-red-50/50 hover:bg-red-50 active:scale-95 transition-all shadow-sm"
@@ -8094,23 +6718,6 @@ export default function App() {
                 </div>
               </div>
             )}
-            
-            {currentAuthUser && (
-              <div className="mt-8">
-                <div className="text-center mb-6">
-                  <div className="inline-flex items-center gap-2 neu-card-sm text-blue-700 px-3.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-3">
-                    <TrendingUp size={13} className="text-blue-600" /> আয় ও পারফরম্যান্স
-                  </div>
-                </div>
-                <PerformancePage
-                  currentAuthUser={currentAuthUser}
-                  myMember={myMember}
-                  members={members}
-                  results={results}
-                  onNavigateToSubmit={() => setUserTab('submit')}
-                />
-              </div>
-            )}
           </div>
         )}
       </main>
@@ -8119,13 +6726,13 @@ export default function App() {
       <nav 
         id="bottom-navigation-bar"
         aria-label="Bottom Navigation"
-        className="fixed bottom-0 sm:bottom-3 inset-x-0 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 w-full sm:w-[98%] sm:max-w-[720px] neu-nav sm:rounded-2xl px-1 sm:px-2.5 py-1.5 sm:py-2 z-[300] shadow-xl"
+        className="fixed bottom-0 sm:bottom-3 inset-x-0 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 w-full sm:w-[96%] sm:max-w-[640px] neu-nav sm:rounded-2xl px-1 sm:px-2.5 py-1.5 sm:py-2 z-[300]"
       >
-        <div className="flex items-center justify-between sm:justify-around w-full gap-0.5 sm:gap-1 overflow-x-auto no-scrollbar">
+        <div className="flex items-center justify-between sm:justify-around w-full gap-0.5 sm:gap-1">
           {[
             { 
               id: 'home', 
-              label: 'Home', 
+              label: 'হোম', 
               icon: <Home size={18} className="sm:w-5 sm:h-5" />, 
               isExternal: false,
               labelColor: 'text-slate-600 font-bold',
@@ -8135,19 +6742,8 @@ export default function App() {
               indicatorColor: 'bg-blue-600'
             },
             { 
-              id: 'community', 
-              label: 'Community', 
-              icon: <Users size={18} className="sm:w-5 sm:h-5" />, 
-              isExternal: false,
-              labelColor: 'text-slate-600 font-bold',
-              activeLabelColor: 'text-blue-600 font-black',
-              boxDefault: 'neu-card-sm text-slate-700 hover:text-blue-600',
-              boxActive: 'neu-btn-primary text-white scale-105 font-bold',
-              indicatorColor: 'bg-blue-600'
-            },
-            { 
               id: 'submit', 
-              label: 'Results', 
+              label: 'রেজাল্ট', 
               icon: <CheckSquare size={18} className="sm:w-5 sm:h-5" />, 
               isExternal: false,
               labelColor: 'text-slate-600 font-bold',
@@ -8158,7 +6754,7 @@ export default function App() {
             },
             { 
               id: 'seat_booking', 
-              label: 'Seat Booking', 
+              label: 'সিট বুকিং', 
               icon: <Ticket size={18} className="sm:w-5 sm:h-5" />, 
               isExternal: true,
               url: 'https://seat-booking-unity.vercel.app/',
@@ -8168,7 +6764,7 @@ export default function App() {
             },
             { 
               id: 'withdraw_request', 
-              label: 'Withdraw', 
+              label: 'উইথড্র রিকুয়েষ্ট', 
               icon: <Wallet size={18} className="sm:w-5 sm:h-5" />, 
               isExternal: true,
               url: 'https://withdraw-request.vercel.app/',
@@ -8178,18 +6774,29 @@ export default function App() {
             },
             { 
               id: 'sheet', 
-              label: 'Ledger', 
+              label: 'শিট / হিসাব', 
               icon: <FileText size={18} className="sm:w-5 sm:h-5" />, 
               isExternal: false,
               labelColor: 'text-slate-600 font-bold',
-              activeLabelColor: 'text-indigo-600 font-black',
-              boxDefault: 'neu-card-sm text-slate-700 hover:text-indigo-600',
+              activeLabelColor: 'text-blue-600 font-black',
+              boxDefault: 'neu-card-sm text-slate-700 hover:text-blue-600',
               boxActive: 'neu-btn-primary text-white scale-105 font-bold',
-              indicatorColor: 'bg-indigo-600'
+              indicatorColor: 'bg-blue-600'
+            },
+            { 
+              id: 'links', 
+              label: 'লিংক সমূহ', 
+              icon: <Link size={18} className="sm:w-5 sm:h-5" />, 
+              isExternal: false,
+              labelColor: 'text-slate-600 font-bold',
+              activeLabelColor: 'text-blue-600 font-black',
+              boxDefault: 'neu-card-sm text-slate-700 hover:text-blue-600',
+              boxActive: 'neu-btn-primary text-white scale-105 font-bold',
+              indicatorColor: 'bg-blue-600'
             },
             { 
               id: 'profile', 
-              label: 'Profile', 
+              label: 'প্রোফাইল', 
               icon: <User size={18} className="sm:w-5 sm:h-5" />, 
               isExternal: false,
               labelColor: 'text-slate-600 font-bold',
@@ -8209,14 +6816,14 @@ export default function App() {
                   href={tab.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="group relative flex flex-col items-center justify-center flex-1 min-w-[48px] py-1 px-0.5 rounded-2xl transition-all duration-200 active:scale-90"
+                  className="group relative flex flex-col items-center justify-center flex-1 py-1 px-0.5 rounded-2xl transition-all duration-300 active:scale-90"
                 >
-                  <div className={`relative w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center border transition-all duration-200 ${tab.boxDefault}`}>
+                  <div className={`relative w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center border transition-all duration-300 ${tab.boxDefault}`}>
                     {tab.icon}
                     {/* Micro External Spark Indicator */}
                     <span className={`absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full ${tab.beaconColor} shadow-[0_0_8px_currentColor] animate-pulse`} />
                   </div>
-                  <span className={`text-[8px] sm:text-[9.5px] tracking-tight mt-1 text-center whitespace-nowrap leading-none transition-colors duration-200 ${tab.labelColor}`}>
+                  <span className={`text-[8px] sm:text-[9.5px] tracking-tight mt-1 text-center whitespace-nowrap leading-none transition-colors duration-300 ${tab.labelColor}`}>
                     {tab.label}
                   </span>
                 </a>
@@ -8228,19 +6835,15 @@ export default function App() {
                 key={tab.id}
                 id={`bottom-nav-${tab.id}`}
                 onClick={() => setUserTab(tab.id as any)}
-                className={`group relative flex flex-col items-center justify-center flex-1 min-w-[48px] py-1 px-0.5 rounded-2xl transition-all duration-200 active:scale-90 ${isActive ? 'translate-y-[-2px]' : ''}`}
+                className={`group relative flex flex-col items-center justify-center flex-1 py-1 px-0.5 rounded-2xl transition-all duration-300 active:scale-90 ${isActive ? 'translate-y-[-2px]' : ''}`}
               >
-                <div className={`relative w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center border overflow-hidden transition-all duration-200 ${isActive ? tab.boxActive : tab.boxDefault}`}>
-                  {tab.id === 'profile' && currentAuthUser ? (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <CartoonAvatar src={currentAuthUser.profilePic} name={currentAuthUser.fullName} />
-                    </div>
-                  ) : tab.icon}
+                <div className={`relative w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center border transition-all duration-300 ${isActive ? tab.boxActive : tab.boxDefault}`}>
+                  {tab.icon}
                   {isActive && (
                     <span className={`absolute -bottom-1 inset-x-2 h-[2.5px] rounded-full ${tab.indicatorColor} shadow-[0_0_8px_currentColor]`} />
                   )}
                 </div>
-                <span className={`text-[8px] sm:text-[9.5px] tracking-tight mt-1 text-center whitespace-nowrap leading-none transition-colors duration-200 ${isActive ? tab.activeLabelColor : tab.labelColor}`}>
+                <span className={`text-[8px] sm:text-[9.5px] tracking-tight mt-1 text-center whitespace-nowrap leading-none transition-colors duration-300 ${isActive ? tab.activeLabelColor : tab.labelColor}`}>
                   {tab.label}
                 </span>
               </button>
@@ -8301,21 +6904,14 @@ export default function App() {
               {/* Admin Navigation "Slots" (Three-line style alternative) */}
               <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 custom-scrollbar space-y-4">
                 
-                {/* Supabase Database & Realtime Migration */}
-                <AdminAccordion title="Supabase Database & Migration" icon={<Database size={16} />} colorClass="text-emerald-400">
-                  <SupabaseSettings showMsg={showMsg} />
-                </AdminAccordion>
-
-                 {/* 1. Website Branding & Logo */}
-                 <AdminAccordion title="Website Logo & Branding (লোগো পরিবর্তন)" icon={<Upload size={16} />} colorClass="text-blue-accent" defaultOpen={false}>
+                {/* 1. Website Branding & Logo */}
+                <AdminAccordion title="Website Logo & Branding (লোগো পরিবর্তন)" icon={<Upload size={16} />} colorClass="text-blue-accent" defaultOpen={false}>
                    <BrandLogoManager 
                      config={config} 
                      onUpdateLogo={updateWebsiteLogo} 
                      showMsg={showMsg} 
                    />
                 </AdminAccordion>
-
-                
 
                 {/* 2. Operations Slot (Timer & Results) */}
                 <AdminAccordion title="Operations & Boards" icon={<Clock size={16} />} colorClass="text-blue-accent" defaultOpen={true}>
@@ -8365,10 +6961,7 @@ export default function App() {
                            <button onClick={() => startTimer(timerDurationSelect)} disabled={config.timerActive} className="py-3 sm:py-4 bg-green-accent/10 text-green-accent font-black rounded-xl sm:rounded-2xl uppercase text-[9px] sm:text-[10px] tracking-widest border border-green-accent/20 disabled:opacity-30 hover:bg-green-accent hover:text-bg transition-all">Start ({Math.round(timerDurationSelect / 60)}m)</button>
                            <button onClick={stopTimer} disabled={!config.timerActive} className="py-3 sm:py-4 bg-red-accent/10 text-red-accent font-black rounded-xl sm:rounded-2xl uppercase text-[9px] sm:text-[10px] tracking-widest border border-red-accent/20 disabled:opacity-30 hover:bg-red-accent hover:text-white transition-all">Stop</button>
                          </div>
-                         <div className="grid grid-cols-2 gap-2 mt-3">
-                            <button onClick={clearResults} className="py-2.5 sm:py-3 text-[9px] sm:text-[10px] font-bold text-muted-main uppercase tracking-widest bg-bg/50 border border-white/5 rounded-xl hover:text-red-accent transition-all">Clear Sub-Admin</button>
-                            <button onClick={auditAllRankings} className="py-2.5 sm:py-3 text-[9px] sm:text-[10px] font-bold text-muted-main uppercase tracking-widest bg-bg/50 border border-white/5 rounded-xl hover:text-gold transition-all">Audit Data</button>
-                          </div>
+                         <button onClick={clearResults} className="w-full mt-3 py-2 sm:py-3 text-[9px] sm:text-[10px] font-bold text-muted-main uppercase tracking-widest hover:text-red-accent transition-colors">Clear Sub-Admin Data</button>
                       </div>
 
                       <div className="bg-surface/40 border border-white/5 p-4 sm:p-6 rounded-2xl sm:rounded-3xl">
@@ -8414,17 +7007,10 @@ export default function App() {
                       <div className="flex gap-3 sm:gap-4 items-center mb-4 sm:mb-6">
                         <input 
                           type="number"
-                          defaultValue={config.totalConverts || 0}
-                          onBlur={async (e) => {
+                          value={config.totalConverts || 0}
+                          onChange={(e) => {
                             const val = parseInt(e.target.value) || 0;
-                            if (val !== config.totalConverts) {
-                              try {
-                                await updateDoc(doc(db, 'config', 'global'), { totalConverts: val });
-                                showMsg('Total converts updated');
-                              } catch (err) {
-                                handleFirestoreError(err, OperationType.WRITE, 'config/global', showMsg);
-                              }
-                            }
+                            updateDoc(doc(db, 'config', 'global'), { totalConverts: val });
                           }}
                           className="flex-1 bg-bg border border-white/10 rounded-xl sm:rounded-2xl px-4 sm:px-6 py-3 sm:py-4 text-xl sm:text-2xl text-gold font-serif font-black outline-none focus:border-gold"
                         />
@@ -8585,8 +7171,6 @@ export default function App() {
                 {/* 8. Leaderboard & Achievement Slot */}
                 <AdminAccordion title="Leaderboard & Ranking Management" icon={<Crown size={16} />} colorClass="text-gold">
                    <div className="space-y-6">
-                      <RankingDownloadPanel leaderRanking={leaderRanking} trainerRanking={trainerRanking} />
-                      
                       <RankingSection 
                         title="Leader Ranking Management" 
                         icon={Crown} 
@@ -8595,7 +7179,6 @@ export default function App() {
                         onAdd={(name, score, leads) => addRankingMember('leader', name, score, leads)} 
                         onDelete={(id) => deleteRankingMember('leader', id)} 
                         onUpdateScore={(id, score, leads) => updateRankingScore('leader', id, score, leads)}
-                        onUpdateMultipleScores={(updates) => updateMultipleRankingScores('leader', updates)}
                         isActive={config.leaderRankingActive || false}
                         onToggleActive={(val) => updateAttendanceConfig(undefined, undefined, val, undefined)}
                       />
@@ -8607,7 +7190,6 @@ export default function App() {
                         onAdd={(name, score, leads) => addRankingMember('trainer', name, score, leads)} 
                         onDelete={(id) => deleteRankingMember('trainer', id)} 
                         onUpdateScore={(id, score, leads) => updateRankingScore('trainer', id, score, leads)}
-                        onUpdateMultipleScores={(updates) => updateMultipleRankingScores('trainer', updates)}
                         isActive={config.trainerRankingActive || false}
                         onToggleActive={(val) => updateAttendanceConfig(undefined, undefined, undefined, val)}
                       />
@@ -8645,8 +7227,6 @@ export default function App() {
                        onUpdateBalance={adminUpdateBalance}
                        onWaiveFine={adminWaiveFine}
                        onRemoveDayFine={adminRemoveDayFine}
-                       onResetUserFine={adminResetUserFine}
-                       onSetExactFine={adminSetExactFine}
                        onRecalculateFine={adminRecalculateFine}
                        computeUserSubmissionStats={computeUserSubmissionStats}
                      />
@@ -8934,31 +7514,6 @@ export default function App() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {showLoginStatsPopup && (
-          <LoginStatsModal
-            isOpen={showLoginStatsPopup}
-            onClose={() => setShowLoginStatsPopup(false)}
-            currentUser={currentAuthUser}
-            myMember={myMember}
-            members={members}
-            results={results}
-            leaderRanking={leaderRanking}
-            trainerRanking={trainerRanking}
-            stlMembers={stlMembers}
-          />
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {showQuickLinksModal && (
-          <QuickLinksModal 
-            links={quickLinks}
-            onClose={() => setShowQuickLinksModal(false)}
-          />
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
         {showStlLoginModal && (
           <StlLoginModal 
             onClose={() => setShowStlLoginModal(false)}
@@ -8978,7 +7533,11 @@ export default function App() {
           <AdminLoginModal 
             onClose={() => setShowAdminLoginModal(false)}
             onSuccess={async () => {
-              // Admin verified
+              try {
+                await signInAnonymously(auth);
+              } catch (authErr) {
+                console.warn("Failed to sign in anonymously:", authErr);
+              }
               setShowAdminLoginModal(false);
               setIsAdmin(true);
               localStorage.setItem('isAdmin', 'true');
@@ -9041,12 +7600,6 @@ export default function App() {
           />
         )}
       </AnimatePresence>
-
-      {/* Animated Appreciation Popup for Result Submission */}
-      <ResultAppreciationModal 
-        data={appreciationData} 
-        onClose={() => setAppreciationData(null)} 
-      />
     </div>
   );
 }
@@ -9957,174 +8510,6 @@ function PickingScheduleManager({ items, onAdd, onDelete, onToggle }: {
   );
 }
 
-function RankingDownloadPanel({ leaderRanking, trainerRanking }: { leaderRanking: RankingMember[], trainerRanking: RankingMember[] }) {
-  const captureRef = useRef<HTMLDivElement>(null);
-  const [downloading, setDownloading] = useState(false);
-
-  const handleDownload = async () => {
-    if (!captureRef.current) return;
-    setDownloading(true);
-    try {
-      const dataUrl = await htmlToImage.toPng(captureRef.current, {
-        pixelRatio: 2,
-        backgroundColor: '#d8e2ee',
-      });
-      const link = document.createElement('a');
-      link.download = `Ranking_${new Date().toISOString().slice(0, 10)}.png`;
-      link.href = dataUrl;
-      link.click();
-    } catch (error) {
-      console.error("Error capturing ranking:", error);
-      alert("Failed to generate image. Please try again.");
-    } finally {
-      setDownloading(false);
-    }
-  };
-
-  const currentDate = new Date();
-  const formattedDate = currentDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-  const formattedTime = currentDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-
-  return (
-    <div className="flex flex-col gap-4">
-      <p className="text-sm text-slate-400">টিম লিডার এবং ট্রেনারদের বর্তমান র্যাংকিং এর একটি প্রিমিয়াম (Neumorphic) ছবি ডাউনলোড করুন।</p>
-      <button 
-        onClick={handleDownload}
-        disabled={downloading}
-        className="neu-btn-primary flex items-center justify-center gap-2 font-bold py-3 px-4 rounded-xl shadow-lg transition-all disabled:opacity-50"
-      >
-        <Download size={20} />
-        {downloading ? "Generating Image..." : "Download Professional Ranking Image"}
-      </button>
-
-      <div className="absolute left-[-9999px] top-[-9999px] opacity-0 pointer-events-none">
-        <div ref={captureRef} className="bg-bg w-[1080px] p-10 flex flex-col gap-6 relative overflow-hidden" style={{ backgroundColor: '#d8e2ee' }}>
-           
-           {/* Decorative Background Elements */}
-           <div className="absolute top-[-100px] left-[-100px] w-[400px] h-[400px] rounded-full bg-blue-600/5 blur-[80px]"></div>
-           <div className="absolute bottom-[-100px] right-[-100px] w-[400px] h-[400px] rounded-full bg-emerald-600/5 blur-[80px]"></div>
-
-           {/* Header / Brand */}
-           <div className="w-full flex justify-between items-center border-b-2 border-border/50 pb-6 relative z-10 flex-shrink-0">
-             <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-2xl neu-raised flex items-center justify-center bg-gradient-to-br from-blue-600 to-blue-800 text-white font-black text-2xl shadow-[0_8px_16px_rgba(37,99,235,0.2)]">
-                  UN
-                </div>
-                <div>
-                  <h1 className="text-3xl font-black text-slate-800 tracking-tight">Unity <span className="text-blue-accent">Earning</span></h1>
-                  <p className="text-slate-500 font-bold tracking-[0.2em] uppercase text-xs mt-0.5">E-Learning Platform</p>
-                </div>
-             </div>
-             <div className="text-right neu-inset px-5 py-2.5 rounded-xl">
-               <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.3em] mb-0.5">Official Document</p>
-               <p className="text-slate-800 font-black text-base uppercase tracking-wider">Performance Ranking</p>
-             </div>
-           </div>
-           
-           {/* Title Section */}
-           <div className="text-center my-2 w-full relative z-10 flex-shrink-0">
-             <h2 className="text-3xl font-black text-slate-800 mb-2 drop-shadow-sm">Team Leader & Trainer Ranking</h2>
-             <div className="inline-flex items-center justify-center gap-2.5 neu-inset px-5 py-2 rounded-full border border-white/60">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></span>
-                <span className="text-emerald-700 font-black tracking-[0.2em] uppercase text-xs">Live Convert Analytics</span>
-             </div>
-           </div>
-           
-           {/* Rankings Layout - Extremely compact slim rows to fit all leaders and trainers */}
-           <div className="grid grid-cols-2 gap-6 w-full relative z-10">
-             
-             {/* Team Leaders */}
-             <div className="flex flex-col gap-1">
-                <div className="flex items-center justify-center gap-2 mb-2 flex-shrink-0">
-                  <Crown size={20} className="text-blue-accent drop-shadow-sm" />
-                  <h3 className="text-lg font-black text-slate-800 uppercase tracking-widest">Team Leaders</h3>
-                </div>
-                <div className="flex flex-col gap-1">
-                  {leaderRanking.map((leader, index) => {
-                    const isTop3 = index < 3;
-                    const medalColors = ['text-yellow-600', 'text-slate-500', 'text-amber-800'];
-                    return (
-                      <div key={leader.id} className={`flex items-center justify-between px-3 py-1.5 ${isTop3 ? 'neu-raised relative overflow-hidden bg-white/50' : 'neu-inset border border-white/60 bg-white/20'} rounded-lg`}>
-                        {isTop3 && <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-accent shadow-[0_0_8px_rgba(37,99,235,0.5)]"></div>}
-                        <div className="flex items-center gap-2.5 z-10 pl-1">
-                          <div className={`w-6 h-6 rounded-full flex items-center justify-center font-black text-xs ${isTop3 ? 'neu-inset ' + medalColors[index] : 'neu-inset text-slate-700'}`}>
-                            #{index + 1}
-                          </div>
-                          <span className={`font-extrabold text-sm truncate max-w-[220px] ${isTop3 ? 'text-slate-900 drop-shadow-sm' : 'text-slate-800'}`}>{leader.name}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 z-10">
-                          <div className="text-right">
-                             <p className={`font-black text-sm ${isTop3 ? 'text-blue-700 drop-shadow-sm' : 'text-slate-800'}`}>{leader.score}</p>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-             </div>
-
-             {/* Team Trainers */}
-             <div className="flex flex-col gap-1">
-                <div className="flex items-center justify-center gap-2 mb-2 flex-shrink-0">
-                  <Target size={20} className="text-emerald-600 drop-shadow-sm" />
-                  <h3 className="text-lg font-black text-slate-800 uppercase tracking-widest">Team Trainers</h3>
-                </div>
-                <div className="flex flex-col gap-1">
-                  {trainerRanking.map((trainer, index) => {
-                    const isTop3 = index < 3;
-                    const medalColors = ['text-yellow-600', 'text-slate-500', 'text-amber-800'];
-                    return (
-                      <div key={trainer.id} className={`flex items-center justify-between px-3 py-1.5 ${isTop3 ? 'neu-raised relative overflow-hidden bg-white/50' : 'neu-inset border border-white/60 bg-white/20'} rounded-lg`}>
-                        {isTop3 && <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>}
-                        <div className="flex items-center gap-2.5 z-10 pl-1">
-                          <div className={`w-6 h-6 rounded-full flex items-center justify-center font-black text-xs ${isTop3 ? 'neu-inset ' + medalColors[index] : 'neu-inset text-slate-700'}`}>
-                            #{index + 1}
-                          </div>
-                          <span className={`font-extrabold text-sm truncate max-w-[220px] ${isTop3 ? 'text-slate-900 drop-shadow-sm' : 'text-slate-800'}`}>{trainer.name}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 z-10">
-                          <div className="text-right">
-                             <p className={`font-black text-sm ${isTop3 ? 'text-emerald-700 drop-shadow-sm' : 'text-slate-800'}`}>{trainer.score}</p>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-             </div>
-           </div>
-
-           {/* Professional Footer */}
-           <div className="mt-4 w-full pt-4 border-t-2 border-border/50 flex justify-between items-end relative z-10 flex-shrink-0">
-             <div className="flex flex-col gap-1">
-               <p className="text-slate-800 font-bold flex items-center gap-1.5 text-sm">
-                 <CheckCheck size={16} className="text-emerald-600" />
-                 Verified System Report
-               </p>
-               <p className="text-slate-500 text-xs font-medium">Generated on: <span className="font-bold text-slate-700">{formattedDate}</span> at <span className="font-bold text-slate-700">{formattedTime}</span></p>
-             </div>
-             
-             <div className="flex flex-col items-center gap-1.5">
-               <div className="w-48 h-10 flex items-center justify-center relative">
-                  {/* Fake Signature */}
-                  <span className="font-[cursive] text-3xl text-slate-800/70 -rotate-3 tracking-widest drop-shadow-sm">Jihadul Islam</span>
-               </div>
-               <div className="w-full h-[2px] bg-slate-300 mb-0.5"></div>
-               <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.2em]">Authorized Signature</p>
-             </div>
-
-             <div className="text-right">
-               <p className="text-slate-800 font-bold text-base mb-0.5">www.unityearning.com</p>
-               <p className="text-slate-500 text-xs font-medium">support@unityearning.com</p>
-             </div>
-           </div>
-
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function AdminSection({ title, onAdd, members, onDelete, onUpdateTarget }: {
   title: string,
   onAdd: (name: string, target?: number) => void,
@@ -10945,17 +9330,17 @@ function AdminAccordion({ title, icon, colorClass, defaultOpen = false, children
   const [isOpen, setIsOpen] = useState(defaultOpen);
   
   return (
-    <div className="bg-white/80 border border-slate-200 rounded-2xl overflow-hidden mb-4 transition-all shadow-sm">
+    <div className="bg-bg/40 border border-white/5 rounded-2xl overflow-hidden mb-4 transition-all">
       <button 
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full p-4 sm:p-5 flex items-center justify-between hover:bg-slate-50 transition-colors"
+        className="w-full p-4 flex items-center justify-between hover:bg-surface/50 transition-colors"
       >
-        <div className={`flex items-center gap-3.5 ${colorClass}`}>
-          <div className="p-2 rounded-xl bg-slate-100 border border-slate-200">{icon}</div>
-          <span className="text-sm sm:text-base font-extrabold text-slate-900 tracking-wide">{title}</span>
+        <div className={`flex items-center gap-3 ${colorClass}`}>
+          {icon}
+          <span className="text-[12px] font-black uppercase tracking-[2px]">{title}</span>
         </div>
-        <ChevronRight size={18} className={`text-slate-500 transition-transform ${isOpen ? 'rotate-90 text-slate-900' : ''}`} />
+        <ChevronRight size={16} className={`text-muted-main transition-transform ${isOpen ? 'rotate-90 text-white' : ''}`} />
       </button>
       
       <AnimatePresence>
@@ -10964,7 +9349,7 @@ function AdminAccordion({ title, icon, colorClass, defaultOpen = false, children
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            className="border-t border-slate-200 bg-white/50 overflow-hidden"
+            className="border-t border-white/5 bg-surface/20 overflow-hidden"
           >
             <div className="p-4 sm:p-6 space-y-6">
               {children}
@@ -11349,107 +9734,6 @@ function SimpleManagementSection({
   );
 }
 
-function RankingMemberRow({
-  m,
-  idx,
-  scoreVal,
-  leadsVal,
-  onScoreChange,
-  onLeadsChange,
-  onSave,
-  onReset,
-  onDelete,
-  hasChanges
-}: {
-  m: RankingMember,
-  idx: number,
-  scoreVal: string,
-  leadsVal: string,
-  onScoreChange: (val: string) => void,
-  onLeadsChange: (val: string) => void,
-  onSave: () => void | Promise<void>,
-  onReset: () => void,
-  onDelete: (id: string) => void,
-  hasChanges: boolean,
-  key?: any
-}) {
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.currentTarget.blur();
-      onSave();
-    }
-  };
-
-  if (!m.name || m.name.trim() === '' || m.name === 'undefined' || m.name === 'null') return null;
-
-  return (
-    <div className={`flex items-center justify-between bg-surface/50 border rounded-xl p-3 px-4 text-xs group transition-all animate-fade-in ${hasChanges ? 'border-amber-500 bg-amber-500/5 shadow-md shadow-amber-500/5' : 'border-border hover:border-gold/30'}`}>
-      <div className="flex items-center gap-3 flex-1">
-        <span className={`text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-lg ${idx === 0 ? 'bg-gold text-bg' : 'bg-white/10 text-white/40 font-mono'}`}>{idx + 1}</span>
-        <div className="flex flex-col">
-          <span className="text-white font-bold">{m.name}</span>
-          {hasChanges && (
-            <span className="text-[9px] text-amber-400 font-medium">অসংরক্ষিত পরিবর্তন</span>
-          )}
-        </div>
-      </div>
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2">
-          <div className="flex flex-col items-center">
-            <span className="text-[6px] uppercase opacity-40 font-black">Conv</span>
-            <input 
-              type="number"
-              value={scoreVal}
-              onChange={(e) => onScoreChange(e.target.value)}
-              onKeyDown={handleKeyDown}
-              className="w-10 bg-transparent text-center text-gold font-bold outline-none border-b border-white/5 focus:border-gold"
-            />
-          </div>
-          <div className="flex flex-col items-center">
-            <span className="text-[6px] uppercase opacity-40 font-black">Lead</span>
-            <input 
-              type="number"
-              value={leadsVal}
-              onChange={(e) => onLeadsChange(e.target.value)}
-              onKeyDown={handleKeyDown}
-              className="w-10 bg-transparent text-center text-blue-accent font-bold outline-none border-b border-white/5 focus:border-blue-accent"
-            />
-          </div>
-        </div>
-        
-        {hasChanges ? (
-          <div className="flex items-center gap-1">
-            <button 
-              type="button"
-              onClick={onSave}
-              title="সেভ করুন"
-              className="p-1 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-all"
-            >
-              <Check size={10} />
-            </button>
-            <button 
-              type="button"
-              onClick={onReset}
-              title="পুনরায় সেট করুন"
-              className="p-1 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-all"
-            >
-              <X size={10} />
-            </button>
-          </div>
-        ) : (
-          <button 
-            type="button"
-            onClick={() => onDelete(m.id)}
-            className="p-1 text-muted-main hover:text-red-accent transition-all opacity-0 group-hover:opacity-100"
-          >
-            <Trash2 size={12} />
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function RankingSection({ 
   title, 
   icon: Icon, 
@@ -11458,7 +9742,6 @@ function RankingSection({
   onAdd, 
   onDelete, 
   onUpdateScore,
-  onUpdateMultipleScores,
   isActive, 
   onToggleActive
 }: {
@@ -11469,88 +9752,12 @@ function RankingSection({
   onAdd: (name: string, score: number, leads: number) => void,
   onDelete: (id: string) => void,
   onUpdateScore: (id: string, score: number, leads: number) => void,
-  onUpdateMultipleScores: (updates: Record<string, { score: number, leads: number }>) => Promise<void>,
   isActive: boolean,
   onToggleActive: (val: boolean) => void
 }) {
   const [newName, setNewName] = useState('');
   const [newScore, setNewScore] = useState('');
   const [newLeads, setNewLeads] = useState('');
-
-  const [localEdits, setLocalEdits] = useState<Record<string, { score: number, leads: number }>>({});
-  const [isSavingAll, setIsSavingAll] = useState(false);
-
-  useEffect(() => {
-    setLocalEdits(prev => {
-      const next = { ...prev };
-      let changed = false;
-      Object.entries(next).forEach(([id, val]) => {
-        const entry = val as { score: number, leads: number };
-        const m = members.find(member => member.id === id);
-        if (m && (m.score || 0) === entry.score && (m.leads || 0) === entry.leads) {
-          delete next[id];
-          changed = true;
-        }
-      });
-      return changed ? next : prev;
-    });
-  }, [members]);
-
-  const handleRowScoreChange = (id: string, rawVal: string) => {
-    const score = Number(rawVal) || 0;
-    const currentLeads = localEdits[id]?.leads ?? (members.find(m => m.id === id)?.leads || 0);
-    setLocalEdits(prev => ({
-      ...prev,
-      [id]: { score, leads: currentLeads }
-    }));
-  };
-
-  const handleRowLeadsChange = (id: string, rawVal: string) => {
-    const leads = Number(rawVal) || 0;
-    const currentScore = localEdits[id]?.score ?? (members.find(m => m.id === id)?.score || 0);
-    setLocalEdits(prev => ({
-      ...prev,
-      [id]: { score: currentScore, leads }
-    }));
-  };
-
-  const handleSaveAll = async () => {
-    if (Object.keys(localEdits).length === 0) return;
-    setIsSavingAll(true);
-    try {
-      await onUpdateMultipleScores(localEdits);
-      setLocalEdits({});
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsSavingAll(false);
-    }
-  };
-
-  const handleSaveIndividual = async (id: string) => {
-    const edit = localEdits[id];
-    if (!edit) return;
-    try {
-      await onUpdateScore(id, edit.score, edit.leads);
-      setLocalEdits(prev => {
-        const next = { ...prev };
-        delete next[id];
-        return next;
-      });
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const handleResetRow = (id: string) => {
-    setLocalEdits(prev => {
-      const next = { ...prev };
-      delete next[id];
-      return next;
-    });
-  };
-
-  const hasUnsavedChanges = Object.keys(localEdits).length > 0;
 
   return (
     <div className="mb-8 p-5 bg-bg border border-border rounded-2xl relative group overflow-hidden">
@@ -11612,44 +9819,47 @@ function RankingSection({
         {members.length === 0 ? (
           <div className="text-center text-muted-main2 text-xs py-4 italic">কোনো ডাটা নেই</div>
         ) : (
-          members.map((m, idx) => {
-            const hasChanges = m.id in localEdits;
-            const scoreVal = hasChanges ? String(localEdits[m.id].score) : String(m.score || 0);
-            const leadsVal = hasChanges ? String(localEdits[m.id].leads) : String(m.leads || 0);
-
-            return (
-              <RankingMemberRow 
-                key={m.id}
-                m={m}
-                idx={idx}
-                scoreVal={scoreVal}
-                leadsVal={leadsVal}
-                onScoreChange={(val) => handleRowScoreChange(m.id, val)}
-                onLeadsChange={(val) => handleRowLeadsChange(m.id, val)}
-                onSave={() => handleSaveIndividual(m.id)}
-                onReset={() => handleResetRow(m.id)}
-                onDelete={onDelete}
-                hasChanges={hasChanges}
-              />
-            );
-          })
+          members.map((m, idx) => (
+            <div 
+              key={m.id} 
+              className="flex items-center justify-between bg-surface/50 border border-border rounded-xl p-3 px-4 text-xs group hover:border-gold/30 transition-all"
+            >
+              <div className="flex items-center gap-3 flex-1">
+                <span className={`text-[10px] font-black w-5 h-5 flex items-center justify-center rounded-lg ${idx === 0 ? 'bg-gold text-bg' : 'bg-white/10 text-white/40 font-mono'}`}>{idx + 1}</span>
+                <span className="text-white font-bold">{m.name}</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex flex-col items-center">
+                    <span className="text-[6px] uppercase opacity-40 font-black">Conv</span>
+                    <input 
+                      type="number"
+                      defaultValue={m.score}
+                      onBlur={(e) => onUpdateScore(m.id, Number(e.target.value) - (m.score || 0), 0)}
+                      className="w-10 bg-transparent text-center text-gold font-bold outline-none border-b border-white/5 focus:border-gold"
+                    />
+                  </div>
+                  <div className="flex flex-col items-center">
+                    <span className="text-[6px] uppercase opacity-40 font-black">Lead</span>
+                    <input 
+                      type="number"
+                      defaultValue={m.leads || 0}
+                      onBlur={(e) => onUpdateScore(m.id, 0, Number(e.target.value) - (m.leads || 0))}
+                      className="w-10 bg-transparent text-center text-blue-accent font-bold outline-none border-b border-white/5 focus:border-blue-accent"
+                    />
+                  </div>
+                </div>
+                <button 
+                  onClick={() => onDelete(m.id)}
+                  className="p-1 text-muted-main hover:text-red-accent transition-all opacity-0 group-hover:opacity-100"
+                >
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            </div>
+          ))
         )}
       </div>
-
-      {hasUnsavedChanges && (
-        <div className="mt-4 p-2 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-center justify-between gap-3 animate-fade-in">
-          <div className="text-[10px] text-amber-400 pl-1">
-            ⚠️ <strong>{Object.keys(localEdits).length}টি</strong> পরিবর্তন সেভ করা হয়নি।
-          </div>
-          <button 
-            onClick={handleSaveAll}
-            disabled={isSavingAll}
-            className="bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 text-[11px] transition-all shadow-md active:scale-95 disabled:opacity-50"
-          >
-            {isSavingAll ? 'সেভ হচ্ছে...' : 'সব পরিবর্তন সেভ করুন'}
-          </button>
-        </div>
-      )}
     </div>
   );
 }
@@ -12051,31 +10261,17 @@ function AdminLoginModal({ onClose, onSuccess, initialAdminPass }: { onClose: ()
     e.preventDefault();
     setLoading(true);
     try {
-      const cleanPass = password.trim();
-      const currentAdminPass = localStorage.getItem('cachedAdminPassword') || initialAdminPass;
-
-      if (
-        cleanPass === '212650' ||
-        cleanPass === initialAdminPass ||
-        comparePasswords(cleanPass, currentAdminPass) ||
-        comparePasswords(cleanPass, initialAdminPass)
-      ) {
-        onSuccess();
-        return;
-      }
-
-      let remotePass: string | null = null;
+      let currentAdminPass = initialAdminPass;
       try {
         const configDoc = await getDoc(doc(db, 'systemConfig', 'adminAuth'));
-        if (configDoc && configDoc.exists() && configDoc.data()?.password) {
-          remotePass = String(configDoc.data().password).trim();
-          localStorage.setItem('cachedAdminPassword', remotePass);
+        if (configDoc.exists() && configDoc.data().password) {
+          currentAdminPass = configDoc.data().password;
         }
       } catch (e) {
         console.warn("Using fallback admin password");
       }
 
-      if (remotePass && comparePasswords(cleanPass, remotePass)) {
+      if (password.trim() === currentAdminPass.trim()) {
         onSuccess();
       } else {
         setError(true);
@@ -13003,13 +11199,7 @@ function SiteLock({ correctPassword, onUnlock, onAdminLogin }: { correctPassword
                       <Shield size={14} className="text-blue-600" /> Admin Access
                     </button>
                     <button 
-                      onClick={() => {
-                        localStorage.removeItem('isAdmin');
-                        sessionStorage.removeItem('isAdmin');
-                        localStorage.removeItem('unity_user');
-                        sessionStorage.removeItem('unity_session_user');
-                        window.location.reload();
-                      }}
+                      onClick={() => { auth.signOut(); window.location.reload(); }}
                       className="w-full bg-red-50 hover:bg-red-100 text-red-600 font-bold py-2.5 rounded-xl transition-all text-xs uppercase tracking-wider flex items-center justify-center gap-2 border border-red-200"
                     >
                       <LogOut size={14} /> Logout
