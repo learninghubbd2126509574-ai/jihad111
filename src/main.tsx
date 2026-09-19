@@ -3,16 +3,6 @@ import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/' })
-    .then((reg) => {
-      console.log('FCM Service Worker registered successfully with scope:', reg.scope);
-    })
-    .catch((err) => {
-      console.warn('FCM Service Worker registration failed:', err);
-    });
-}
-
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />

@@ -17,64 +17,12 @@ interface ActiveListener {
 }
 const activeListeners = new Set<ActiveListener>();
 
-// Async initialize memory store from public backup file if available
+// Memory store initialization
 async function initMemoryStore() {
-  if (isBackupLoaded || isBackupLoading) return;
-  isBackupLoading = true;
-  
-  try {
-    if (typeof window !== 'undefined' && typeof fetch === 'function') {
-      const response = await fetch('/firestore_backup.json');
-      if (response.ok) {
-        const backup = await response.json() as Record<string, any[]>;
-        for (const [col, docs] of Object.entries(backup)) {
-          // Never overwrite dynamic live system config with static backup data
-          if (col === 'config') continue;
-          if (!memoryStore[col]) {
-            memoryStore[col] = new Map<string, any>();
-          }
-          const map = memoryStore[col];
-          if (Array.isArray(docs)) {
-            for (const d of docs) {
-              if (d && d.id && !map.has(String(d.id))) {
-                map.set(String(d.id), { ...d });
-              }
-            }
-          }
-        }
-      }
-    }
-  } catch (err) {
-    console.warn('Could not load backup data, using default empty state.', err);
-  } finally {
-    isBackupLoaded = true;
-    isBackupLoading = false;
-
-    // Notify all active listeners of the newly loaded backup data (skip config)
-    for (const listener of activeListeners) {
-      try {
-        const t = listener.target;
-        if (t.type === 'doc') {
-          const colName = t.collection;
-          if (colName === 'config') continue;
-          const docId = t.id;
-          const map = memoryStore[colName] || (memoryStore[colName] = new Map());
-          const localDoc = map.get(docId);
-          listener.onNext(createDocSnapshot(colName, docId, localDoc));
-        } else {
-          const colName = t.type === 'query' ? t.collection : t.name;
-          const constraints = t.type === 'query' ? t.constraints : [];
-          const map = memoryStore[colName] || (memoryStore[colName] = new Map());
-          listener.onNext(createQuerySnapshot(colName, map, constraints));
-        }
-      } catch (e) {
-        console.warn('Error notifying listener on backup load:', e);
-      }
-    }
-  }
+  isBackupLoaded = true;
+  isBackupLoading = false;
 }
 
-// Trigger load in background
 if (typeof window !== 'undefined') {
   initMemoryStore();
 }

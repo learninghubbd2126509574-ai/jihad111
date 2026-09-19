@@ -29,28 +29,9 @@ import {
   runTransaction,
   clearCollection,
   arrayUnion,
-  arrayRemove
+  arrayRemove,
+  db
 } from './lib/supabaseDb';
-import { 
-  db, 
-  auth, 
-  storage, 
-  messaging,
-  signInWithPopup, 
-  signInWithRedirect,
-  getRedirectResult,
-  GoogleAuthProvider, 
-  onAuthStateChanged, 
-  signOut,
-  signInAnonymously,
-  ref, 
-  uploadBytes, 
-  getDownloadURL, 
-  uploadBytesResumable,
-  getToken, 
-  onMessage,
-  type FirebaseUser
-} from './firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   User,
@@ -176,12 +157,11 @@ import StlAssignmentModal from './components/StlAssignmentModal';
 import StlAdminManager from './components/StlAdminManager';
 import UserQuickSubmitCard from './components/UserQuickSubmitCard';
 import { PhoneKeypad, PasswordKeyboard } from './components/VirtualAuthKeypad';
-import { NotificationManager, sendNotification, triggerNativeNotification } from './components/NotificationManager';
+// Push notifications removed
 import ResultAppreciationModal, { AppreciationData } from './components/ResultAppreciationModal';
 import PerformancePage from './components/PerformancePage';
 import CommunityPage from './components/CommunityPage';
 import QuickLinksModal from './components/QuickLinksModal';
-import { PushNotificationSettings } from './components/PushNotificationSettings';
 import LoginStatsModal from './components/LoginStatsModal';
 
 // --- Types ---
@@ -469,16 +449,8 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
     return;
   }
 
-  const errInfo: FirestoreErrorInfo = {
-    error: message,
-    authInfo: {
-      userId: auth?.currentUser?.uid,
-      email: auth?.currentUser?.email,
-      emailVerified: auth?.currentUser?.emailVerified,
-      isAnonymous: auth?.currentUser?.isAnonymous,
-      tenantId: auth?.currentUser?.tenantId,
-      providerInfo: []
-    },
+  const errInfo: any = {
+    authInfo: null,
     operationType,
     path
   };
@@ -2983,7 +2955,7 @@ const UserCalendarModal = ({
 
 
 export default function App() {
-  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [user, setUser] = useState<any>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [results, setResults] = useState<Record<string, Result>>({});
 
@@ -3013,7 +2985,7 @@ export default function App() {
     }
   };
   const [timerDurationSelect, setTimerDurationSelect] = useState<number>(1800); // 30 minutes default
-  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [isAuthReady, setIsAuthReady] = useState(true);
   const [isConfigReady, setIsConfigReady] = useState(false);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [showPickingModal, setShowPickingModal] = useState(false);
@@ -3175,89 +3147,7 @@ export default function App() {
   ];
 
   useEffect(() => {
-    // Handle Google Redirect Result
-    getRedirectResult(auth).then((result) => {
-      if (result?.user) {
-        if (result.user.email === devEmail || result.user.email === adminEmail) {
-          setIsAdmin(true);
-          localStorage.setItem('isAdmin', 'true');
-        } else {
-          // No notification
-        }
-      }
-    }).catch((err) => {
-      console.error('Redirect error:', err);
-      if (err.code !== 'auth/network-request-failed') {
-        showMsg(`Login failed: ${err.message}`, 'error');
-      }
-    });
-
-    const unsubscribe = onAuthStateChanged(auth, async (u) => {
-      setUser(u);
-      
-      // Handle Push Notification Registration
-      if (u) {
-        try {
-          const registeredUserStr = sessionStorage.getItem('unity_session_user') || localStorage.getItem('unity_user');
-          const isAdminLoggedIn = sessionStorage.getItem('isAdmin') === 'true' || localStorage.getItem('isAdmin') === 'true';
-          
-          let whatsapp = '';
-          if (registeredUserStr) {
-            const registeredUser = JSON.parse(registeredUserStr);
-            whatsapp = registeredUser.whatsapp;
-          } else if (isAdminLoggedIn) {
-            whatsapp = 'admin';
-          }
-
-          if (whatsapp && messaging) {
-            // Wait for service worker to be ready
-            const registration = await navigator.serviceWorker.ready;
-            const token = await getToken(messaging, {
-              vapidKey: (import.meta as any).env.VITE_FCM_VAPID_KEY,
-              serviceWorkerRegistration: registration
-            });
-            if (token) {
-              console.log('FCM Token received:', token);
-              await fetch('/api/save-token', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  whatsapp,
-                  token,
-                  platform: 'web'
-                })
-              });
-            }
-          }
-        } catch (fcmErr) {
-          console.warn('FCM Token registration skipped or failed:', fcmErr);
-        }
-      }
-
-      // Handle Foreground FCM Messages
-      if (messaging) {
-        onMessage(messaging, (payload) => {
-          console.log('Foreground message received:', payload);
-          if (payload.notification) {
-            triggerNativeNotification(payload.notification.title || '', payload.notification.body || '');
-          }
-        });
-      }
-
-      // Auto-restore anonymous auth for both admins and regular users who are logged in
-      const isUserLoggedIn = sessionStorage.getItem('unity_session_user') !== null;
-      const isAdminLoggedIn = sessionStorage.getItem('isAdmin') === 'true' || localStorage.getItem('isAdmin') === 'true';
-
-      if ((isAdminLoggedIn || isUserLoggedIn) && !u) {
-        try {
-          await signInAnonymously(auth);
-        } catch (err) {
-          console.warn("Failed to automatically restore anonymous auth:", err);
-        }
-      }
-      setIsAuthReady(true);
-    });
-    return () => unsubscribe();
+    setIsAuthReady(true);
   }, []);
 
   // Real-time Listeners
@@ -3574,11 +3464,11 @@ export default function App() {
     let unsubApproved = () => {};
     let unsubAuditLogs = () => {};
 
-    const isActuallyAdmin = (user && (user.email === adminEmail || user.email === devEmail || user.isAnonymous)) || isAdmin;
+    const isActuallyAdmin = isAdmin;
 
-    if (isActuallyAdmin || (isAuthReady && user)) {
+    if (isActuallyAdmin || authenticatedUser) {
       
-      // If signed in via Firebase Auth with admin email
+      // Admin user listeners
       if (isActuallyAdmin) {
         // Admin Only Listeners
         unsubAuditLogs = onSnapshot(query(collection(db, 'auditLogs'), orderBy('createdAt', 'desc'), limit(100)), (snapshot) => {
@@ -3748,7 +3638,7 @@ export default function App() {
       unsubPending();
       unsubApproved();
     };
-  }, [isAuthReady, isAdmin, user]);
+  }, [isAuthReady, isAdmin, authenticatedUser]);
 
   // Timer Logic
   useEffect(() => {
@@ -3759,18 +3649,7 @@ export default function App() {
         timerEndedTriggeredRef.current = false;
 
         // Trigger start notification on EVERY user's device when timer starts
-        if (config.timerNotificationsActive !== false) {
-          const startedAt = config.timerStartedAt || (config.timerEndTime - 1800000);
-          const timeSinceStart = Date.now() - startedAt;
-          // If started recently (within 90 seconds)
-          if (timeSinceStart < 90000) {
-            const durationMin = Math.max(1, Math.round(((config.timerEndTime - startedAt) / 1000) / 60));
-            const notifTitle = 'Unity Earning ⏳ টাইমার শুরু হয়েছে!';
-            const notifBody = `${durationMin} মিনিটের জন্য টাইমার চালু হয়েছে! সবাই দ্রুত রেজাল্ট সাবমিট করুন। 🚀✨`;
-            triggerNativeNotification(notifTitle, notifBody);
-            new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3').play().catch(e => console.log('Audio error:', e));
-          }
-        }
+        // Timer started
       }
 
       const updateRemaining = () => {
@@ -3780,12 +3659,8 @@ export default function App() {
         setTimeLeft(remaining);
 
         // 5 Minutes Left Notification (Trigger once per timer session on all devices)
-        if (config.timerNotificationsActive !== false && remaining <= 300 && remaining > 0 && !fiveMinWarningTriggeredRef.current) {
+        if (remaining <= 300 && remaining > 0 && !fiveMinWarningTriggeredRef.current) {
           fiveMinWarningTriggeredRef.current = true;
-          const warningTitle = 'Unity Earning ⏰ টাইমার শেষ হতে ৫ মিনিট বাকি!';
-          const warningBody = 'আর মাত্র ৫ মিনিট বাকি আছে! সবাই দ্রুত আজকের কনভার্ট ও রেজাল্ট সাবমিট করে ফেলেন। 🏃💨';
-          triggerNativeNotification(warningTitle, warningBody);
-          new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3').play().catch(e => console.log('Audio error:', e));
         }
 
         // When timer reaches 0, auto turn it off & send performance summary notification
@@ -3797,10 +3672,7 @@ export default function App() {
             // Only notify if it ended recently (within 60 seconds) to avoid reload spam
             const endedRecently = config.timerEndTime && (Date.now() - config.timerEndTime < 60000);
             
-            if (config.timerNotificationsActive !== false && endedRecently) {
-              const { title, body } = generateTimerPerformanceSummary();
-              triggerNativeNotification(title, body);
-            }
+            // Timer ended
             // Only update doc if still active to prevent multi-tab write loops
             if (isAdmin && config.timerActive) {
               updateDoc(doc(db, 'config', 'global'), {
@@ -3822,10 +3694,7 @@ export default function App() {
       // Trigger notification when timer is manually stopped by admin across all devices
       if (lastTimerActiveRef.current === true && !timerEndedTriggeredRef.current) {
         timerEndedTriggeredRef.current = true;
-        if (config.timerNotificationsActive !== false) {
-          const { title, body } = generateTimerPerformanceSummary();
-          triggerNativeNotification(title, body);
-        }
+        // Timer stopped
       }
     }
 
@@ -3921,12 +3790,6 @@ export default function App() {
         return;
       }
 
-      // Ensure Firebase Auth session for Storage/Firestore rules
-      // Non-blocking to prevent UI hang, Firestore will handle re-auth if needed
-      if (!auth.currentUser) {
-        signInAnonymously(auth).catch(err => console.warn("Background auth error:", err));
-      }
-
       setIsAdmin(true);
       localStorage.setItem('isAdmin', 'true');
       setSiteAuthenticated(true);
@@ -3939,7 +3802,7 @@ export default function App() {
 
   const logout = async () => {
     try {
-      await signOut(auth);
+      // Logged out from Supabase session
       setIsAdmin(false);
       localStorage.removeItem('isAdmin');
       sessionStorage.removeItem('isAdmin');
@@ -3995,14 +3858,7 @@ export default function App() {
 
       await setDoc(doc(db, 'pendingRegistrations', whatsapp), registrationData);
       
-      // Ensure Firebase Auth session
-      try {
-        if (!auth.currentUser) {
-          await signInAnonymously(auth);
-        }
-      } catch (authErr) {
-        console.warn("Auth error during registration:", authErr);
-      }
+      // User registration
 
       showMsg('Registration submitted! Wait for admin approval.', 'success');
       return true;
@@ -4123,11 +3979,7 @@ export default function App() {
         return false;
       }
 
-      // Ensure Firebase Auth session for Storage/Firestore rules
-      // Non-blocking to prevent UI hang
-      if (!auth.currentUser) {
-        signInAnonymously(auth).catch(err => console.warn("Auth error during user login:", err));
-      }
+      // Authenticated via Supabase
 
       setAuthenticatedUser(foundUser);
       setShowLoginStatsPopup(true);
@@ -4621,12 +4473,7 @@ export default function App() {
         timerDuration: duration
       });
       showMsg(`Timer started for ${Math.round(duration / 60)} minutes!`, 'success');
-      if (config.timerNotificationsActive !== false) {
-        const notifTitle = 'Unity Earning ⏳ টাইমার শুরু হয়েছে!';
-        const notifBody = `${Math.round(duration / 60)} মিনিটের জন্য টাইমার চালু হয়েছে! সবাই দ্রুত রেজাল্ট সাবমিট করুন। 🚀✨`;
-        sendNotification(notifTitle, notifBody, 'all', 'system');
-        triggerNativeNotification(notifTitle, notifBody);
-      }
+      // Timer started
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'config/global', showMsg);
     }
@@ -4641,11 +4488,8 @@ export default function App() {
         timerActive: false,
         timerEndTime: 0
       });
-      if (wasActive && !timerEndedTriggeredRef.current && config.timerNotificationsActive !== false) {
+      if (wasActive && !timerEndedTriggeredRef.current) {
         timerEndedTriggeredRef.current = true;
-        const { title, body } = generateTimerPerformanceSummary();
-        sendNotification(title, body, 'all', 'system');
-        triggerNativeNotification(title, body);
       }
       showMsg('Timer stopped', 'error');
     } catch (err) {
@@ -6862,7 +6706,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen pb-20">
-      <NotificationManager user={currentAuthUser || user} position={currentAuthUser?.position} />
+      
       
       <AnimatePresence>
         {toast && (
@@ -7935,14 +7779,7 @@ export default function App() {
                   </button>
                 )}
 
-                {/* Push Notification Controls for Guest / Admin in Profile */}
-                <div className="mt-6 w-full max-w-lg text-left">
-                  <PushNotificationSettings 
-                    theme="light" 
-                    customLogo={config.customLogo} 
-                    showMsg={showMsg} 
-                  />
-                </div>
+                
               </div>
             ) : (
               /* Authenticated Profile Content */
@@ -8069,14 +7906,7 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Push Notification Settings (পুশ নোটিফিকেশন অন/অফ) */}
-                <div className="p-6 sm:p-8 border-b border-[#cbd9e8]">
-                  <PushNotificationSettings 
-                    theme="light" 
-                    customLogo={config.customLogo} 
-                    showMsg={showMsg} 
-                  />
-                </div>
+                
 
                 {/* Profile Information Cards */}
                 <div className="p-6 sm:p-8 space-y-6">
@@ -8481,45 +8311,7 @@ export default function App() {
                    />
                 </AdminAccordion>
 
-                {/* Push Notifications & Alerts Control */}
-                <AdminAccordion title="Push Notifications & Alerts (পুশ নোটিফিকেশন)" icon={<Bell size={16} />} colorClass="text-indigo-400" defaultOpen={false}>
-                  <div className="space-y-4">
-                    <PushNotificationSettings 
-                      theme="dark" 
-                      customLogo={config.customLogo} 
-                      showMsg={showMsg} 
-                    />
-                    
-                    {/* Admin Global Timer Push Alerts Control */}
-                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div>
-                        <h4 className="text-sm font-bold text-white">গ্লোবাল টাইমার নোটিফিকেশন</h4>
-                        <p className="text-xs text-slate-400 mt-0.5">সব মেম্বারদের কাছে টাইমার সতর্কতা ও শেষ হওয়ার পুশ নোটিফিকেশন পাঠানো</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          const nextState = !(config.timerNotificationsActive !== false);
-                          try {
-                            await updateDoc(doc(db, 'config', 'global'), {
-                              timerNotificationsActive: nextState
-                            });
-                            showMsg(`গ্লোবাল টাইমার নোটিফিকেশন ${nextState ? 'চালু' : 'বন্ধ'} করা হয়েছে`, 'success');
-                          } catch (e) {
-                            showMsg('আপডেট ব্যর্থ হয়েছে', 'error');
-                          }
-                        }}
-                        className={`px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
-                          config.timerNotificationsActive !== false
-                            ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                            : 'bg-red-500/20 text-red-400 border border-red-500/30'
-                        }`}
-                      >
-                        {config.timerNotificationsActive !== false ? 'Active (চালু)' : 'Silenced (বন্ধ)'}
-                      </button>
-                    </div>
-                  </div>
-                </AdminAccordion>
+                
 
                 {/* 2. Operations Slot (Timer & Results) */}
                 <AdminAccordion title="Operations & Boards" icon={<Clock size={16} />} colorClass="text-blue-accent" defaultOpen={true}>
@@ -9182,11 +8974,7 @@ export default function App() {
           <AdminLoginModal 
             onClose={() => setShowAdminLoginModal(false)}
             onSuccess={async () => {
-              try {
-                await signInAnonymously(auth);
-              } catch (authErr) {
-                console.warn("Failed to sign in anonymously:", authErr);
-              }
+              // Admin verified
               setShowAdminLoginModal(false);
               setIsAdmin(true);
               localStorage.setItem('isAdmin', 'true');
@@ -13197,7 +12985,13 @@ function SiteLock({ correctPassword, onUnlock, onAdminLogin }: { correctPassword
                       <Shield size={14} className="text-blue-600" /> Admin Access
                     </button>
                     <button 
-                      onClick={() => { auth.signOut(); window.location.reload(); }}
+                      onClick={() => {
+                        localStorage.removeItem('isAdmin');
+                        sessionStorage.removeItem('isAdmin');
+                        localStorage.removeItem('unity_user');
+                        sessionStorage.removeItem('unity_session_user');
+                        window.location.reload();
+                      }}
                       className="w-full bg-red-50 hover:bg-red-100 text-red-600 font-bold py-2.5 rounded-xl transition-all text-xs uppercase tracking-wider flex items-center justify-center gap-2 border border-red-200"
                     >
                       <LogOut size={14} /> Logout

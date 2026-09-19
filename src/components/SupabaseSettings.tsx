@@ -189,7 +189,7 @@ export const SupabaseSettings: React.FC<SupabaseSettingsProps> = ({ showMsg }) =
             <p className="text-[11px] text-muted-main mt-0.5">
               {isConfigured 
                 ? 'Supabase Realtime দিয়ে রিয়েল-টাইমে কানেক্টেড আছে।' 
-                : 'সব Firebase ডাটার ব্যাকআপ সংরক্ষিত আছে এবং অ্যাপ চালু আছে।'}
+                : 'লোকাল ফলব্যাক মোডে অ্যাপ চালু আছে।'}
             </p>
           </div>
         </div>
@@ -304,9 +304,9 @@ export const SupabaseSettings: React.FC<SupabaseSettingsProps> = ({ showMsg }) =
       <div className="bg-gradient-to-r from-blue-950/40 to-indigo-950/40 border border-blue-500/30 rounded-2xl p-4 sm:p-5 space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <h5 className="font-bold text-sm text-white">One-Click Database Migration</h5>
+            <h5 className="font-bold text-sm text-white">Database Synchronization</h5>
             <p className="text-[11px] text-slate-300 mt-0.5">
-              Firebase-এর সম্পূর্ণ ব্যাকআপ থেকে Supabase ডাটাবেসে ডাটা ট্রান্সফার করুন।
+              Supabase ডাটাবেসে সকল টেবিল ও ডাটা সিঙ্ক ও রিফ্রেশ করুন।
             </p>
           </div>
           <button

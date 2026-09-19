@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { db } from '../firebase';
-import { collection, addDoc, onSnapshot, query, orderBy, doc, deleteDoc, updateDoc, arrayUnion, arrayRemove, where, getDocs } from '../lib/supabaseDb';
+import { db, collection, addDoc, onSnapshot, query, orderBy, doc, deleteDoc, updateDoc, arrayUnion, arrayRemove, where, getDocs } from '../lib/supabaseDb';
 import { Send, Image as ImageIcon, Heart, MessageCircle, Trash2, X, Lock, Unlock, ShieldAlert, Sparkles } from 'lucide-react';
 import CartoonAvatar from './CartoonAvatar';
 

@@ -1,6 +1,6 @@
 -- ==============================================================================
 -- Supabase Database Schema for Unity Earning
--- Complete migration from Firebase Firestore to Supabase PostgreSQL
+-- Pure Supabase PostgreSQL Schema
 -- ==============================================================================
 
 -- 1. members
