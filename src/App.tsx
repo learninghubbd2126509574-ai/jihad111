@@ -2769,14 +2769,7 @@ export default function App() {
 
   const [pendingUsers, setPendingUsers] = useState<UserRegistration[]>([]);
   const [approvedUsers, setApprovedUsers] = useState<UserRegistration[]>([]);
-  const [authenticatedUser, setAuthenticatedUser] = useState<UserRegistration | null>(() => {
-    try {
-      const saved = localStorage.getItem('unity_user');
-      return saved ? JSON.parse(saved) : null;
-    } catch (e) {
-      return null;
-    }
-  });
+  const [authenticatedUser, setAuthenticatedUser] = useState<UserRegistration | null>(null);
 
   const [showLoginPerformanceModal, setShowLoginPerformanceModal] = useState(false);
   const [submissionFeedbackData, setSubmissionFeedbackData] = useState<SubmissionFeedbackData | null>(null);
@@ -2806,12 +2799,8 @@ export default function App() {
   
   const [showConfirm, setShowConfirm] = useState<{ title: string, onConfirm: () => void } | null>(null);
   const [showCalendarUser, setShowCalendarUser] = useState<{ whatsapp: string, name: string, memberId?: string } | null>(null);
-  const [siteAuthenticated, setSiteAuthenticated] = useState(() => {
-    return localStorage.getItem('isAdmin') === 'true';
-  });
-  const [stlAuthenticated, setStlAuthenticated] = useState(() => {
-    return localStorage.getItem('stlAuth') === 'true';
-  });
+  const [siteAuthenticated, setSiteAuthenticated] = useState(false);
+  const [stlAuthenticated, setStlAuthenticated] = useState(false);
   const [showStlLoginModal, setShowStlLoginModal] = useState(false);
   const [showAdminLoginModal, setShowAdminLoginModal] = useState(false);
 
@@ -2820,13 +2809,15 @@ export default function App() {
   const devEmail = "learninghubbd2126509574@gmail.com";
   // Initial password - this will be synced with Firestore if it exists
   const initialAdminPass = "212650";
-  const [isAdmin, setIsAdmin] = useState(() => {
-    return localStorage.getItem('isAdmin') === 'true';
-  });
+  const [isAdmin, setIsAdmin] = useState(false);
   const hasStlAccess = isAdmin || stlAuthenticated;
 
   useEffect(() => {
-    // Keep login persistence intact on refresh/load so that the user doesn't have to re-enter their credentials.
+    // Clear active sessions on page refresh/initial load as explicitly requested by the user
+    localStorage.removeItem('unity_user');
+    localStorage.removeItem('isAdmin');
+    localStorage.removeItem('stlAuth');
+
     // Force loading screen to disappear after 1 second for better UX
     const timer = setTimeout(() => {
       setIsAuthReady(true);
@@ -4617,41 +4608,40 @@ export default function App() {
         submittedAt: serverTimestamp()
       }, { merge: true });
 
-      // Update global total and individual ranking score
-      if (diffScore !== 0 || diffLeads !== 0) {
-        // Update global total (Only for Leaders)
-        if (member?.type === 'leader' && diffScore !== 0) {
-          await updateDoc(doc(db, 'config', 'global'), {
-            totalConverts: increment(diffScore)
-          });
-        }
+      // Update global total (Only for Leaders)
+      if (member?.type === 'leader' && diffScore !== 0) {
+        await updateDoc(doc(db, 'config', 'global'), {
+          totalConverts: increment(diffScore)
+        });
+      }
 
-        // Update individual ranking score if names match
-        if (member) {
-          const rankingList = member.type === 'leader' ? leaderRanking : trainerRanking;
-          const cleanMemberName = normalizeName(member.name);
-          const rankingEntry = rankingList.find(r => 
-            r.id === member.id ||
-            r.name.trim().toLowerCase() === member.name.trim().toLowerCase() ||
-            (cleanMemberName && normalizeName(r.name) === cleanMemberName)
-          );
-          
-          const coll = member.type === 'leader' ? 'leaderRanking' : 'trainerRanking';
+      // Update individual ranking score
+      if (member) {
+        const rankingList = member.type === 'leader' ? leaderRanking : trainerRanking;
+        const cleanMemberName = normalizeName(member.name);
+        const rankingEntry = rankingList.find(r => 
+          r.id === member.id ||
+          r.name.trim().toLowerCase() === member.name.trim().toLowerCase() ||
+          (cleanMemberName && normalizeName(r.name) === cleanMemberName)
+        );
+        
+        const coll = member.type === 'leader' ? 'leaderRanking' : 'trainerRanking';
 
-          if (rankingEntry) {
+        if (rankingEntry) {
+          if (diffScore !== 0 || diffLeads !== 0) {
             await updateDoc(doc(db, coll, rankingEntry.id), {
               score: increment(diffScore),
               leads: increment(diffLeads)
             });
-          } else {
-            // Auto-create ranking entry if missing, so their score is tracked
-            await addDoc(collection(db, coll), {
-              name: member.name,
-              score: convert, // Starting score is their current total
-              leads: personalLead,
-              createdAt: serverTimestamp()
-            });
           }
+        } else {
+          // Auto-create ranking entry if missing, so their score is tracked
+          await addDoc(collection(db, coll), {
+            name: member.name,
+            score: convert, // Starting score is their current total
+            leads: personalLead,
+            createdAt: serverTimestamp()
+          });
         }
       }
 
@@ -5449,8 +5439,11 @@ export default function App() {
     
     // 1. Create base lists with all necessary data merged
     const allLeaders = members.filter(m => m.type === 'leader').map((m) => {
+      const cleanM = normalizeName(m.name);
       const rankingEntry = leaderRanking.find(r => 
-        r.name.trim().toLowerCase() === m.name.trim().toLowerCase()
+        r.id === m.id ||
+        r.name.trim().toLowerCase() === m.name.trim().toLowerCase() ||
+        (cleanM && normalizeName(r.name) === cleanM)
       );
       return {
         ...m,
@@ -5461,8 +5454,11 @@ export default function App() {
     });
 
     const allTrainers = members.filter(m => m.type === 'trainer').map((m) => {
+      const cleanM = normalizeName(m.name);
       const rankingEntry = trainerRanking.find(r => 
-        r.name.trim().toLowerCase() === m.name.trim().toLowerCase()
+        r.id === m.id ||
+        r.name.trim().toLowerCase() === m.name.trim().toLowerCase() ||
+        (cleanM && normalizeName(r.name) === cleanM)
       );
       return {
         ...m,

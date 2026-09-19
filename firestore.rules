@@ -268,7 +268,7 @@ service cloud.firestore {
         get(/databases/$(database)/documents/config/global).data.timerActive == true &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['score', 'leads'])
       );
-      allow create: if isAdmin() && isValidRankingMember(request.resource.data) && isValidId(id);
+      allow create: if (isAdmin() || isAuthenticated()) && isValidRankingMember(request.resource.data) && isValidId(id);
       allow delete: if isAdmin();
     }
 
@@ -278,7 +278,7 @@ service cloud.firestore {
         get(/databases/$(database)/documents/config/global).data.timerActive == true &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['score', 'leads'])
       );
-      allow create: if isAdmin() && isValidRankingMember(request.resource.data) && isValidId(id);
+      allow create: if (isAdmin() || isAuthenticated()) && isValidRankingMember(request.resource.data) && isValidId(id);
       allow delete: if isAdmin();
     }
 
