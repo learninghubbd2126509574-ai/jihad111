@@ -26,22 +26,11 @@ import {
   getDocsFromCache,
   getDocFromCache,
   increment,
-  runTransaction
-} from 'firebase/firestore';
-
-// Helper to clear a collection in Firestore
-async function clearCollection(colName: string) {
-  try {
-    const q = query(collection(db, colName));
-    const snap = await getDocs(q);
-    const batch = writeBatch(db);
-    snap.forEach((d) => batch.delete(d.ref));
-    await batch.commit();
-  } catch (err) {
-    console.error(`Error clearing collection ${colName}:`, err);
-    throw err;
-  }
-}
+  runTransaction,
+  clearCollection,
+  arrayUnion,
+  arrayRemove
+} from './lib/supabaseDb';
 import { 
   db, 
   auth, 
