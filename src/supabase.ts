@@ -6,9 +6,11 @@ const STORAGE_KEY_KEY = 'unity_supabase_anon_key';
 
 export function getSupabaseConfig(): { url: string; anonKey: string } {
   const envUrl = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_SUPABASE_URL) || 
-                 (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_URL) || 'https://pybarkjpvxchnllwtweo.supabase.co';
+                 (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_URL) || 
+                 'https://grvxhibcdrvtvyixppto.supabase.co';
   const envKey = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_SUPABASE_ANON_KEY) || 
-                 (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_ANON_KEY) || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5YmFya2pwdnhjaG5sbHd0d2VvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkzODgxMzAsImV4cCI6MjEwNDk2NDEzMH0.U8gFSq-SJM3y0eCsJx3tV6vUaCSBVWcfVyqLX5mMQVg';
+                 (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_ANON_KEY) || 
+                 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdydnhoaWJjZHJ2dHZ5aXhwcHRvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk4MjcyNDksImV4cCI6MjEwNTQwMzI0OX0.AYSW8slrsdoK5SnM5CckCAUZ6P3h33kCcHVhkBM8qvI';
 
   let storedUrl = '';
   let storedKey = '';
@@ -74,8 +76,12 @@ export async function testSupabaseConnection(overrideUrl?: string, overrideKey?:
     }
 
     const client = createClient(url, anonKey);
-    // Ping by querying config or health
-    const { error } = await client.from('config').select('id').limit(1);
+    // Ping by querying config or health with 4s timeout
+    const queryPromise = client.from('config').select('id').limit(1);
+    const timeoutPromise = new Promise<{ data: any, error: any }>((_, reject) =>
+      setTimeout(() => reject(new Error('কানেকশন টাইমআউট (Server unreachable)')), 4000)
+    );
+    const { error } = await Promise.race([queryPromise, timeoutPromise]);
     if (error) {
       // If table does not exist yet, connection itself might still be valid
       if (error.code === '42P01') {

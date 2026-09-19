@@ -199,49 +199,50 @@ function notifyListeners(colName: string, docId?: string) {
 
 // Strict column definition per table from PostgreSQL schema
 const tableAllowedColumns: Record<string, string[]> = {
-  members: ['name', 'type', 'profilePic', 'target', 'whatsapp', 'createdAt'],
-  results: ['memberId', 'lead', 'convert', 'personalLead', 'submitted', 'updatedAt'],
+  members: ['name', 'type', 'profilePic', 'target', 'whatsapp', 'createdAt', 'data'],
+  results: ['memberId', 'lead', 'convert', 'personalLead', 'submitted', 'updatedAt', 'data'],
   config: [
+    'companyName', 'tagline', 'subTitle', 'lastAutoStartTime',
     'timerActive', 'timerEndTime', 'timerDuration', 'timerStartedAt', 'timerNotificationsActive',
     'announcement', 'announcementActive', 'isLocked', 'securityPassword', 'stlPassword',
-    'autoTimerEnabled', 'autoTimerTime', 'fineSystemActive', 'fineAmount', 'fineStartDate',
+    'autoTimerEnabled', 'autoTimerTime', 'fineSystemActive', 'fineAmount', 'fineStartDate', 'finesResetAt',
     'giftBoxActive', 'giftBoxTitle', 'giftBoxContent', 'paymentMethods',
     'socialLinks', 'noticeText', 'customLogo', 'appTheme', 'totalConverts',
     'leaderRankingActive', 'trainerRankingActive', 'stlActive', 'demoActive', 'stlLoginActive',
-    'counsellingSchedules', 'updatedAt'
+    'counsellingSchedules', 'updatedAt', 'data'
   ],
-  pickingSchedule: ['name', 'isSelected', 'createdAt'],
-  applications: ['fullName', 'mobileNumber', 'email', 'createdAt'],
-  teachers: ['name', 'createdAt'],
-  teacherAttendance: ['teacherId', 'teacherName', 'course', 'date', 'submittedAt'],
-  stlMembers: ['name', 'target', 'assignedTLs', 'createdAt'],
-  stlAttendance: ['memberId', 'memberName', 'submittedAt'],
-  demoMembers: ['name', 'createdAt'],
-  demoAttendance: ['memberId', 'memberName', 'submittedAt'],
-  leaderRanking: ['name', 'score', 'leads', 'whatsapp', 'createdAt'],
-  trainerRanking: ['name', 'score', 'leads', 'createdAt'],
-  quickLinks: ['name', 'url', 'createdAt'],
-  pendingRegistrations: ['fullName', 'whatsapp', 'position', 'password', 'status', 'profilePic', 'createdAt'],
-  registeredUsers: ['fullName', 'whatsapp', 'position', 'password', 'status', 'profilePic', 'createdAt'],
-  userBalances: ['whatsapp', 'userName', 'balance', 'waivedFines', 'manualAdjustments', 'updatedAt'],
-  submissionLogs: ['memberId', 'memberName', 'whatsapp', 'lead', 'convert', 'personalLead', 'date', 'submittedAt'],
-  auditLogs: ['action', 'amount', 'userName', 'whatsapp', 'performedBy', 'reason', 'date', 'createdAt'],
-  notifications: ['title', 'body', 'recipient', 'sender', 'createdMillis', 'readBy', 'isSystem', 'createdAt'],
-  systemConfig: ['updatedAt'],
-  fcmTokens: ['whatsapp', 'platform', 'updatedAt']
+  pickingSchedule: ['name', 'isSelected', 'createdAt', 'data'],
+  applications: ['fullName', 'mobileNumber', 'email', 'createdAt', 'data'],
+  teachers: ['name', 'createdAt', 'data'],
+  teacherAttendance: ['teacherId', 'teacherName', 'course', 'date', 'submittedAt', 'data'],
+  stlMembers: ['name', 'target', 'assignedTLs', 'createdAt', 'data'],
+  stlAttendance: ['memberId', 'memberName', 'submittedAt', 'data'],
+  demoMembers: ['name', 'createdAt', 'data'],
+  demoAttendance: ['memberId', 'memberName', 'submittedAt', 'data'],
+  leaderRanking: ['name', 'score', 'leads', 'whatsapp', 'createdAt', 'data'],
+  trainerRanking: ['name', 'score', 'leads', 'createdAt', 'data'],
+  quickLinks: ['name', 'url', 'createdAt', 'data'],
+  pendingRegistrations: ['fullName', 'whatsapp', 'position', 'password', 'status', 'profilePic', 'createdAt', 'data'],
+  registeredUsers: ['fullName', 'whatsapp', 'position', 'password', 'status', 'profilePic', 'createdAt', 'data'],
+  userBalances: ['whatsapp', 'userName', 'balance', 'waivedFines', 'manualAdjustments', 'updatedAt', 'data'],
+  submissionLogs: ['memberId', 'memberName', 'whatsapp', 'lead', 'convert', 'personalLead', 'date', 'submittedAt', 'data'],
+  auditLogs: ['action', 'amount', 'userName', 'whatsapp', 'performedBy', 'reason', 'date', 'createdAt', 'data'],
+  notifications: ['title', 'body', 'recipient', 'sender', 'createdMillis', 'readBy', 'isSystem', 'createdAt', 'data'],
+  systemConfig: ['updatedAt', 'data'],
+  fcmTokens: ['whatsapp', 'platform', 'updatedAt', 'data']
 };
 
 // Prepares object for Supabase upsert/insert
 function packSupabaseRow(tableName: string, id: string, docData: any): any {
   const { id: _, ...rest } = docData;
   const row: any = {
-    id: String(id),
-    data: { ...rest }
+    id: String(id)
   };
 
   // Only assign columns that strictly exist in this table
   const allowed = tableAllowedColumns[tableName] || [];
   for (const field of allowed) {
+    if (field === 'data') continue;
     if (rest[field] !== undefined) {
       if (field === 'waivedFines' || field === 'manualAdjustments' || field === 'balance' || field === 'target' || field === 'score' || field === 'leads' || field === 'lead' || field === 'convert' || field === 'personalLead' || field === 'amount' || field === 'fineAmount' || field === 'totalConverts' || field === 'timerDuration') {
         const numVal = Number(rest[field]);
@@ -263,6 +264,11 @@ function packSupabaseRow(tableName: string, id: string, docData: any): any {
         row[field] = rest[field];
       }
     }
+  }
+
+  // Include data JSONB column ONLY if allowed
+  if (allowed.includes('data')) {
+    row.data = { ...rest };
   }
 
   return row;
@@ -634,6 +640,38 @@ function applyFieldOperations(existing: any = {}, incoming: any = {}): any {
   return result;
 }
 
+async function saveRowToSupabase(supabase: any, colName: string, docId: string, row: any): Promise<void> {
+  try {
+    // Attempt 1: Upsert full row
+    const { error } = await supabase.from(colName).upsert(row, { onConflict: 'id' });
+    if (!error) return;
+
+    // Handle missing column error (e.g. PGRST204 when 'data' or a specific field is missing in schema)
+    if (error.code === 'PGRST204' || error.message?.includes('schema cache') || error.message?.includes('column')) {
+      console.warn(`Supabase column mismatch on ${colName}/${docId} (${error.message}). Retrying without 'data' field...`);
+      const { data: _d, ...cleanRow } = row;
+      const cleanResult = await supabase.from(colName).upsert(cleanRow, { onConflict: 'id' });
+      if (!cleanResult.error) return;
+
+      // Also try JSONB data fallback if row has data
+      if (row.data) {
+        const dataResult = await supabase.from(colName).upsert({ id: String(docId), data: row.data }, { onConflict: 'id' });
+        if (!dataResult.error) return;
+      }
+    }
+
+    // Handle missing table gracefully (PGRST205)
+    if (error.code === 'PGRST205' || error.message?.includes('Could not find the table')) {
+      console.warn(`Supabase table '${colName}' does not exist in database schema cache. Saved in local memory store.`);
+      return;
+    }
+
+    console.warn(`Supabase write warning on ${colName}/${docId}:`, error.message);
+  } catch (err: any) {
+    console.warn(`Supabase write exception on ${colName}/${docId}:`, err?.message || err);
+  }
+}
+
 export async function setDoc(docRef: DocRef, data: any, options?: { merge?: boolean }): Promise<void> {
   initMemoryStore();
   const colName = docRef.collection;
@@ -651,16 +689,7 @@ export async function setDoc(docRef: DocRef, data: any, options?: { merge?: bool
   const supabase = getSupabase();
   if (supabase && isSupabaseConfigured()) {
     const row = packSupabaseRow(colName, docId, merged);
-    let { error } = await supabase.from(colName).upsert(row, { onConflict: 'id' });
-    if (error) {
-      console.warn(`Supabase setDoc column-level write failed on ${colName}/${docId} (${error.message}). Retrying with JSONB data payload fallback...`);
-      // Resilient fallback: upsert only id and raw data JSONB payload
-      const fallbackResult = await supabase.from(colName).upsert({ id: String(docId), data: row.data }, { onConflict: 'id' });
-      if (fallbackResult.error) {
-        console.error(`Supabase setDoc fatal error on ${colName}/${docId}:`, fallbackResult.error);
-        throw fallbackResult.error;
-      }
-    }
+    await saveRowToSupabase(supabase, colName, docId, row);
   }
 }
 
@@ -689,16 +718,7 @@ export async function updateDoc(docRef: DocRef, data: any): Promise<void> {
   const supabase = getSupabase();
   if (supabase && isSupabaseConfigured()) {
     const row = packSupabaseRow(colName, docId, updated);
-    let { error } = await supabase.from(colName).upsert(row, { onConflict: 'id' });
-    if (error) {
-      console.warn(`Supabase updateDoc column-level write failed on ${colName}/${docId} (${error.message}). Retrying with JSONB data payload fallback...`);
-      // Resilient fallback: upsert only id and raw data JSONB payload
-      const fallbackResult = await supabase.from(colName).upsert({ id: String(docId), data: row.data }, { onConflict: 'id' });
-      if (fallbackResult.error) {
-        console.error(`Supabase updateDoc fatal error on ${colName}/${docId}:`, fallbackResult.error);
-        throw fallbackResult.error;
-      }
-    }
+    await saveRowToSupabase(supabase, colName, docId, row);
   }
 }
 

@@ -34,8 +34,8 @@ async function startServer() {
 
   // Background Timer Worker for offline timer management via Supabase
   async function runTimerWorker() {
-    const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://pybarkjpvxchnllwtweo.supabase.co';
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB5YmFya2pwdnhjaG5sbHd0d2VvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkzODgxMzAsImV4cCI6MjEwNDk2NDEzMH0.U8gFSq-SJM3y0eCsJx3tV6vUaCSBVWcfVyqLX5mMQVg';
+    const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://grvxhibcdrvtvyixppto.supabase.co';
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdydnhoaWJjZHJ2dHZ5aXhwcHRvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk4MjcyNDksImV4cCI6MjEwNTQwMzI0OX0.AYSW8slrsdoK5SnM5CckCAUZ6P3h33kCcHVhkBM8qvI';
 
     if (!supabaseUrl || !supabaseKey) {
       console.warn('Supabase not configured for server background worker.');
