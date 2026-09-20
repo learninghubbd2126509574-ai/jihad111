@@ -1516,7 +1516,12 @@ const AllMembersSubmissionSheet: React.FC<AllMembersSubmissionSheetProps> = ({
           </div>
         ) : (
           filteredItems.map(item => {
-            const isMe = currentAuthUser?.whatsapp === item.whatsapp;
+            const isMe = Boolean(
+              currentAuthUser && (
+                (currentAuthUser.whatsapp && item.whatsapp && currentAuthUser.whatsapp.replace(/\s+/g, '') === item.whatsapp.replace(/\s+/g, '')) ||
+                (currentAuthUser.fullName && item.name && currentAuthUser.fullName.trim().toLowerCase() === item.name.trim().toLowerCase())
+              )
+            );
             const stats = item.stats || {};
             const isSubmitted = item.todaySubmitted;
 
@@ -1574,12 +1579,16 @@ const AllMembersSubmissionSheet: React.FC<AllMembersSubmissionSheetProps> = ({
                       <div className="bg-amber-50/40 border border-amber-150 px-3 py-2 rounded-xl text-center shadow-2xs">
                         <span className="block text-[8px] text-amber-700 uppercase font-black tracking-wider">চার্জ/জরিমানা</span>
                         <span className="text-xs font-black text-amber-800 font-mono">
-                          {stats.isFineSystemActive === false ? 'বন্ধ' : `৳${stats.totalFine || 0}`}
+                          {stats.isFineSystemActive === false 
+                            ? 'বন্ধ' 
+                            : (isAdmin || isMe) 
+                              ? `৳${stats.totalFine || 0}` 
+                              : '🔒 গোপনীয়'}
                         </span>
                       </div>
                     </div>
 
-                    {onShowCalendar && (
+                    {onShowCalendar && (isAdmin || isMe) && (
                       <button 
                         onClick={() => onShowCalendar(item.whatsapp, item.name, item.id)}
                         className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 hover:text-blue-600 text-[9px] font-black uppercase tracking-wider transition-all active:scale-95 shadow-2xs"
@@ -2559,9 +2568,40 @@ const UserCalendarModal = ({
     });
   }, [submissionLogs, user]);
 
+  const [extraLogs, setExtraLogs] = useState<SubmissionLog[]>([]);
+
+  useEffect(() => {
+    if (userLogs.length === 0 && (user.whatsapp || user.memberId)) {
+      const fetchUserLogs = async () => {
+        try {
+          const cleanWa = user.whatsapp ? user.whatsapp.replace(/\s+/g, '') : '';
+          let q;
+          if (cleanWa) {
+            q = query(collection(db, 'submissionLogs'), where('whatsapp', '==', cleanWa));
+          } else if (user.memberId) {
+            q = query(collection(db, 'submissionLogs'), where('memberId', '==', user.memberId));
+          }
+          if (q) {
+            const snap = await getDocs(q);
+            const fetched: SubmissionLog[] = [];
+            snap.forEach(d => fetched.push({ id: d.id, ...(d.data() as Record<string, any>) } as SubmissionLog));
+            setExtraLogs(fetched);
+          }
+        } catch (err) {
+          console.warn('Failed to load calendar logs on demand:', err);
+        }
+      };
+      fetchUserLogs();
+    }
+  }, [userLogs.length, user.whatsapp, user.memberId]);
+
+  const allLogs = useMemo(() => {
+    return userLogs.length > 0 ? userLogs : extraLogs;
+  }, [userLogs, extraLogs]);
+
   const submittedDatesSet = useMemo(() => {
     const set = new Set<string>();
-    userLogs.forEach(l => {
+    allLogs.forEach(l => {
       if (l.date) set.add(l.date);
       if (l.submittedAt) {
         try {
@@ -2573,7 +2613,7 @@ const UserCalendarModal = ({
       }
     });
     return set;
-  }, [userLogs]);
+  }, [allLogs]);
 
   const getDayStatus = (day: Date) => {
     const dateStr = format(day, 'yyyy-MM-dd');
@@ -3085,29 +3125,7 @@ export default function App() {
     let unsubSubmissionLogs = () => {};
     let unsubAuditLogs = () => {};
 
-    if (isAuthReady && user) {
-      // Authenticated Users Listeners
-      unsubBalances = onSnapshot(collection(db, 'userBalances'), (snapshot) => {
-        const bMap: Record<string, UserBalance> = {};
-        snapshot.forEach(d => {
-          bMap[d.id] = { id: d.id, ...d.data() } as UserBalance;
-        });
-        setUserBalances(bMap);
-      }, async (err) => {
-        console.warn('Balances Listener Error, attempting cache fallback:', err);
-        try {
-          const cacheSnap = await getDocsFromCache(collection(db, 'userBalances'));
-          const bMap: Record<string, UserBalance> = {};
-          cacheSnap.forEach(d => {
-            bMap[d.id] = { id: d.id, ...d.data() } as UserBalance;
-          });
-          setUserBalances(bMap);
-        } catch (cacheErr) {
-          console.warn('Failed to fetch balances from cache:', cacheErr);
-        }
-        handleFirestoreError(err, OperationType.GET, 'userBalances', showMsg);
-      });
-
+    if (isAuthReady) {
       const now = new Date();
       const currentYear = now.getFullYear();
       const currentMonth = now.getMonth();
@@ -3115,132 +3133,113 @@ export default function App() {
       const safeMonth = currentMonth === 0 ? 12 : currentMonth; // previous month (1-indexed)
       const startOfPrevMonthStr = `${safeYear}-${String(safeMonth).padStart(2, '0')}-01`;
 
-      unsubSubmissionLogs = onSnapshot(query(collection(db, 'submissionLogs'), where('date', '>=', startOfPrevMonthStr)), (snapshot) => {
-        const logs: SubmissionLog[] = [];
-        snapshot.forEach(d => {
-          logs.push({ id: d.id, ...d.data() } as SubmissionLog);
+      // Admin check: ONLY true if admin is authenticated (NOT for ordinary anonymous visitors)
+      const isActuallyAdmin = Boolean(isAdmin || (!user?.isAnonymous && user?.email && (user.email === adminEmail || user.email === devEmail)));
+
+      if (isActuallyAdmin || hasStlAccess) {
+        // Admin & STL Listeners for all balances and full historical submission logs
+        unsubBalances = onSnapshot(collection(db, 'userBalances'), (snapshot) => {
+          const bMap: Record<string, UserBalance> = {};
+          snapshot.forEach(d => {
+            bMap[d.id] = { id: d.id, ...d.data() } as UserBalance;
+          });
+          setUserBalances(bMap);
+        }, async (err) => {
+          console.warn('Balances Listener Error:', err);
+          handleFirestoreError(err, OperationType.GET, 'userBalances', showMsg);
         });
-        setSubmissionLogs(logs);
-      }, async (err) => {
-        console.warn('SubmissionLogs Listener Error, attempting cache fallback:', err);
-        try {
-          const cacheSnap = await getDocsFromCache(query(collection(db, 'submissionLogs'), where('date', '>=', startOfPrevMonthStr)));
+
+        unsubSubmissionLogs = onSnapshot(query(collection(db, 'submissionLogs'), where('date', '>=', startOfPrevMonthStr)), (snapshot) => {
           const logs: SubmissionLog[] = [];
-          cacheSnap.forEach(d => {
+          snapshot.forEach(d => {
             logs.push({ id: d.id, ...d.data() } as SubmissionLog);
           });
           setSubmissionLogs(logs);
-        } catch (cacheErr) {
-          console.warn('Failed to fetch submission logs from cache:', cacheErr);
-        }
-        handleFirestoreError(err, OperationType.GET, 'submissionLogs', showMsg);
-      });
+        }, async (err) => {
+          console.warn('SubmissionLogs Listener Error:', err);
+          handleFirestoreError(err, OperationType.GET, 'submissionLogs', showMsg);
+        });
+      } else if (authenticatedUser) {
+        // Regular Logged-in User (Trainer / Team Leader): ONLY listen to their OWN balance & their OWN submission logs!
+        // This saves thousands of Firestore document reads every day!
+        const cleanWa = authenticatedUser.whatsapp ? authenticatedUser.whatsapp.trim().replace(/\s+/g, '') : '';
+        if (cleanWa) {
+          unsubBalances = onSnapshot(doc(db, 'userBalances', cleanWa), (docSnap) => {
+            if (docSnap.exists()) {
+              const data = docSnap.data() as UserBalance;
+              setUserBalances(prev => ({ ...prev, [cleanWa]: { id: docSnap.id, ...data } }));
+            }
+          }, (err) => {
+            console.warn('User balance listener error:', err);
+          });
 
-      const isActuallyAdmin = user.email === adminEmail || user.email === devEmail || user.isAnonymous || isAdmin;
-      
-      // If signed in via Firebase Auth with admin email
+          unsubSubmissionLogs = onSnapshot(query(
+            collection(db, 'submissionLogs'),
+            where('whatsapp', '==', cleanWa),
+            where('date', '>=', startOfPrevMonthStr)
+          ), (snapshot) => {
+            const logs: SubmissionLog[] = [];
+            snapshot.forEach(d => {
+              logs.push({ id: d.id, ...d.data() } as SubmissionLog);
+            });
+            setSubmissionLogs(logs);
+          }, (err) => {
+            console.warn('User submission logs listener error:', err);
+          });
+        }
+      }
+
+      // Admin Only Listeners (Only run for genuine admin accounts!)
       if (isActuallyAdmin) {
-        // Admin Only Listeners
-        unsubAuditLogs = onSnapshot(query(collection(db, 'auditLogs'), orderBy('createdAt', 'desc'), limit(100)), (snapshot) => {
+        unsubAuditLogs = onSnapshot(query(collection(db, 'auditLogs'), orderBy('createdAt', 'desc'), limit(50)), (snapshot) => {
           const logs: AuditLog[] = [];
           snapshot.forEach(d => {
             logs.push({ id: d.id, ...d.data() } as AuditLog);
           });
           setAuditLogs(logs);
         }, async (err) => {
-          console.warn('AuditLogs Listener Error, attempting cache fallback:', err);
-          try {
-            const cacheSnap = await getDocsFromCache(query(collection(db, 'auditLogs'), orderBy('createdAt', 'desc'), limit(100)));
-            const logs: AuditLog[] = [];
-            cacheSnap.forEach(d => {
-              logs.push({ id: d.id, ...d.data() } as AuditLog);
-            });
-            setAuditLogs(logs);
-          } catch (cacheErr) {
-            console.warn('Failed to fetch audit logs from cache:', cacheErr);
-          }
+          console.warn('AuditLogs Listener Error:', err);
           handleFirestoreError(err, OperationType.GET, 'auditLogs', showMsg);
         });
 
-        unsubApps = onSnapshot(query(collection(db, 'applications'), orderBy('createdAt', 'desc'), limit(200)), (snapshot) => {
+        unsubApps = onSnapshot(query(collection(db, 'applications'), orderBy('createdAt', 'desc'), limit(50)), (snapshot) => {
           const aList: Application[] = [];
           snapshot.forEach(d => aList.push({ id: d.id, ...d.data() } as Application));
           setApplications(aList);
         }, async (err) => {
-          console.warn('Sync Applications error, attempting cache fallback:', err);
-          try {
-            const cacheSnap = await getDocsFromCache(query(collection(db, 'applications'), orderBy('createdAt', 'desc'), limit(200)));
-            const aList: Application[] = [];
-            cacheSnap.forEach(d => aList.push({ id: d.id, ...d.data() } as Application));
-            setApplications(aList);
-          } catch (cacheErr) {
-            console.warn('Failed to fetch applications from cache:', cacheErr);
-          }
+          console.warn('Sync Applications error:', err);
         });
 
-        unsubAttendance = onSnapshot(query(collection(db, 'teacherAttendance'), orderBy('submittedAt', 'desc'), limit(100)), (snapshot) => {
+        unsubAttendance = onSnapshot(query(collection(db, 'teacherAttendance'), orderBy('submittedAt', 'desc'), limit(50)), (snapshot) => {
           const rList: AttendanceRecord[] = [];
           snapshot.forEach(d => rList.push({ id: d.id, ...d.data() } as AttendanceRecord));
           setAttendanceRecords(rList);
         }, async (err) => {
-          console.warn('Sync Attendance error, attempting cache fallback:', err);
-          try {
-            const cacheSnap = await getDocsFromCache(query(collection(db, 'teacherAttendance'), orderBy('submittedAt', 'desc'), limit(100)));
-            const rList: AttendanceRecord[] = [];
-            cacheSnap.forEach(d => rList.push({ id: d.id, ...d.data() } as AttendanceRecord));
-            setAttendanceRecords(rList);
-          } catch (cacheErr) {
-            console.warn('Failed to fetch attendance from cache:', cacheErr);
-          }
+          console.warn('Sync Attendance error:', err);
         });
 
-        unsubStlAttendance = onSnapshot(query(collection(db, 'stlAttendance'), orderBy('submittedAt', 'desc'), limit(50)), (snapshot) => {
+        unsubStlAttendance = onSnapshot(query(collection(db, 'stlAttendance'), orderBy('submittedAt', 'desc'), limit(30)), (snapshot) => {
           const list: STLAttendance[] = [];
           snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as STLAttendance));
           setStlAttendance(list);
         }, async (err) => {
-          console.warn('Sync STL attendance error, attempting cache fallback:', err);
-          try {
-            const cacheSnap = await getDocsFromCache(query(collection(db, 'stlAttendance'), orderBy('submittedAt', 'desc'), limit(50)));
-            const list: STLAttendance[] = [];
-            cacheSnap.forEach(d => list.push({ id: d.id, ...d.data() } as STLAttendance));
-            setStlAttendance(list);
-          } catch (cacheErr) {
-            console.warn('Failed to fetch STL attendance from cache:', cacheErr);
-          }
+          console.warn('Sync STL attendance error:', err);
         });
 
-        unsubDemoAttendance = onSnapshot(query(collection(db, 'demoAttendance'), orderBy('submittedAt', 'desc'), limit(50)), (snapshot) => {
+        unsubDemoAttendance = onSnapshot(query(collection(db, 'demoAttendance'), orderBy('submittedAt', 'desc'), limit(30)), (snapshot) => {
           const list: DemoAttendance[] = [];
           snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as DemoAttendance));
           setDemoAttendance(list);
         }, async (err) => {
-          console.warn('Sync Demo attendance error, attempting cache fallback:', err);
-          try {
-            const cacheSnap = await getDocsFromCache(query(collection(db, 'demoAttendance'), orderBy('submittedAt', 'desc'), limit(50)));
-            const list: DemoAttendance[] = [];
-            cacheSnap.forEach(d => list.push({ id: d.id, ...d.data() } as DemoAttendance));
-            setDemoAttendance(list);
-          } catch (cacheErr) {
-            console.warn('Failed to fetch Demo attendance from cache:', cacheErr);
-          }
+          console.warn('Sync Demo attendance error:', err);
         });
 
-        // Listen to User Registrations (Admin only)
         unsubPending = onSnapshot(query(collection(db, 'pendingRegistrations'), orderBy('createdAt', 'desc')), (snapshot) => {
           const list: UserRegistration[] = [];
           snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as UserRegistration));
           setPendingUsers(list);
         }, async (err) => {
-          console.warn('Sync Pending error, attempting cache fallback:', err);
-          try {
-            const cacheSnap = await getDocsFromCache(query(collection(db, 'pendingRegistrations'), orderBy('createdAt', 'desc')));
-            const list: UserRegistration[] = [];
-            cacheSnap.forEach(d => list.push({ id: d.id, ...d.data() } as UserRegistration));
-            setPendingUsers(list);
-          } catch (cacheErr) {
-            console.warn('Failed to fetch pending users from cache:', cacheErr);
-          }
+          console.warn('Sync Pending error:', err);
         });
 
         unsubApproved = onSnapshot(collection(db, 'registeredUsers'), (snapshot) => {
@@ -3248,15 +3247,7 @@ export default function App() {
           snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as UserRegistration));
           setApprovedUsers(list);
         }, async (err) => {
-          console.warn('Sync Approved error, attempting cache fallback:', err);
-          try {
-            const cacheSnap = await getDocsFromCache(collection(db, 'registeredUsers'));
-            const list: UserRegistration[] = [];
-            cacheSnap.forEach(d => list.push({ id: d.id, ...d.data() } as UserRegistration));
-            setApprovedUsers(list);
-          } catch (cacheErr) {
-            console.warn('Failed to fetch approved users from cache:', cacheErr);
-          }
+          console.warn('Sync Approved error:', err);
         });
       }
     }
@@ -3282,7 +3273,7 @@ export default function App() {
       unsubPending();
       unsubApproved();
     };
-  }, [isAuthReady, isAdmin, user]);
+  }, [isAuthReady, isAdmin, user, authenticatedUser, hasStlAccess]);
 
   // Timer Logic
   useEffect(() => {
@@ -6432,6 +6423,8 @@ export default function App() {
               approvedUsers={approvedUsers}
               isAdmin={isAdmin}
               currentMemberId={myMember?.id || null}
+              currentAuthUser={currentAuthUser}
+              computeUserSubmissionStats={computeUserSubmissionStats}
               onUpdateTarget={updateMemberTarget}
             />
 
@@ -6446,6 +6439,8 @@ export default function App() {
               approvedUsers={approvedUsers}
               isAdmin={isAdmin}
               currentMemberId={myMember?.id || null}
+              currentAuthUser={currentAuthUser}
+              computeUserSubmissionStats={computeUserSubmissionStats}
               onUpdateTarget={updateMemberTarget}
             />
           </div>
@@ -7800,9 +7795,10 @@ interface BoardProps {
   currentMemberId: string | null;
   computeUserSubmissionStats?: (userWhatsapp: string, memberId?: string) => any;
   onUpdateTarget?: (id: string, target: number) => void;
+  currentAuthUser?: UserRegistration | null;
 }
 
-const Board: React.FC<BoardProps> = ({ title, icon, members, results, timerActive, onSubmit, accentColor, approvedUsers, isAdmin, currentMemberId, computeUserSubmissionStats, onUpdateTarget }) => {
+const Board: React.FC<BoardProps> = ({ title, icon, members, results, timerActive, onSubmit, accentColor, approvedUsers, isAdmin, currentMemberId, computeUserSubmissionStats, onUpdateTarget, currentAuthUser }) => {
   return (
     <div className="mb-12">
       <div className="flex items-center gap-3.5 mb-6">
@@ -7838,6 +7834,7 @@ const Board: React.FC<BoardProps> = ({ title, icon, members, results, timerActiv
               isMe={m.id === currentMemberId}
               computeUserSubmissionStats={computeUserSubmissionStats}
               onUpdateTarget={onUpdateTarget}
+              currentAuthUser={currentAuthUser}
             />
           ))
         )}
@@ -7858,9 +7855,10 @@ interface MemberCardProps {
   isMe: boolean;
   computeUserSubmissionStats?: (userWhatsapp: string, memberId?: string) => any;
   onUpdateTarget?: (id: string, target: number) => void;
+  currentAuthUser?: UserRegistration | null;
 }
 
-const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, onSubmit, accentColor, rank, approvedUsers, isAdmin, isMe, computeUserSubmissionStats, onUpdateTarget }) => {
+const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, onSubmit, accentColor, rank, approvedUsers, isAdmin, isMe, computeUserSubmissionStats, onUpdateTarget, currentAuthUser }) => {
   const [lead, setLead] = useState<string>('');
   const [convert, setConvert] = useState<string>('');
   const [personalLead, setPersonalLead] = useState<string>('');
@@ -7894,10 +7892,20 @@ const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, on
 
   const status = result?.submitted ? getPerformanceStatus(result.convert) : null;
   const matchedUser = approvedUsers?.find(
-    u => u.fullName.trim().toLowerCase() === member.name.trim().toLowerCase()
+    u => (member.whatsapp && u.whatsapp && member.whatsapp.replace(/\s+/g, '') === u.whatsapp.replace(/\s+/g, '')) ||
+         u.fullName.trim().toLowerCase() === member.name.trim().toLowerCase()
   );
 
-  const subStats = computeUserSubmissionStats ? computeUserSubmissionStats(matchedUser?.whatsapp || '', member.id) : null;
+  const isActuallyMe = Boolean(
+    isMe || 
+    (currentAuthUser && (
+      (member.whatsapp && currentAuthUser.whatsapp && member.whatsapp.replace(/\s+/g, '') === currentAuthUser.whatsapp.replace(/\s+/g, '')) ||
+      (matchedUser?.whatsapp && currentAuthUser.whatsapp && matchedUser.whatsapp.replace(/\s+/g, '') === currentAuthUser.whatsapp.replace(/\s+/g, '')) ||
+      (currentAuthUser.fullName && member.name && currentAuthUser.fullName.trim().toLowerCase() === member.name.trim().toLowerCase())
+    ))
+  );
+
+  const subStats = computeUserSubmissionStats ? computeUserSubmissionStats(matchedUser?.whatsapp || member.whatsapp || '', member.id) : null;
 
   // Target Calculations: Base ratio on Total Converts as requested
   const targetConvert = member.target || 0;
@@ -8065,8 +8073,8 @@ const MemberCard: React.FC<MemberCardProps> = ({ member, result, timerActive, on
               )}
             </div>
 
-            {/* User Submission & Fine Badges */}
-            {subStats && (
+            {/* User Submission & Fine Badges - Only visible to Admin or the member themselves */}
+            {(isAdmin || isActuallyMe) && subStats && (
               <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                 <span className="inline-flex items-center gap-1 text-[10px] font-bold bg-red-50 text-red-700 border border-red-200 px-2 py-0.5 rounded-md">
                   <AlertTriangle size={10} /> রেজাল্ট মিসড/বাতিল: {subStats.missedDays} দিন
