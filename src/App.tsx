@@ -115,7 +115,8 @@ import {
   Share2,
   Target,
   Save,
-  KeyRound
+  KeyRound,
+  Loader2
 } from 'lucide-react';
 
 import { 
@@ -141,6 +142,8 @@ import UserQuickSubmitCard from './components/UserQuickSubmitCard';
 import { PhoneKeypad, PasswordKeyboard } from './components/VirtualAuthKeypad';
 import LoginPerformanceModal from './components/LoginPerformanceModal';
 import RankingExportManager from './components/RankingExportManager';
+import RankingExportTemplate from './components/RankingExportTemplate';
+import { generateRankingPdf } from './utils/exportRankingPdf';
 import CommunitySection from './components/CommunitySection';
 import SubmissionFeedbackModal, { SubmissionFeedbackData } from './components/SubmissionFeedbackModal';
 
@@ -7588,6 +7591,9 @@ export default function App() {
             icon={Crown}
             colorClass="text-gold"
             members={sortedLeaderRanking}
+            allLeaders={sortedLeaderRanking}
+            allTrainers={sortedTrainerRanking}
+            customLogo={config.customLogo}
             onClose={() => setShowLeaderRankingModal(false)}
             isActive={config.leaderRankingActive || false}
           />
@@ -7601,6 +7607,9 @@ export default function App() {
             icon={Award}
             colorClass="text-blue-accent"
             members={sortedTrainerRanking}
+            allLeaders={sortedLeaderRanking}
+            allTrainers={sortedTrainerRanking}
+            customLogo={config.customLogo}
             onClose={() => setShowTrainerRankingModal(false)}
             isActive={config.trainerRankingActive || false}
           />
@@ -7613,6 +7622,7 @@ export default function App() {
             onClose={() => setShowOverallStatsModal(false)}
             leaders={sortedLeaderRanking}
             trainers={sortedTrainerRanking}
+            customLogo={config.customLogo}
           />
         )}
       </AnimatePresence>
@@ -10055,11 +10065,33 @@ function RankingSection({
   );
 }
 
-function OverallStatsModal({ onClose, leaders, trainers }: { 
+function OverallStatsModal({ onClose, leaders, trainers, customLogo }: { 
   onClose: () => void, 
   leaders: RankingMember[], 
-  trainers: RankingMember[] 
+  trainers: RankingMember[],
+  customLogo?: string
 }) {
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const pdfTemplateRef = useRef<HTMLDivElement>(null);
+
+  const handleDownloadPdf = async () => {
+    if (!pdfTemplateRef.current) return;
+    setIsExportingPdf(true);
+    try {
+      const today = new Date();
+      const dateStr = today.toISOString().split('T')[0];
+      await generateRankingPdf({
+        element: pdfTemplateRef.current,
+        fileName: `Unity_Earning_Performance_Report_${dateStr}.pdf`
+      });
+    } catch (err) {
+      console.error('Error exporting PDF:', err);
+      alert('Failed to generate PDF document.');
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
+
   const sortByRanking = (a: RankingMember, b: RankingMember) => {
     if ((b.score || 0) !== (a.score || 0)) return (b.score || 0) - (a.score || 0);
     return (b.leads || 0) - (a.leads || 0);
@@ -10090,14 +10122,14 @@ function OverallStatsModal({ onClose, leaders, trainers }: {
                   <p className="text-[10px] text-muted-main uppercase tracking-[3px] font-black opacity-40">System-wide performance tracker</p>
                </div>
             </div>
-            <button onClick={onClose} className="w-10 h-10 bg-white/5 rounded-2xl flex items-center justify-center hover:bg-white/10 text-muted-main hover:text-white transition-all border border-white/10">
+            <button onClick={onClose} className="w-10 h-10 bg-white/5 rounded-2xl flex items-center justify-center hover:bg-white/10 text-muted-main hover:text-white transition-all border border-white/10 cursor-pointer">
                <X size={20} />
             </button>
          </div>
 
          <div className="flex-1 overflow-y-auto px-8 pb-8 custom-scrollbar">
             {/* Main Total Display */}
-            <div className="relative group mb-10">
+            <div className="relative group mb-6">
                <div className="absolute inset-0 bg-gold/20 blur-3xl rounded-full opacity-50 group-hover:opacity-80 transition-opacity" />
                <div className="relative bg-gradient-to-br from-surface to-bg border border-gold/30 p-8 rounded-[2rem] text-center shadow-2xl">
                   <p className="text-[10px] text-gold font-black uppercase tracking-[5px] mb-2">System-wide Total Convert</p>
@@ -10110,6 +10142,27 @@ function OverallStatsModal({ onClose, leaders, trainers }: {
                      <Star size={14} className="text-gold fill-gold" />
                   </div>
                </div>
+            </div>
+
+            {/* Quick Export Button */}
+            <div className="mb-6">
+              <button
+                onClick={handleDownloadPdf}
+                disabled={isExportingPdf}
+                className="w-full py-4 px-6 bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:opacity-95 text-slate-950 rounded-2xl font-black text-sm flex items-center justify-center gap-2.5 shadow-lg shadow-amber-500/20 transition-all cursor-pointer disabled:opacity-50"
+              >
+                {isExportingPdf ? (
+                  <>
+                    <Loader2 size={18} className="animate-spin text-slate-950" />
+                    <span>Generating PDF Report...</span>
+                  </>
+                ) : (
+                  <>
+                    <Download size={18} className="text-slate-950" />
+                    <span>ডাউনলোড PDF পারফরম্যান্স রিপোর্ট</span>
+                  </>
+                )}
+              </button>
             </div>
 
             {/* Top 3 Leaders */}
@@ -10168,6 +10221,14 @@ function OverallStatsModal({ onClose, leaders, trainers }: {
                </div>
             </div>
          </div>
+
+         {/* Hidden template for PDF generation */}
+         <RankingExportTemplate 
+           ref={pdfTemplateRef}
+           leaderRanking={leaders}
+           trainerRanking={trainers}
+           customLogo={customLogo}
+         />
       </motion.div>
     </div>
   );
@@ -10318,6 +10379,9 @@ function RankingBoardModal({
   icon: Icon, 
   colorClass, 
   members, 
+  allLeaders = [],
+  allTrainers = [],
+  customLogo,
   onClose,
   isActive
 }: {
@@ -10325,9 +10389,33 @@ function RankingBoardModal({
   icon: any,
   colorClass: string,
   members: RankingMember[],
+  allLeaders?: RankingMember[],
+  allTrainers?: RankingMember[],
+  customLogo?: string,
   onClose: () => void,
   isActive: boolean
 }) {
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const pdfTemplateRef = useRef<HTMLDivElement>(null);
+
+  const handleDownloadPdf = async () => {
+    if (!pdfTemplateRef.current) return;
+    setIsExportingPdf(true);
+    try {
+      const today = new Date();
+      const dateStr = today.toISOString().split('T')[0];
+      await generateRankingPdf({
+        element: pdfTemplateRef.current,
+        fileName: `Unity_Earning_Ranking_Report_${dateStr}.pdf`
+      });
+    } catch (err) {
+      console.error('Error exporting PDF:', err);
+      alert('Failed to generate PDF document.');
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
+
   if (!isActive) {
     return (
       <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 sm:p-6 text-center">
@@ -10364,12 +10452,27 @@ function RankingBoardModal({
               <p className="text-[10px] text-blue-700 uppercase tracking-widest font-black">Prime Distinction • Performance</p>
             </div>
           </div>
-          <button 
-            onClick={onClose} 
-            className="w-9 h-9 neu-btn rounded-xl flex items-center justify-center text-slate-800 hover:text-red-600 transition-all active:scale-95"
-          >
-            <X size={18} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={handleDownloadPdf}
+              disabled={isExportingPdf}
+              title="Download Official PDF Report"
+              className="px-3 py-2 neu-btn rounded-xl flex items-center gap-1.5 text-xs font-black text-blue-700 hover:text-blue-900 transition-all active:scale-95 disabled:opacity-50 cursor-pointer shadow-sm"
+            >
+              {isExportingPdf ? (
+                <Loader2 size={14} className="animate-spin text-blue-600" />
+              ) : (
+                <Download size={14} className="text-blue-600" />
+              )}
+              <span className="hidden sm:inline">PDF Report</span>
+            </button>
+            <button 
+              onClick={onClose} 
+              className="w-9 h-9 neu-btn rounded-xl flex items-center justify-center text-slate-800 hover:text-red-600 transition-all active:scale-95 cursor-pointer"
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 sm:px-8 py-4 custom-scrollbar space-y-3">
@@ -10442,14 +10545,40 @@ function RankingBoardModal({
            )}
         </div>
 
-        <div className="p-5 sm:p-6 border-t border-slate-300/60 bg-[#d8e2ee]/60">
+        <div className="p-5 sm:p-6 border-t border-slate-300/60 bg-[#d8e2ee]/60 flex items-center gap-3">
+           <button 
+             onClick={handleDownloadPdf}
+             disabled={isExportingPdf}
+             className="flex-1 neu-btn font-black py-3.5 rounded-xl text-xs uppercase tracking-wider hover:text-blue-700 transition-all flex items-center justify-center gap-2 text-slate-800 disabled:opacity-50 cursor-pointer"
+           >
+             {isExportingPdf ? (
+               <>
+                 <Loader2 size={16} className="animate-spin text-blue-600" />
+                 <span>Generating PDF...</span>
+               </>
+             ) : (
+               <>
+                 <Download size={16} className="text-blue-600" />
+                 <span>ডাউনলোড PDF রিপোর্ট</span>
+               </>
+             )}
+           </button>
+
            <button 
              onClick={onClose}
-             className="w-full neu-btn-primary font-black py-3.5 rounded-xl text-xs uppercase tracking-wider shadow-md hover:scale-[1.01] transition-all flex items-center justify-center gap-2 text-white"
+             className="flex-1 neu-btn-primary font-black py-3.5 rounded-xl text-xs uppercase tracking-wider shadow-md hover:scale-[1.01] transition-all flex items-center justify-center gap-2 text-white cursor-pointer"
            >
              Acknowledge Ranking
            </button>
         </div>
+
+        {/* Hidden template for PDF generation */}
+        <RankingExportTemplate 
+          ref={pdfTemplateRef}
+          leaderRanking={allLeaders.length > 0 ? allLeaders : members}
+          trainerRanking={allTrainers.length > 0 ? allTrainers : members}
+          customLogo={customLogo}
+        />
       </motion.div>
     </div>
   );
