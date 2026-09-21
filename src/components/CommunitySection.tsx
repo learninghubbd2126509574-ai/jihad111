@@ -24,6 +24,7 @@ import {
   increment,
   setDoc,
   getDoc,
+  limit,
   serverTimestamp 
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -65,20 +66,29 @@ const CommunitySection: React.FC<CommunitySectionProps> = ({
   onToggleActive 
 }) => {
   const [posts, setPosts] = useState<CommunityPost[]>([]);
+  const [postLimit, setPostLimit] = useState(25);
   const [newPostContent, setNewPostContent] = useState('');
   const [newPostImage, setNewPostImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [userLikes, setUserLikes] = useState<Record<string, boolean>>({});
+  const [userLikes, setUserLikes] = useState<Record<string, boolean>>(() => {
+    const userId = currentUser?.whatsapp || currentUser?.uid;
+    if (!userId) return {};
+    try {
+      return JSON.parse(localStorage.getItem(`unity_likes_${userId}`) || '{}');
+    } catch {
+      return {};
+    }
+  });
   const [activeCommentsPostId, setActiveCommentsPostId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load community posts
+  // Load community posts with quota-safe limit
   useEffect(() => {
     if (!communityActive && !isAdmin) return;
 
-    const q = query(collection(db, 'communityPosts'), orderBy('createdAt', 'desc'));
+    const q = query(collection(db, 'communityPosts'), orderBy('createdAt', 'desc'), limit(postLimit));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetchedPosts = snapshot.docs.map(doc => ({
         id: doc.id,
@@ -90,16 +100,17 @@ const CommunitySection: React.FC<CommunitySectionProps> = ({
     });
 
     return () => unsubscribe();
-  }, [communityActive, isAdmin]);
+  }, [communityActive, isAdmin, postLimit]);
 
   const checkedPostsRef = useRef<Set<string>>(new Set());
 
-  // Fetch likes map efficiently without re-fetching existing checked posts
+  // Fetch likes map efficiently without re-fetching existing checked or cached posts
   useEffect(() => {
     const userId = currentUser?.whatsapp || currentUser?.uid;
     if (!userId || !posts.length) return;
 
-    const uncheckedPosts = posts.filter(p => !checkedPostsRef.current.has(p.id));
+    // Skip checking posts that are already verified or already recorded in userLikes
+    const uncheckedPosts = posts.filter(p => !checkedPostsRef.current.has(p.id) && userLikes[p.id] === undefined);
     if (uncheckedPosts.length === 0) return;
 
     uncheckedPosts.forEach(p => checkedPostsRef.current.add(p.id));
@@ -113,6 +124,8 @@ const CommunitySection: React.FC<CommunitySectionProps> = ({
             const likeDoc = await getDoc(likeRef);
             if (likeDoc.exists()) {
               newLikes[post.id] = true;
+            } else {
+              newLikes[post.id] = false;
             }
           } catch (e) {
             console.warn('Error checking like for post:', post.id, e);
@@ -120,7 +133,13 @@ const CommunitySection: React.FC<CommunitySectionProps> = ({
         })
       );
       if (Object.keys(newLikes).length > 0) {
-        setUserLikes(prev => ({ ...prev, ...newLikes }));
+        setUserLikes(prev => {
+          const next = { ...prev, ...newLikes };
+          try {
+            localStorage.setItem(`unity_likes_${userId}`, JSON.stringify(next));
+          } catch (_) {}
+          return next;
+        });
       }
     };
 
@@ -191,14 +210,24 @@ const CommunitySection: React.FC<CommunitySectionProps> = ({
     if (!currentUser) return;
     const userId = currentUser.whatsapp || currentUser.uid;
     const likeRef = doc(db, 'communityPosts', post.id, 'likes', userId);
+    const isCurrentlyLiked = !!userLikes[post.id];
+    const newLikedStatus = !isCurrentlyLiked;
     
+    // Immediate optimistic local update + localStorage sync
+    setUserLikes(prev => {
+      const next = { ...prev, [post.id]: newLikedStatus };
+      try {
+        localStorage.setItem(`unity_likes_${userId}`, JSON.stringify(next));
+      } catch (_) {}
+      return next;
+    });
+
     try {
-      if (userLikes[post.id]) {
+      if (isCurrentlyLiked) {
         await deleteDoc(likeRef);
         await updateDoc(doc(db, 'communityPosts', post.id), {
           likesCount: increment(-1)
         });
-        setUserLikes(prev => ({ ...prev, [post.id]: false }));
       } else {
         await setDoc(likeRef, {
           userId,
@@ -207,10 +236,17 @@ const CommunitySection: React.FC<CommunitySectionProps> = ({
         await updateDoc(doc(db, 'communityPosts', post.id), {
           likesCount: increment(1)
         });
-        setUserLikes(prev => ({ ...prev, [post.id]: true }));
       }
     } catch (error) {
       console.error("Error toggling like:", error);
+      // Revert if write failed
+      setUserLikes(prev => {
+        const next = { ...prev, [post.id]: isCurrentlyLiked };
+        try {
+          localStorage.setItem(`unity_likes_${userId}`, JSON.stringify(next));
+        } catch (_) {}
+        return next;
+      });
     }
   };
 
@@ -333,19 +369,32 @@ const CommunitySection: React.FC<CommunitySectionProps> = ({
             <p className="text-slate-600 text-sm font-black italic">এখনও কোনো পোস্ট করা হয়নি। প্রথম পোস্টটি আপনিই করুন!</p>
           </div>
         ) : (
-          posts.map((post) => (
-            <PostCard 
-              key={post.id} 
-              post={post} 
-              currentUser={currentUser}
-              isAdmin={isAdmin}
-              isLiked={!!userLikes[post.id]}
-              onLike={() => toggleLike(post)}
-              onDelete={() => deletePost(post.id)}
-              onCommentToggle={() => setActiveCommentsPostId(activeCommentsPostId === post.id ? null : post.id)}
-              isCommentActive={activeCommentsPostId === post.id}
-            />
-          ))
+          <>
+            {posts.map((post) => (
+              <PostCard 
+                key={post.id} 
+                post={post} 
+                currentUser={currentUser}
+                isAdmin={isAdmin}
+                isLiked={!!userLikes[post.id]}
+                onLike={() => toggleLike(post)}
+                onDelete={() => deletePost(post.id)}
+                onCommentToggle={() => setActiveCommentsPostId(activeCommentsPostId === post.id ? null : post.id)}
+                isCommentActive={activeCommentsPostId === post.id}
+              />
+            ))}
+            {posts.length >= postLimit && (
+              <div className="text-center py-4">
+                <button
+                  type="button"
+                  onClick={() => setPostLimit(prev => prev + 25)}
+                  className="px-6 py-2.5 rounded-xl bg-slate-200/60 dark:bg-white/5 hover:bg-slate-300 dark:hover:bg-white/10 text-xs font-black text-slate-700 dark:text-slate-300 transition-all border border-black/5 dark:border-white/10 shadow-sm"
+                >
+                  আরও পোস্ট দেখুন (Load More)
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

@@ -2768,6 +2768,53 @@ const UserCalendarModal = ({
   );
 };
 
+const LifetimeConvertsInput: React.FC<{
+  currentValue: number;
+  onSave: (val: number) => Promise<void>;
+}> = ({ currentValue, onSave }) => {
+  const [val, setVal] = useState(currentValue || 0);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setVal(currentValue || 0);
+  }, [currentValue]);
+
+  const handleSave = async () => {
+    if (val === currentValue) return;
+    setSaving(true);
+    try {
+      await onSave(val);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="flex gap-2 sm:gap-3 items-center mb-4 sm:mb-6">
+      <input 
+        type="number"
+        value={val}
+        onChange={(e) => setVal(parseInt(e.target.value) || 0)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') handleSave();
+        }}
+        className="flex-1 bg-bg border border-white/10 rounded-xl sm:rounded-2xl px-4 sm:px-6 py-3 sm:py-4 text-xl sm:text-2xl text-gold font-serif font-black outline-none focus:border-gold"
+      />
+      <button 
+        onClick={handleSave}
+        disabled={saving || val === currentValue}
+        className="px-4 py-3 sm:py-4 bg-gold text-slate-950 font-black rounded-xl sm:rounded-2xl text-xs uppercase hover:bg-gold2 transition-all disabled:opacity-40"
+      >
+        {saving ? '...' : 'সেভ'}
+      </button>
+      <div className="p-3 sm:p-4 bg-gold/10 text-gold rounded-xl sm:rounded-2xl border border-gold/20">
+        <Trophy size={24} className="sm:hidden" />
+        <Trophy size={32} className="hidden sm:block" />
+      </div>
+    </div>
+  );
+};
+
 export default function App() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
@@ -3139,25 +3186,19 @@ export default function App() {
   useEffect(() => {
     if (!isAuthReady) return;
 
-    let unsubApps = () => {};
-    let unsubAttendance = () => {};
-    let unsubStlAttendance = () => {};
-    let unsubDemoAttendance = () => {};
-    let unsubPending = () => {};
     let unsubApproved = () => {};
     let unsubBalances = () => {};
     let unsubSubmissionLogs = () => {};
-    let unsubAuditLogs = () => {};
 
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth();
-    const safeYear = currentMonth === 0 ? currentYear - 1 : currentYear;
-    const safeMonth = currentMonth === 0 ? 12 : currentMonth; // previous month (1-indexed)
-    const startOfPrevMonthStr = `${safeYear}-${String(safeMonth).padStart(2, '0')}-01`;
+    // Only query logs starting from the 1st of the current active month
+    // UserCalendarModal fetches historical months on-demand when clicked
+    const startOfCurrentMonthStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`;
 
     if (isActuallyAdmin || hasStlAccess) {
-      // Admin & STL Listeners for all balances and full historical submission logs
+      // Admin & STL Listeners for all balances and current month's submission logs
       unsubBalances = onSnapshot(collection(db, 'userBalances'), (snapshot) => {
         const bMap: Record<string, UserBalance> = {};
         snapshot.forEach(d => {
@@ -3169,7 +3210,7 @@ export default function App() {
         handleFirestoreError(err, OperationType.GET, 'userBalances', showMsg);
       });
 
-      unsubSubmissionLogs = onSnapshot(query(collection(db, 'submissionLogs'), where('date', '>=', startOfPrevMonthStr)), (snapshot) => {
+      unsubSubmissionLogs = onSnapshot(query(collection(db, 'submissionLogs'), where('date', '>=', startOfCurrentMonthStr)), (snapshot) => {
         const logs: SubmissionLog[] = [];
         snapshot.forEach(d => {
           logs.push({ id: d.id, ...d.data() } as SubmissionLog);
@@ -3180,7 +3221,7 @@ export default function App() {
         handleFirestoreError(err, OperationType.GET, 'submissionLogs', showMsg);
       });
     } else if (cleanWa) {
-      // Regular Logged-in User (Trainer / Team Leader): ONLY listen to their OWN balance & their OWN submission logs!
+      // Regular Logged-in User (Trainer / Team Leader): ONLY listen to their OWN balance & their OWN current month logs!
       // This saves thousands of Firestore document reads every day!
       unsubBalances = onSnapshot(doc(db, 'userBalances', cleanWa), (docSnap) => {
         if (docSnap.exists()) {
@@ -3194,7 +3235,7 @@ export default function App() {
       unsubSubmissionLogs = onSnapshot(query(
         collection(db, 'submissionLogs'),
         where('whatsapp', '==', cleanWa),
-        where('date', '>=', startOfPrevMonthStr)
+        where('date', '>=', startOfCurrentMonthStr)
       ), (snapshot) => {
         const logs: SubmissionLog[] = [];
         snapshot.forEach(d => {
@@ -3206,59 +3247,8 @@ export default function App() {
       });
     }
 
-    // Admin Only Listeners (Only run for genuine admin accounts!)
+    // Admin Roster listener for avatar matching
     if (isActuallyAdmin) {
-      unsubAuditLogs = onSnapshot(query(collection(db, 'auditLogs'), orderBy('createdAt', 'desc'), limit(50)), (snapshot) => {
-        const logs: AuditLog[] = [];
-        snapshot.forEach(d => {
-          logs.push({ id: d.id, ...d.data() } as AuditLog);
-        });
-        setAuditLogs(logs);
-      }, async (err) => {
-        console.warn('AuditLogs Listener Error:', err);
-        handleFirestoreError(err, OperationType.GET, 'auditLogs', showMsg);
-      });
-
-      unsubApps = onSnapshot(query(collection(db, 'applications'), orderBy('createdAt', 'desc'), limit(50)), (snapshot) => {
-        const aList: Application[] = [];
-        snapshot.forEach(d => aList.push({ id: d.id, ...d.data() } as Application));
-        setApplications(aList);
-      }, async (err) => {
-        console.warn('Sync Applications error:', err);
-      });
-
-      unsubAttendance = onSnapshot(query(collection(db, 'teacherAttendance'), orderBy('submittedAt', 'desc'), limit(50)), (snapshot) => {
-        const rList: AttendanceRecord[] = [];
-        snapshot.forEach(d => rList.push({ id: d.id, ...d.data() } as AttendanceRecord));
-        setAttendanceRecords(rList);
-      }, async (err) => {
-        console.warn('Sync Attendance error:', err);
-      });
-
-      unsubStlAttendance = onSnapshot(query(collection(db, 'stlAttendance'), orderBy('submittedAt', 'desc'), limit(30)), (snapshot) => {
-        const list: STLAttendance[] = [];
-        snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as STLAttendance));
-        setStlAttendance(list);
-      }, async (err) => {
-        console.warn('Sync STL attendance error:', err);
-      });
-
-      unsubDemoAttendance = onSnapshot(query(collection(db, 'demoAttendance'), orderBy('submittedAt', 'desc'), limit(30)), (snapshot) => {
-        const list: DemoAttendance[] = [];
-        snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as DemoAttendance));
-        setDemoAttendance(list);
-      }, async (err) => {
-        console.warn('Sync Demo attendance error:', err);
-      });
-
-      unsubPending = onSnapshot(query(collection(db, 'pendingRegistrations'), orderBy('createdAt', 'desc')), (snapshot) => {
-        const list: UserRegistration[] = [];
-        snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as UserRegistration));
-        setPendingUsers(list);
-      }, async (err) => {
-        console.warn('Sync Pending error:', err);
-      });
-
       unsubApproved = onSnapshot(collection(db, 'registeredUsers'), (snapshot) => {
         const list: UserRegistration[] = [];
         snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as UserRegistration));
@@ -3271,29 +3261,95 @@ export default function App() {
     return () => {
       unsubBalances();
       unsubSubmissionLogs();
+      unsubApproved();
+    };
+  }, [isAuthReady, isActuallyAdmin, hasStlAccess, cleanWa]);
+
+  // ---------------------------------------------------------
+  // LAZY-LOADED ADMIN PANEL LISTENERS
+  // Only listens to heavy secondary data (audit logs, applications, attendance records, pending users)
+  // when the Admin Panel drawer/modal is actually OPEN! Saves 250+ reads per session!
+  // ---------------------------------------------------------
+  useEffect(() => {
+    if (!isAuthReady || !isActuallyAdmin || !showAdminPanel) return;
+
+    const unsubAuditLogs = onSnapshot(query(collection(db, 'auditLogs'), orderBy('createdAt', 'desc'), limit(50)), (snapshot) => {
+      const logs: AuditLog[] = [];
+      snapshot.forEach(d => {
+        logs.push({ id: d.id, ...d.data() } as AuditLog);
+      });
+      setAuditLogs(logs);
+    }, async (err) => {
+      console.warn('AuditLogs Listener Error:', err);
+      handleFirestoreError(err, OperationType.GET, 'auditLogs', showMsg);
+    });
+
+    const unsubApps = onSnapshot(query(collection(db, 'applications'), orderBy('createdAt', 'desc'), limit(50)), (snapshot) => {
+      const aList: Application[] = [];
+      snapshot.forEach(d => aList.push({ id: d.id, ...d.data() } as Application));
+      setApplications(aList);
+    }, async (err) => {
+      console.warn('Sync Applications error:', err);
+    });
+
+    const unsubAttendance = onSnapshot(query(collection(db, 'teacherAttendance'), orderBy('submittedAt', 'desc'), limit(50)), (snapshot) => {
+      const rList: AttendanceRecord[] = [];
+      snapshot.forEach(d => rList.push({ id: d.id, ...d.data() } as AttendanceRecord));
+      setAttendanceRecords(rList);
+    }, async (err) => {
+      console.warn('Sync Attendance error:', err);
+    });
+
+    const unsubStlAttendance = onSnapshot(query(collection(db, 'stlAttendance'), orderBy('submittedAt', 'desc'), limit(30)), (snapshot) => {
+      const list: STLAttendance[] = [];
+      snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as STLAttendance));
+      setStlAttendance(list);
+    }, async (err) => {
+      console.warn('Sync STL attendance error:', err);
+    });
+
+    const unsubDemoAttendance = onSnapshot(query(collection(db, 'demoAttendance'), orderBy('submittedAt', 'desc'), limit(30)), (snapshot) => {
+      const list: DemoAttendance[] = [];
+      snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as DemoAttendance));
+      setDemoAttendance(list);
+    }, async (err) => {
+      console.warn('Sync Demo attendance error:', err);
+    });
+
+    const unsubPending = onSnapshot(query(collection(db, 'pendingRegistrations'), orderBy('createdAt', 'desc')), (snapshot) => {
+      const list: UserRegistration[] = [];
+      snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as UserRegistration));
+      setPendingUsers(list);
+    }, async (err) => {
+      console.warn('Sync Pending error:', err);
+    });
+
+    return () => {
       unsubAuditLogs();
       unsubApps();
       unsubAttendance();
       unsubStlAttendance();
       unsubDemoAttendance();
       unsubPending();
-      unsubApproved();
     };
-  }, [isAuthReady, isActuallyAdmin, hasStlAccess, cleanWa]);
+  }, [isAuthReady, isActuallyAdmin, showAdminPanel]);
 
   // Timer Logic
+  const timerAutoTurnedOffRef = useRef(false);
   useEffect(() => {
     if (config.timerActive && config.timerEndTime) {
+      timerAutoTurnedOffRef.current = false;
       const updateRemaining = () => {
         const now = Date.now();
         const diff = config.timerEndTime - now;
         const remaining = Math.max(0, Math.floor(diff / 1000));
         setTimeLeft(remaining);
 
-        // When timer reaches 0, auto turn it off
+        // When timer reaches 0, auto turn it off safely once
         if (remaining <= 0) {
           if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-          if (isAdmin) {
+          if (isAdmin && !timerAutoTurnedOffRef.current) {
+            timerAutoTurnedOffRef.current = true;
             updateDoc(doc(db, 'config', 'global'), {
               timerActive: false,
               timerEndTime: 0
@@ -4886,24 +4942,18 @@ export default function App() {
 
       await batch.commit();
 
-      // 5. Delete all submission logs in chunks of 500
-      let lastDoc = null;
-      let hasMore = true;
-      while (hasMore) {
-        const q = lastDoc 
-          ? query(collection(db, 'submissionLogs'), limit(500), startAfter(lastDoc))
-          : query(collection(db, 'submissionLogs'), limit(500));
-        
+      // 5. Delete all submission logs in safe batches (capped at 10 iterations max)
+      let iterations = 0;
+      while (iterations < 10) {
+        const q = query(collection(db, 'submissionLogs'), limit(200));
         const snapshot = await getDocs(q);
         if (snapshot.empty) {
-          hasMore = false;
           break;
         }
-        
         const logBatch = writeBatch(db);
         snapshot.forEach(d => logBatch.delete(d.ref));
         await logBatch.commit();
-        lastDoc = snapshot.docs[snapshot.docs.length - 1];
+        iterations++;
       }
 
       await writeAuditLog('SYSTEM', 'All Users', 'ALL SYSTEM RESET', 0, `Complete system reset performed by Admin. All history, fines, and rankings cleared.`);
@@ -7108,21 +7158,13 @@ export default function App() {
                 <AdminAccordion title="Conversion Intelligence" icon={<Trophy size={16} />} colorClass="text-gold2">
                    <div className="bg-surface/40 border border-white/5 p-4 sm:p-6 rounded-2xl sm:rounded-3xl">
                       <label className="text-[9px] sm:text-[10px] text-muted-main uppercase font-black tracking-widest block mb-4">Lifetime Total Convert</label>
-                      <div className="flex gap-3 sm:gap-4 items-center mb-4 sm:mb-6">
-                        <input 
-                          type="number"
-                          value={config.totalConverts || 0}
-                          onChange={(e) => {
-                            const val = parseInt(e.target.value) || 0;
-                            updateDoc(doc(db, 'config', 'global'), { totalConverts: val });
-                          }}
-                          className="flex-1 bg-bg border border-white/10 rounded-xl sm:rounded-2xl px-4 sm:px-6 py-3 sm:py-4 text-xl sm:text-2xl text-gold font-serif font-black outline-none focus:border-gold"
-                        />
-                        <div className="p-3 sm:p-4 bg-gold/10 text-gold rounded-xl sm:rounded-2xl border border-gold/20">
-                          <Trophy size={24} className="sm:hidden" />
-                          <Trophy size={32} className="hidden sm:block" />
-                        </div>
-                      </div>
+                      <LifetimeConvertsInput 
+                        currentValue={config.totalConverts || 0}
+                        onSave={async (val) => {
+                          await updateDoc(doc(db, 'config', 'global'), { totalConverts: val });
+                          showMsg(`Lifetime converts updated to ${val}`, 'success');
+                        }}
+                      />
                       <div className="grid grid-cols-1 gap-2 sm:gap-3">
                         <button 
                           onClick={resetAndSyncRankings}
