@@ -92,25 +92,40 @@ const CommunitySection: React.FC<CommunitySectionProps> = ({
     return () => unsubscribe();
   }, [communityActive, isAdmin]);
 
-  // Fetch likes map
-  useEffect(() => {
-    if (!currentUser || !posts.length) return;
+  const checkedPostsRef = useRef<Set<string>>(new Set());
 
-    const fetchLikes = async () => {
-      const likes: Record<string, boolean> = {};
-      for (const post of posts) {
-        const userId = currentUser.whatsapp || currentUser.uid || 'anon';
-        const likeRef = doc(db, 'communityPosts', post.id, 'likes', userId);
-        const likeDoc = await getDoc(likeRef);
-        if (likeDoc.exists()) {
-          likes[post.id] = true;
-        }
+  // Fetch likes map efficiently without re-fetching existing checked posts
+  useEffect(() => {
+    const userId = currentUser?.whatsapp || currentUser?.uid;
+    if (!userId || !posts.length) return;
+
+    const uncheckedPosts = posts.filter(p => !checkedPostsRef.current.has(p.id));
+    if (uncheckedPosts.length === 0) return;
+
+    uncheckedPosts.forEach(p => checkedPostsRef.current.add(p.id));
+
+    const fetchNewLikes = async () => {
+      const newLikes: Record<string, boolean> = {};
+      await Promise.all(
+        uncheckedPosts.map(async (post) => {
+          try {
+            const likeRef = doc(db, 'communityPosts', post.id, 'likes', userId);
+            const likeDoc = await getDoc(likeRef);
+            if (likeDoc.exists()) {
+              newLikes[post.id] = true;
+            }
+          } catch (e) {
+            console.warn('Error checking like for post:', post.id, e);
+          }
+        })
+      );
+      if (Object.keys(newLikes).length > 0) {
+        setUserLikes(prev => ({ ...prev, ...newLikes }));
       }
-      setUserLikes(likes);
     };
 
-    fetchLikes();
-  }, [currentUser, posts]);
+    fetchNewLikes();
+  }, [currentUser?.whatsapp, currentUser?.uid, posts]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

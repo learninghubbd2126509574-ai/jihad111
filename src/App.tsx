@@ -3115,146 +3115,6 @@ export default function App() {
       handleFirestoreError(err, OperationType.GET, 'quickLinks', showMsg);
     });
 
-    // ---------------------------------------------------------
-    // AUTH DEPENDENT LISTENERS (Admin / Authed only)
-    // ---------------------------------------------------------
-    let unsubApps = () => {};
-    let unsubAttendance = () => {};
-    let unsubStlAttendance = () => {};
-    let unsubDemoAttendance = () => {};
-    let unsubPending = () => {};
-    let unsubApproved = () => {};
-    let unsubBalances = () => {};
-    let unsubSubmissionLogs = () => {};
-    let unsubAuditLogs = () => {};
-
-    if (isAuthReady) {
-      const now = new Date();
-      const currentYear = now.getFullYear();
-      const currentMonth = now.getMonth();
-      const safeYear = currentMonth === 0 ? currentYear - 1 : currentYear;
-      const safeMonth = currentMonth === 0 ? 12 : currentMonth; // previous month (1-indexed)
-      const startOfPrevMonthStr = `${safeYear}-${String(safeMonth).padStart(2, '0')}-01`;
-
-      // Admin check: ONLY true if admin is authenticated (NOT for ordinary anonymous visitors)
-      const isActuallyAdmin = Boolean(isAdmin || (!user?.isAnonymous && user?.email && (user.email === adminEmail || user.email === devEmail)));
-
-      if (isActuallyAdmin || hasStlAccess) {
-        // Admin & STL Listeners for all balances and full historical submission logs
-        unsubBalances = onSnapshot(collection(db, 'userBalances'), (snapshot) => {
-          const bMap: Record<string, UserBalance> = {};
-          snapshot.forEach(d => {
-            bMap[d.id] = { id: d.id, ...d.data() } as UserBalance;
-          });
-          setUserBalances(bMap);
-        }, async (err) => {
-          console.warn('Balances Listener Error:', err);
-          handleFirestoreError(err, OperationType.GET, 'userBalances', showMsg);
-        });
-
-        unsubSubmissionLogs = onSnapshot(query(collection(db, 'submissionLogs'), where('date', '>=', startOfPrevMonthStr)), (snapshot) => {
-          const logs: SubmissionLog[] = [];
-          snapshot.forEach(d => {
-            logs.push({ id: d.id, ...d.data() } as SubmissionLog);
-          });
-          setSubmissionLogs(logs);
-        }, async (err) => {
-          console.warn('SubmissionLogs Listener Error:', err);
-          handleFirestoreError(err, OperationType.GET, 'submissionLogs', showMsg);
-        });
-      } else if (authenticatedUser) {
-        // Regular Logged-in User (Trainer / Team Leader): ONLY listen to their OWN balance & their OWN submission logs!
-        // This saves thousands of Firestore document reads every day!
-        const cleanWa = authenticatedUser.whatsapp ? authenticatedUser.whatsapp.trim().replace(/\s+/g, '') : '';
-        if (cleanWa) {
-          unsubBalances = onSnapshot(doc(db, 'userBalances', cleanWa), (docSnap) => {
-            if (docSnap.exists()) {
-              const data = docSnap.data() as UserBalance;
-              setUserBalances(prev => ({ ...prev, [cleanWa]: { id: docSnap.id, ...data } }));
-            }
-          }, (err) => {
-            console.warn('User balance listener error:', err);
-          });
-
-          unsubSubmissionLogs = onSnapshot(query(
-            collection(db, 'submissionLogs'),
-            where('whatsapp', '==', cleanWa),
-            where('date', '>=', startOfPrevMonthStr)
-          ), (snapshot) => {
-            const logs: SubmissionLog[] = [];
-            snapshot.forEach(d => {
-              logs.push({ id: d.id, ...d.data() } as SubmissionLog);
-            });
-            setSubmissionLogs(logs);
-          }, (err) => {
-            console.warn('User submission logs listener error:', err);
-          });
-        }
-      }
-
-      // Admin Only Listeners (Only run for genuine admin accounts!)
-      if (isActuallyAdmin) {
-        unsubAuditLogs = onSnapshot(query(collection(db, 'auditLogs'), orderBy('createdAt', 'desc'), limit(50)), (snapshot) => {
-          const logs: AuditLog[] = [];
-          snapshot.forEach(d => {
-            logs.push({ id: d.id, ...d.data() } as AuditLog);
-          });
-          setAuditLogs(logs);
-        }, async (err) => {
-          console.warn('AuditLogs Listener Error:', err);
-          handleFirestoreError(err, OperationType.GET, 'auditLogs', showMsg);
-        });
-
-        unsubApps = onSnapshot(query(collection(db, 'applications'), orderBy('createdAt', 'desc'), limit(50)), (snapshot) => {
-          const aList: Application[] = [];
-          snapshot.forEach(d => aList.push({ id: d.id, ...d.data() } as Application));
-          setApplications(aList);
-        }, async (err) => {
-          console.warn('Sync Applications error:', err);
-        });
-
-        unsubAttendance = onSnapshot(query(collection(db, 'teacherAttendance'), orderBy('submittedAt', 'desc'), limit(50)), (snapshot) => {
-          const rList: AttendanceRecord[] = [];
-          snapshot.forEach(d => rList.push({ id: d.id, ...d.data() } as AttendanceRecord));
-          setAttendanceRecords(rList);
-        }, async (err) => {
-          console.warn('Sync Attendance error:', err);
-        });
-
-        unsubStlAttendance = onSnapshot(query(collection(db, 'stlAttendance'), orderBy('submittedAt', 'desc'), limit(30)), (snapshot) => {
-          const list: STLAttendance[] = [];
-          snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as STLAttendance));
-          setStlAttendance(list);
-        }, async (err) => {
-          console.warn('Sync STL attendance error:', err);
-        });
-
-        unsubDemoAttendance = onSnapshot(query(collection(db, 'demoAttendance'), orderBy('submittedAt', 'desc'), limit(30)), (snapshot) => {
-          const list: DemoAttendance[] = [];
-          snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as DemoAttendance));
-          setDemoAttendance(list);
-        }, async (err) => {
-          console.warn('Sync Demo attendance error:', err);
-        });
-
-        unsubPending = onSnapshot(query(collection(db, 'pendingRegistrations'), orderBy('createdAt', 'desc')), (snapshot) => {
-          const list: UserRegistration[] = [];
-          snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as UserRegistration));
-          setPendingUsers(list);
-        }, async (err) => {
-          console.warn('Sync Pending error:', err);
-        });
-
-        unsubApproved = onSnapshot(collection(db, 'registeredUsers'), (snapshot) => {
-          const list: UserRegistration[] = [];
-          snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as UserRegistration));
-          setApprovedUsers(list);
-        }, async (err) => {
-          console.warn('Sync Approved error:', err);
-        });
-      }
-    }
-
     return () => {
       unsubConfig();
       unsubMembers();
@@ -3266,6 +3126,149 @@ export default function App() {
       unsubStlMembers();
       unsubDemoMembers();
       unsubQuickLinks();
+    };
+  }, []);
+
+  // ---------------------------------------------------------
+  // AUTH DEPENDENT LISTENERS (Admin / Logged-in User only)
+  // Only runs when auth is fully resolved, preventing double-queries on startup!
+  // ---------------------------------------------------------
+  const isActuallyAdmin = Boolean(isAdmin || (!user?.isAnonymous && user?.email && (user.email === adminEmail || user.email === devEmail)));
+  const cleanWa = authenticatedUser?.whatsapp ? authenticatedUser.whatsapp.trim().replace(/\s+/g, '') : '';
+
+  useEffect(() => {
+    if (!isAuthReady) return;
+
+    let unsubApps = () => {};
+    let unsubAttendance = () => {};
+    let unsubStlAttendance = () => {};
+    let unsubDemoAttendance = () => {};
+    let unsubPending = () => {};
+    let unsubApproved = () => {};
+    let unsubBalances = () => {};
+    let unsubSubmissionLogs = () => {};
+    let unsubAuditLogs = () => {};
+
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+    const safeYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+    const safeMonth = currentMonth === 0 ? 12 : currentMonth; // previous month (1-indexed)
+    const startOfPrevMonthStr = `${safeYear}-${String(safeMonth).padStart(2, '0')}-01`;
+
+    if (isActuallyAdmin || hasStlAccess) {
+      // Admin & STL Listeners for all balances and full historical submission logs
+      unsubBalances = onSnapshot(collection(db, 'userBalances'), (snapshot) => {
+        const bMap: Record<string, UserBalance> = {};
+        snapshot.forEach(d => {
+          bMap[d.id] = { id: d.id, ...d.data() } as UserBalance;
+        });
+        setUserBalances(bMap);
+      }, async (err) => {
+        console.warn('Balances Listener Error:', err);
+        handleFirestoreError(err, OperationType.GET, 'userBalances', showMsg);
+      });
+
+      unsubSubmissionLogs = onSnapshot(query(collection(db, 'submissionLogs'), where('date', '>=', startOfPrevMonthStr)), (snapshot) => {
+        const logs: SubmissionLog[] = [];
+        snapshot.forEach(d => {
+          logs.push({ id: d.id, ...d.data() } as SubmissionLog);
+        });
+        setSubmissionLogs(logs);
+      }, async (err) => {
+        console.warn('SubmissionLogs Listener Error:', err);
+        handleFirestoreError(err, OperationType.GET, 'submissionLogs', showMsg);
+      });
+    } else if (cleanWa) {
+      // Regular Logged-in User (Trainer / Team Leader): ONLY listen to their OWN balance & their OWN submission logs!
+      // This saves thousands of Firestore document reads every day!
+      unsubBalances = onSnapshot(doc(db, 'userBalances', cleanWa), (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data() as UserBalance;
+          setUserBalances(prev => ({ ...prev, [cleanWa]: { id: docSnap.id, ...data } }));
+        }
+      }, (err) => {
+        console.warn('User balance listener error:', err);
+      });
+
+      unsubSubmissionLogs = onSnapshot(query(
+        collection(db, 'submissionLogs'),
+        where('whatsapp', '==', cleanWa),
+        where('date', '>=', startOfPrevMonthStr)
+      ), (snapshot) => {
+        const logs: SubmissionLog[] = [];
+        snapshot.forEach(d => {
+          logs.push({ id: d.id, ...d.data() } as SubmissionLog);
+        });
+        setSubmissionLogs(logs);
+      }, (err) => {
+        console.warn('User submission logs listener error:', err);
+      });
+    }
+
+    // Admin Only Listeners (Only run for genuine admin accounts!)
+    if (isActuallyAdmin) {
+      unsubAuditLogs = onSnapshot(query(collection(db, 'auditLogs'), orderBy('createdAt', 'desc'), limit(50)), (snapshot) => {
+        const logs: AuditLog[] = [];
+        snapshot.forEach(d => {
+          logs.push({ id: d.id, ...d.data() } as AuditLog);
+        });
+        setAuditLogs(logs);
+      }, async (err) => {
+        console.warn('AuditLogs Listener Error:', err);
+        handleFirestoreError(err, OperationType.GET, 'auditLogs', showMsg);
+      });
+
+      unsubApps = onSnapshot(query(collection(db, 'applications'), orderBy('createdAt', 'desc'), limit(50)), (snapshot) => {
+        const aList: Application[] = [];
+        snapshot.forEach(d => aList.push({ id: d.id, ...d.data() } as Application));
+        setApplications(aList);
+      }, async (err) => {
+        console.warn('Sync Applications error:', err);
+      });
+
+      unsubAttendance = onSnapshot(query(collection(db, 'teacherAttendance'), orderBy('submittedAt', 'desc'), limit(50)), (snapshot) => {
+        const rList: AttendanceRecord[] = [];
+        snapshot.forEach(d => rList.push({ id: d.id, ...d.data() } as AttendanceRecord));
+        setAttendanceRecords(rList);
+      }, async (err) => {
+        console.warn('Sync Attendance error:', err);
+      });
+
+      unsubStlAttendance = onSnapshot(query(collection(db, 'stlAttendance'), orderBy('submittedAt', 'desc'), limit(30)), (snapshot) => {
+        const list: STLAttendance[] = [];
+        snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as STLAttendance));
+        setStlAttendance(list);
+      }, async (err) => {
+        console.warn('Sync STL attendance error:', err);
+      });
+
+      unsubDemoAttendance = onSnapshot(query(collection(db, 'demoAttendance'), orderBy('submittedAt', 'desc'), limit(30)), (snapshot) => {
+        const list: DemoAttendance[] = [];
+        snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as DemoAttendance));
+        setDemoAttendance(list);
+      }, async (err) => {
+        console.warn('Sync Demo attendance error:', err);
+      });
+
+      unsubPending = onSnapshot(query(collection(db, 'pendingRegistrations'), orderBy('createdAt', 'desc')), (snapshot) => {
+        const list: UserRegistration[] = [];
+        snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as UserRegistration));
+        setPendingUsers(list);
+      }, async (err) => {
+        console.warn('Sync Pending error:', err);
+      });
+
+      unsubApproved = onSnapshot(collection(db, 'registeredUsers'), (snapshot) => {
+        const list: UserRegistration[] = [];
+        snapshot.forEach(d => list.push({ id: d.id, ...d.data() } as UserRegistration));
+        setApprovedUsers(list);
+      }, async (err) => {
+        console.warn('Sync Approved error:', err);
+      });
+    }
+
+    return () => {
       unsubBalances();
       unsubSubmissionLogs();
       unsubAuditLogs();
@@ -3276,7 +3279,7 @@ export default function App() {
       unsubPending();
       unsubApproved();
     };
-  }, [isAuthReady, isAdmin, user, authenticatedUser, hasStlAccess]);
+  }, [isAuthReady, isActuallyAdmin, hasStlAccess, cleanWa]);
 
   // Timer Logic
   useEffect(() => {
