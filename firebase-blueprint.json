@@ -222,6 +222,8 @@
         "whatsapp": { "type": "string" },
         "position": { "type": "string", "enum": ["Team Leader", "Team Trainer", "STL", "Teacher", "Counsellor"] },
         "password": { "type": "string" },
+        "teamLeader": { "type": "string" },
+        "vacancy": { "type": "string" },
         "status": { "type": "string", "enum": ["pending", "active", "blocked"] },
         "createdAt": { "type": "string", "format": "date-time" }
       },

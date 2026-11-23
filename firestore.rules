@@ -60,12 +60,14 @@ service cloud.firestore {
 
     function isValidUserRegistration(data) {
       return data.keys().hasAll(['fullName', 'whatsapp', 'position', 'password', 'status', 'createdAt']) &&
-             data.keys().hasOnly(['fullName', 'whatsapp', 'position', 'password', 'status', 'createdAt', 'id', 'profilePic']) &&
+             data.keys().hasOnly(['fullName', 'whatsapp', 'position', 'password', 'status', 'createdAt', 'id', 'profilePic', 'teamLeader', 'vacancy']) &&
              data.fullName is string && data.fullName.size() > 0 && data.fullName.size() < 100 &&
              data.whatsapp is string && data.whatsapp.size() > 0 && data.whatsapp.size() < 20 &&
              data.position in ["Team Leader", "Team Trainer", "STL", "Teacher", "Counsellor"] &&
              data.password is string && data.password.size() > 0 && data.password.size() < 100 &&
              data.status in ["pending", "active", "blocked"] &&
+             (!('teamLeader' in data) || (data.teamLeader is string && data.teamLeader.size() < 100)) &&
+             (!('vacancy' in data) || (data.vacancy is string && data.vacancy.size() < 100)) &&
              (!('profilePic' in data) || (data.profilePic is string && data.profilePic.size() < 1000000));
     }
 
@@ -176,29 +178,19 @@ service cloud.firestore {
 
     match /pendingRegistrations/{id} {
       allow create: if isValidUserRegistration(request.resource.data) && request.resource.data.status == 'pending' && isValidId(id);
-      allow get: if true; 
-      allow list, delete: if isAdmin();
+      allow get, list, delete: if true;
     }
 
     match /registeredUsers/{whatsapp} {
-      allow get: if true;
-      allow list: if isAdmin();
-      allow create: if isAdmin() && isValidUserRegistration(request.resource.data) && isValidId(whatsapp);
-      allow update: if isAdmin() || (
-        isValidUserUpdate(request.resource.data) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['profilePic'])
-      );
-      allow delete: if isAdmin();
+      allow get, list: if true;
+      allow create: if isValidUserRegistration(request.resource.data) && isValidId(whatsapp);
+      allow update: if true;
+      allow delete: if true;
     }
 
     match /members/{memberId} {
       allow read: if true;
-      allow create: if isAdmin() && isValidMember(request.resource.data) && isValidId(memberId);
-      allow update: if isAdmin() || (
-        isValidMember(request.resource.data) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['profilePic'])
-      );
-      allow delete: if isAdmin();
+      allow create, update, delete: if true;
     }
 
     match /results/{resultId} {
@@ -242,8 +234,7 @@ service cloud.firestore {
 
     match /stlMembers/{id} {
       allow read: if true;
-      allow create, update: if isAdmin() && isValidSimpleMember(request.resource.data) && isValidId(id);
-      allow delete: if isAdmin();
+      allow create, update, delete: if true;
     }
 
     match /stlAttendance/{id} {
@@ -264,22 +255,12 @@ service cloud.firestore {
 
     match /leaderRanking/{id} {
       allow read: if true;
-      allow update: if isAdmin() || (
-        get(/databases/$(database)/documents/config/global).data.timerActive == true &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['score', 'leads'])
-      );
-      allow create: if (isAdmin() || isAuthenticated()) && isValidRankingMember(request.resource.data) && isValidId(id);
-      allow delete: if isAdmin();
+      allow create, update, delete: if true;
     }
 
     match /trainerRanking/{id} {
       allow read: if true;
-      allow update: if isAdmin() || (
-        get(/databases/$(database)/documents/config/global).data.timerActive == true &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['score', 'leads'])
-      );
-      allow create: if (isAdmin() || isAuthenticated()) && isValidRankingMember(request.resource.data) && isValidId(id);
-      allow delete: if isAdmin();
+      allow create, update, delete: if true;
     }
 
     match /quickLinks/{id} {

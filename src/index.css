@@ -1,35 +1,39 @@
-@import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap');
 @import "tailwindcss";
 
 @theme {
   --font-sans: "Plus Jakarta Sans", "Hind Siliguri", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-serif: "Plus Jakarta Sans", "Outfit", "Hind Siliguri", sans-serif;
-  --font-display: "Plus Jakarta Sans", "Outfit", "Hind Siliguri", sans-serif;
+  --font-serif: "Plus Jakarta Sans", "Hind Siliguri", ui-sans-serif, sans-serif;
+  --font-display: "Plus Jakarta Sans", "Hind Siliguri", ui-sans-serif, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
-  
-  /* Authentic Neumorphism palette - Richer, deeper contrast & zero white glare */
-  --color-bg: #d8e2ee;
-  --color-surface: #e0e9f4;
-  --color-surface2: #e7eff8;
-  
-  /* Soft Neumorphic borders */
-  --color-border: #c4d2e2;
-  --color-border2: #d0dde9;
-  
-  /* Professional Blue brand colors */
-  --color-gold: #1d4ed8;
-  --color-gold2: #2563eb;
-  --color-gold3: #eff6ff;
-  
-  /* Professional Accents */
-  --color-blue-accent: #2563eb;
-  --color-green-accent: #059669;
-  --color-red-accent: #dc2626;
-  --color-purple-accent: #7c3aed;
-  
-  /* High contrast black/slate typography for complete readability */
-  --color-text-main: #090d16;
-  --color-muted-main: #334155;
+
+  /* Corporate Fintech Light Palette (60% #F4F6F9 / 30% #FFFFFF / 10% #0B4F9C & #FF6B00) */
+  --color-bg: #F4F6F9;
+  --color-surface: #FFFFFF;
+  --color-surface2: #F8FAFC;
+
+  /* Hairline Borders */
+  --color-border: #E5E7EB;
+  --color-border2: #D1D5DB;
+
+  /* Corporate Brand Colors */
+  --color-brand: #0B4F9C;
+  --color-brand-dark: #094182;
+  --color-brand-soft: #EEF5FF;
+  --color-brand-border: #D6E6FF;
+  --color-orange-cta: #FF6B00;
+  --color-orange-dark: #EA580C;
+  --color-charcoal: #1F2328;
+
+  /* Semantic Accents */
+  --color-blue-accent: #0B4F9C;
+  --color-green-accent: #047857;
+  --color-red-accent: #DC2626;
+  --color-amber-accent: #B45309;
+
+  /* Ink Scale */
+  --color-text-main: #0F172A;
+  --color-muted-main: #64748B;
 }
 
 @layer base {
@@ -38,190 +42,116 @@
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    background-color: #d8e2ee;
-    color: #090d16;
+    background-color: #F4F6F9;
+    color: #0F172A;
+    scroll-behavior: smooth;
   }
+
   body {
-    background-color: #d8e2ee;
-    color: #090d16;
+    background-color: #F4F6F9;
+    color: #0F172A;
     font-family: var(--font-sans);
     letter-spacing: -0.01em;
+    overflow-x: hidden;
   }
+
   h1, h2, h3, h4, h5, h6 {
-    font-family: var(--font-serif);
+    font-family: var(--font-display);
     letter-spacing: -0.02em;
-    color: #090d16;
   }
 }
 
-/* ---------------------------------------------------- */
-/* NEUMORPHISM (SOFT UI) SIGNATURE COMPONENT UTILITIES */
-/* ---------------------------------------------------- */
-
-/* Primary Extruded Neumorphic Card */
-.neu-card, .neu-raised {
-  background: #e0e9f4;
-  box-shadow: 6px 6px 15px rgba(152, 170, 194, 0.65), -5px -5px 13px rgba(255, 255, 255, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  border-radius: 1.25rem;
+/* Fintech Corporate Surface Utilities (Single hairline elevation, zero double shadows) */
+.fintech-card {
+  background-color: #FFFFFF;
+  border: 1px solid #E5E7EB;
+  border-radius: 1rem;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
 }
 
-/* Medium & Small Extruded Neumorphic Card */
-.neu-card-sm, .neu-raised-sm {
-  background: #e0e9f4;
-  box-shadow: 4px 4px 10px rgba(154, 172, 195, 0.6), -3px -3px 8px rgba(255, 255, 255, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.65);
-  border-radius: 0.875rem;
+.fintech-card-interactive {
+  background-color: #FFFFFF;
+  border: 1px solid #E5E7EB;
+  border-radius: 1rem;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
 }
 
-/* Inset / Sunken Neumorphic Container (recessed) */
-.neu-inset, .neu-sunken {
-  background: #d3dfeb;
-  box-shadow: inset 3px 3px 6px rgba(150, 168, 190, 0.65), inset -2px -2px 5px rgba(255, 255, 255, 0.65);
-  border: 1px solid rgba(200, 212, 226, 0.6);
+.fintech-card-interactive:hover {
+  border-color: #CBD5E1;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
 }
 
-/* Neumorphic Interactive Buttons */
-.neu-btn {
-  background: #e0e9f4;
-  color: #090d16;
-  box-shadow: 4px 4px 10px rgba(152, 170, 194, 0.65), -4px -4px 10px rgba(255, 255, 255, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.7);
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-.neu-btn:hover {
-  box-shadow: 2px 2px 5px rgba(152, 170, 194, 0.7), -2px -2px 5px rgba(255, 255, 255, 0.8);
-  transform: translateY(-1px);
-  color: #1d4ed8;
-}
-.neu-btn:active, .neu-btn.active {
-  box-shadow: inset 3px 3px 6px rgba(150, 168, 190, 0.65), inset -2px -2px 5px rgba(255, 255, 255, 0.65);
-  transform: translateY(0);
-  color: #1d4ed8;
+.fintech-input {
+  background-color: #F8FAFC;
+  border: 1px solid #D1D5DB;
+  color: #0F172A;
+  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-/* Neumorphic Colored Action Buttons */
-.neu-btn-primary {
-  background: linear-gradient(145deg, #2563eb, #1d4ed8);
-  color: #ffffff !important;
-  box-shadow: 5px 5px 14px #b8c8dc, -5px -5px 14px #ffffff, 0 4px 12px rgba(37, 99, 235, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  transition: all 0.2s ease;
-}
-.neu-btn-primary:hover {
-  background: linear-gradient(145deg, #3b82f6, #2563eb);
-  box-shadow: 3px 3px 8px #b8c8dc, -3px -3px 8px #ffffff;
-  transform: translateY(-1px);
-}
-.neu-btn-primary:active {
-  background: linear-gradient(145deg, #1d4ed8, #1e40af);
-  box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.3), inset -2px -2px 5px rgba(255, 255, 255, 0.2);
-  transform: translateY(0);
+.fintech-input::placeholder {
+  color: #94A3B8;
 }
 
-.neu-btn-emerald {
-  background: linear-gradient(145deg, #10b981, #059669);
-  color: #ffffff !important;
-  box-shadow: 5px 5px 14px #b8c8dc, -5px -5px 14px #ffffff, 0 4px 12px rgba(16, 185, 129, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  transition: all 0.2s ease;
-}
-.neu-btn-emerald:hover {
-  background: linear-gradient(145deg, #34d399, #10b981);
-  box-shadow: 3px 3px 8px #b8c8dc, -3px -3px 8px #ffffff;
-  transform: translateY(-1px);
-}
-.neu-btn-emerald:active {
-  box-shadow: inset 2px 2px 5px rgba(0, 0, 0, 0.3), inset -2px -2px 5px rgba(255, 255, 255, 0.2);
-  transform: translateY(0);
+.fintech-input:focus {
+  background-color: #FFFFFF;
+  border-color: #0B4F9C;
+  box-shadow: 0 0 0 3px rgba(11, 79, 156, 0.12);
+  outline: none;
 }
 
-/* Neumorphic Recessed Form Inputs */
-.neu-input {
-  background: #d3dfeb !important;
-  color: #090d16 !important;
-  box-shadow: inset 3px 3px 6px rgba(150, 168, 190, 0.65), inset -2px -2px 5px rgba(255, 255, 255, 0.7) !important;
-  border: 1px solid rgba(195, 208, 222, 0.75) !important;
-  transition: all 0.2s ease;
-}
-.neu-input:focus {
-  border-color: #2563eb !important;
-  box-shadow: inset 3px 3px 6px rgba(135, 155, 180, 0.75), inset -2px -2px 5px rgba(255, 255, 255, 0.7), 0 0 0 2px rgba(37, 99, 235, 0.2) !important;
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
 }
 
-/* Neumorphic Navigation Bar */
-.neu-nav {
-  background: rgba(216, 226, 238, 0.95);
-  backdrop-filter: blur(16px);
-  box-shadow: 6px 6px 18px rgba(150, 168, 192, 0.65), -5px -5px 15px rgba(255, 255, 255, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.7);
-}
-
-/* Custom smooth scrollbars */
+/* Custom sleek scrollbars */
 .custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
+
 .custom-scrollbar::-webkit-scrollbar-track {
-  background: #d8e2ee;
-  border-radius: 99px;
+  background: transparent;
 }
+
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #b8c8d8;
-  border-radius: 99px;
+  background: #CBD5E1;
+  border-radius: 9999px;
 }
+
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #94A3B8;
 }
 
-/* ---------------------------------------------------- */
-/* AUTOMATIC TEXT-COLOR MISMATCH OVERRIDES & FIXES      */
-/* ---------------------------------------------------- */
-/*
-   Crucial rule requested by user:
-   "ফ্রন্টে যেগুলো সাদা ছিল সেগুলো কালো করো বা অন্য কালার করো। কালার মিসম্যাচ হয়ে যাচ্ছে আর কি।"
-   Any text or heading on light/neumorphic elements that used "text-white"
-   should render as crisp dark slate (#0f172a or #1e293b) so it's 100% visible!
-*/
-.neu-card h1, .neu-card h2, .neu-card h3, .neu-card h4, .neu-card h5, .neu-card h6,
-.neu-raised h1, .neu-raised h2, .neu-raised h3, .neu-raised h4, .neu-raised h5, .neu-raised h6,
-.neu-card-sm h1, .neu-card-sm h2, .neu-card-sm h3, .neu-card-sm h4, .neu-card-sm h5, .neu-card-sm h6,
-.bg-surface h1, .bg-surface h2, .bg-surface h3, .bg-surface h4, .bg-surface h5, .bg-surface h6,
-.bg-surface2 h1, .bg-surface2 h2, .bg-surface2 h3, .bg-surface2 h4, .bg-surface2 h5, .bg-surface2 h6,
-.bg-bg h1, .bg-bg h2, .bg-bg h3, .bg-bg h4, .bg-bg h5, .bg-bg h6 {
-  color: #0f172a !important;
-}
-
-/* Convert text-white on general light containers to high-contrast dark text */
-.neu-card .text-white:not(button .text-white):not(.bg-blue-600 .text-white):not(.bg-emerald-600 .text-white):not(.bg-red-600 .text-white):not(.bg-purple-600 .text-white),
-.neu-raised .text-white:not(button .text-white):not(.bg-blue-600 .text-white):not(.bg-emerald-600 .text-white):not(.bg-red-600 .text-white):not(.bg-purple-600 .text-white),
-.bg-surface .text-white:not(button .text-white):not(.bg-blue-600 .text-white):not(.bg-emerald-600 .text-white):not(.bg-red-600 .text-white):not(.bg-purple-600 .text-white),
-.bg-surface2 .text-white:not(button .text-white):not(.bg-blue-600 .text-white):not(.bg-emerald-600 .text-white):not(.bg-red-600 .text-white):not(.bg-purple-600 .text-white) {
-  color: #0f172a !important;
-}
-
-/* Muted text on neumorphic surfaces */
-.text-muted-main {
-  color: #475569 !important;
-}
-
-/* Ensure all form inputs have dark text */
-input, select, textarea {
-  color: #090d16 !important;
-  background-color: #d3dfeb;
-}
-input::placeholder, select::placeholder, textarea::placeholder {
-  color: #475569 !important;
-}
-
+/* GPU-composited lightweight keyframes */
 @keyframes slideUp {
   from {
-    transform: translateY(100%);
-    opacity: 0.7;
+    transform: translate3d(0, 16px, 0);
+    opacity: 0;
   }
   to {
-    transform: translateY(0);
+    transform: translate3d(0, 0, 0);
     opacity: 1;
+  }
+}
+
+@keyframes slideDown {
+  from {
+    transform: translate3d(0, -20px, 0);
+    opacity: 0;
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+    opacity: 1;
+  }
+}
+
+@keyframes countdownScale {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
   }
 }
 
@@ -234,10 +164,66 @@ input::placeholder, select::placeholder, textarea::placeholder {
   }
 }
 
+@keyframes drawerIn {
+  from {
+    transform: translate3d(100%, 0, 0);
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes drawerInLeft {
+  from {
+    transform: translate3d(-100%, 0, 0);
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes shakeX {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  20% { transform: translate3d(-6px, 0, 0); }
+  40% { transform: translate3d(6px, 0, 0); }
+  60% { transform: translate3d(-4px, 0, 0); }
+  80% { transform: translate3d(4px, 0, 0); }
+}
+
 .animate-slide-up {
-  animation: slideUp 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: slideUp 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-slide-down {
+  animation: slideDown 0.24s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-countdown-3s {
+  transform-origin: left center;
+  animation: countdownScale 3s linear forwards;
 }
 
 .animate-fade-in {
-  animation: fadeIn 0.18s ease-out forwards;
+  animation: fadeIn 0.16s ease-out forwards;
+}
+
+.animate-drawer-right {
+  animation: drawerIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-drawer-left {
+  animation: drawerInLeft 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-shake {
+  animation: shakeX 0.35s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

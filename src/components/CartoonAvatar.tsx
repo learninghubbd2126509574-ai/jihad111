@@ -74,9 +74,9 @@ export function getAvatarVariantIndex(name?: string): number {
 // 4 Boy Cartoon SVG Avatars
 function BoyAvatar1() {
   return (
-    <svg viewBox="0 0 100 100" className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice" className="w-full h-full block" xmlns="http://www.w3.org/2000/svg">
       {/* Background */}
-      <circle cx="50" cy="50" r="50" fill="#dbeafe" />
+      <rect x="0" y="0" width="100" height="100" fill="#dbeafe" />
       {/* Torso & Blue Shirt */}
       <path d="M22 100 C22 75 35 68 50 68 C65 68 78 75 78 100 Z" fill="#2563eb" />
       {/* Collar */}
@@ -112,9 +112,9 @@ function BoyAvatar1() {
 
 function BoyAvatar2() {
   return (
-    <svg viewBox="0 0 100 100" className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice" className="w-full h-full block" xmlns="http://www.w3.org/2000/svg">
       {/* Background */}
-      <circle cx="50" cy="50" r="50" fill="#e0e7ff" />
+      <rect x="0" y="0" width="100" height="100" fill="#e0e7ff" />
       {/* Torso & Teal Hoodie */}
       <path d="M20 100 C20 74 34 67 50 67 C66 67 80 74 80 100 Z" fill="#0d9488" />
       {/* Hoodie Inner Neck */}
@@ -147,9 +147,9 @@ function BoyAvatar2() {
 
 function BoyAvatar3() {
   return (
-    <svg viewBox="0 0 100 100" className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice" className="w-full h-full block" xmlns="http://www.w3.org/2000/svg">
       {/* Background */}
-      <circle cx="50" cy="50" r="50" fill="#fef3c7" />
+      <rect x="0" y="0" width="100" height="100" fill="#fef3c7" />
       {/* Torso & Sporty Jacket */}
       <path d="M20 100 C20 74 34 68 50 68 C66 68 80 74 80 100 Z" fill="#ea580c" />
       <path d="M46 68 L46 100 L54 100 L54 68 Z" fill="#c2410c" />
@@ -178,9 +178,9 @@ function BoyAvatar3() {
 
 function BoyAvatar4() {
   return (
-    <svg viewBox="0 0 100 100" className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice" className="w-full h-full block" xmlns="http://www.w3.org/2000/svg">
       {/* Background */}
-      <circle cx="50" cy="50" r="50" fill="#ccfbf1" />
+      <rect x="0" y="0" width="100" height="100" fill="#ccfbf1" />
       {/* Torso & Formal Polo/Shirt */}
       <path d="M20 100 C20 74 34 68 50 68 C66 68 80 74 80 100 Z" fill="#4338ca" />
       {/* White Collar & Tie */}
@@ -216,9 +216,9 @@ function BoyAvatar4() {
 // 4 Girl Cartoon SVG Avatars
 function GirlAvatar1() {
   return (
-    <svg viewBox="0 0 100 100" className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice" className="w-full h-full block" xmlns="http://www.w3.org/2000/svg">
       {/* Background */}
-      <circle cx="50" cy="50" r="50" fill="#fce7f3" />
+      <rect x="0" y="0" width="100" height="100" fill="#fce7f3" />
       {/* Hair Behind (Ponytail) */}
       <ellipse cx="68" cy="36" rx="9" ry="16" fill="#1e1b4b" transform="rotate(25 68 36)" />
       <circle cx="63" cy="27" r="4.5" fill="#ec4899" />
@@ -257,9 +257,9 @@ function GirlAvatar1() {
 
 function GirlAvatar2() {
   return (
-    <svg viewBox="0 0 100 100" className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice" className="w-full h-full block" xmlns="http://www.w3.org/2000/svg">
       {/* Background */}
-      <circle cx="50" cy="50" r="50" fill="#e0f2fe" />
+      <rect x="0" y="0" width="100" height="100" fill="#e0f2fe" />
       {/* Hijab / Scarf Outer Drapes */}
       <path d="M18 100 C18 72 32 64 50 64 C68 64 82 72 82 100 Z" fill="#0284c7" />
       {/* Head Hijab Wrap */}
@@ -290,9 +290,9 @@ function GirlAvatar2() {
 
 function GirlAvatar3() {
   return (
-    <svg viewBox="0 0 100 100" className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice" className="w-full h-full block" xmlns="http://www.w3.org/2000/svg">
       {/* Background */}
-      <circle cx="50" cy="50" r="50" fill="#ede9fe" />
+      <rect x="0" y="0" width="100" height="100" fill="#ede9fe" />
       {/* Hair Buns on top */}
       <circle cx="32" cy="24" r="9" fill="#312e81" />
       <circle cx="68" cy="24" r="9" fill="#312e81" />
@@ -327,9 +327,9 @@ function GirlAvatar3() {
 
 function GirlAvatar4() {
   return (
-    <svg viewBox="0 0 100 100" className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice" className="w-full h-full block" xmlns="http://www.w3.org/2000/svg">
       {/* Background */}
-      <circle cx="50" cy="50" r="50" fill="#fef08a" />
+      <rect x="0" y="0" width="100" height="100" fill="#fef08a" />
       {/* Wavy long hair back */}
       <path d="M25 45 C20 60 22 80 27 90 C32 85 30 65 32 55 Z" fill="#451a03" />
       <path d="M75 45 C80 60 78 80 73 90 C68 85 70 65 68 55 Z" fill="#451a03" />
@@ -363,14 +363,14 @@ function GirlAvatar4() {
 }
 
 export const CARTOON_AVATAR_LIST = [
-  { id: 'boy-1', label: 'স্মার্ট বয় ১', gender: 'male', component: BoyAvatar1 },
-  { id: 'boy-2', label: 'কুল চশমা বয়', gender: 'male', component: BoyAvatar2 },
-  { id: 'boy-3', label: 'স্পোর্টি বয়', gender: 'male', component: BoyAvatar3 },
-  { id: 'boy-4', label: 'প্রফেশনাল বয়', gender: 'male', component: BoyAvatar4 },
-  { id: 'girl-1', label: 'স্মার্ট গার্ল ১', gender: 'female', component: GirlAvatar1 },
-  { id: 'girl-2', label: 'হিজাব গার্ল', gender: 'female', component: GirlAvatar2 },
-  { id: 'girl-3', label: 'চশমা গার্ল', gender: 'female', component: GirlAvatar3 },
-  { id: 'girl-4', label: 'হাস্যোজ্জ্বল গার্ল', gender: 'female', component: GirlAvatar4 },
+  { id: 'boy-1', label: 'Smart Boy 1', gender: 'male', component: BoyAvatar1 },
+  { id: 'boy-2', label: 'Cool Glasses Boy', gender: 'male', component: BoyAvatar2 },
+  { id: 'boy-3', label: 'Sporty Boy', gender: 'male', component: BoyAvatar3 },
+  { id: 'boy-4', label: 'Professional Boy', gender: 'male', component: BoyAvatar4 },
+  { id: 'girl-1', label: 'Smart Girl 1', gender: 'female', component: GirlAvatar1 },
+  { id: 'girl-2', label: 'Hijab Girl', gender: 'female', component: GirlAvatar2 },
+  { id: 'girl-3', label: 'Glasses Girl', gender: 'female', component: GirlAvatar3 },
+  { id: 'girl-4', label: 'Cheerful Girl', gender: 'female', component: GirlAvatar4 },
 ] as const;
 
 export function renderCartoonSvg(gender: 'male' | 'female', variant: number) {
@@ -431,7 +431,7 @@ export const CartoonAvatar: React.FC<CartoonAvatarProps> = ({
       <img
         src={src}
         alt={alt || name || 'User Profile'}
-        className={`w-full h-full object-cover select-none ${className}`}
+        className={`block w-full h-full object-cover select-none ${className}`}
         referrerPolicy="no-referrer"
         onError={() => setLoadError(true)}
       />
@@ -444,7 +444,7 @@ export const CartoonAvatar: React.FC<CartoonAvatarProps> = ({
   const variantIndex = getAvatarVariantIndex(name);
 
   return (
-    <div className={`w-full h-full flex items-center justify-center select-none overflow-hidden ${className}`}>
+    <div className={`w-full h-full select-none overflow-hidden ${className}`}>
       {renderCartoonSvg(resolvedGender, variantIndex)}
     </div>
   );

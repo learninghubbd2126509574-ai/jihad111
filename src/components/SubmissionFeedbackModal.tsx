@@ -1,6 +1,5 @@
 import React from 'react';
-import { motion } from 'motion/react';
-import { X, Calendar, Trophy, DollarSign, Target } from 'lucide-react';
+import { X, Calendar, Trophy, Target, AlertTriangle, CheckCircle2, Flame } from 'lucide-react';
 
 export interface SubmissionFeedbackData {
   memberName: string;
@@ -21,125 +20,132 @@ interface SubmissionFeedbackModalProps {
 }
 
 export default function SubmissionFeedbackModal({ data, onClose }: SubmissionFeedbackModalProps) {
-  let bigEmoji = '😡';
-  let moodTitle = 'অত্যন্ত অসন্তুষ্ট পারফরম্যান্স!';
-  let emojiBg = 'bg-red-200/80 border-red-300';
+  let moodTitle = 'Performance Needs Attention';
+  let statusColor = 'bg-[#FEF2F2] border-[#FECACA] text-[#DC2626]';
+  let statusLabel = 'Needs Focus';
+  let IconComp: React.ElementType = AlertTriangle;
 
   if (data.ratingTier === 'strict') {
-    bigEmoji = '⚠️';
-    moodTitle = 'সতর্কবার্তা ও কঠোর আদেশ!';
-    emojiBg = 'bg-amber-200/80 border-amber-300';
+    moodTitle = 'Warning: Stronger Consistency Needed';
+    statusColor = 'bg-[#FFFBEB] border-[#FDE68A] text-[#B45309]';
+    statusLabel = 'Attention';
+    IconComp = AlertTriangle;
   } else if (data.ratingTier === 'disappointed') {
-    bigEmoji = '😞';
-    moodTitle = 'মন খারাপ করা ফলাফল!';
-    emojiBg = 'bg-yellow-200/80 border-yellow-300';
+    moodTitle = 'Room for Improvement';
+    statusColor = 'bg-[#FFF9E6] border-[#FDE68A] text-[#B45309]';
+    statusLabel = 'Average Result';
+    IconComp = Target;
   } else if (data.ratingTier === 'happy') {
-    bigEmoji = '😃';
-    moodTitle = 'চমৎকার ও সন্তোষজনক কাজ!';
-    emojiBg = 'bg-blue-200/80 border-blue-300';
+    moodTitle = 'Strong & Consistent Performance';
+    statusColor = 'bg-[#EEF5FF] border-[#D6E6FF] text-[#0B4F9C]';
+    statusLabel = 'Good Progress';
+    IconComp = CheckCircle2;
   } else if (data.ratingTier === 'legend') {
-    bigEmoji = '🔥';
-    moodTitle = 'অবিশ্বাস্য ও সেরা সাফল্য!';
-    emojiBg = 'bg-emerald-200/80 border-emerald-300';
+    moodTitle = 'Outstanding Top Performance!';
+    statusColor = 'bg-[#ECFDF5] border-[#A7F3D0] text-[#047857]';
+    statusLabel = 'Top Performer';
+    IconComp = Flame;
   }
 
-  const shortRoleName = data.role.includes('ট্রেনার') ? 'ট্রেনার' : data.role.includes('STL') ? 'STL' : 'টিম লিডার';
+  const shortRoleName = data.role.toLowerCase().includes('trainer')
+    ? 'Trainer'
+    : data.role.toUpperCase().includes('STL')
+      ? 'STL'
+      : 'Team Leader';
 
   return (
-    <div className="fixed inset-0 z-[1000] flex items-start justify-center p-2 pt-2 sm:pt-6 bg-slate-900/60 backdrop-blur-sm animate-fade-in overflow-y-auto">
-      <motion.div 
-        initial={{ scale: 0.9, opacity: 0, y: -40 }}
-        animate={{ scale: 1, opacity: 1, y: 0 }}
-        exit={{ scale: 0.9, opacity: 0, y: -40 }}
-        className="relative w-full max-w-sm bg-[#dfe8f4] border border-blue-300/80 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[96vh] my-0"
+    <div
+      className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-slate-900/45 overflow-y-auto modal-fade"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-sm bg-white border border-[#E5E7EB] rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[92vh] modal-scale"
+        onClick={(e) => e.stopPropagation()}
       >
-        {/* Header with Close */}
-        <div className="px-4 py-3 bg-[#d4e2f2] border-b border-blue-200/80 flex items-center justify-between shrink-0">
-          <span className="text-xs font-black text-slate-700">
-            রেজাল্ট মূল্যায়ন ফিডব্যাক
+        {/* Header */}
+        <div className="px-4 py-3.5 bg-[#F8FAFC] border-b border-[#E5E7EB] flex items-center justify-between shrink-0">
+          <span className="text-xs font-bold text-[#0F172A]">
+            Performance Evaluation Feedback
           </span>
           <button
             type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-xl neu-card-sm flex items-center justify-center text-slate-700 hover:text-red-600 transition-colors cursor-pointer"
+            aria-label="Close"
+            className="w-8 h-8 rounded-lg bg-white border border-[#E5E7EB] flex items-center justify-center text-[#64748B] hover:text-[#0F172A] transition-colors cursor-pointer"
           >
             <X size={16} />
           </button>
         </div>
 
-        {/* Content - Compact & No Scroll Needed */}
-        <div className="p-3.5 sm:p-4 space-y-3 overflow-y-auto flex-1 text-slate-800">
-          
-          {/* Big Emoji Reaction Card */}
-          <div className="text-center neu-card-sm bg-[#e6effa] p-3 rounded-2xl border border-white/90 shadow-2xs">
-            <div className={`w-14 h-14 mx-auto rounded-2xl flex items-center justify-center text-3xl mb-1.5 border shadow-inner ${emojiBg}`}>
-              {bigEmoji}
+        {/* Content */}
+        <div className="p-4 space-y-3.5 overflow-y-auto flex-1 text-[#0F172A]">
+          {/* Reaction Header Card */}
+          <div className="text-center p-3.5 rounded-xl bg-[#F8FAFC] border border-[#E5E7EB]">
+            <div className={`w-12 h-12 mx-auto rounded-xl flex items-center justify-center mb-2 border ${statusColor}`}>
+              <IconComp size={22} />
             </div>
-            <h2 className="text-sm sm:text-base font-black text-slate-900 leading-tight mb-0.5">
+            <p className="text-[11px] font-semibold text-[#64748B] mb-0.5">{statusLabel}</p>
+            <h2 className="text-base font-bold text-[#0F172A] leading-tight mb-0.5">
               {moodTitle}
             </h2>
-            <p className="text-[11px] font-bold text-slate-600">
-              {data.memberName} ({shortRoleName} হিসেবে)
+            <p className="text-xs text-[#64748B]">
+              {data.memberName} · {shortRoleName}
             </p>
           </div>
 
-          {/* Stats summary cards */}
+          {/* 3-Column Metrics */}
           <div className="grid grid-cols-3 gap-2 text-center">
-            <div className="neu-card-sm bg-[#e6effa] p-2.5 rounded-xl border border-white/95">
-              <span className="block text-[9px] text-slate-500 font-bold uppercase">কনভার্ট</span>
-              <span className="text-base font-black text-slate-900">{data.convert} টি</span>
+            <div className="bg-[#F4F6F9] p-2.5 rounded-xl border border-[#E5E7EB]">
+              <span className="block text-[10px] text-[#64748B] font-semibold">Convert</span>
+              <span className="text-base font-bold font-mono tabular-nums text-[#0F172A]">{data.convert}</span>
             </div>
-            <div className="neu-card-sm bg-[#e6effa] p-2.5 rounded-xl border border-white/95">
-              <span className="block text-[9px] text-slate-500 font-bold uppercase">পার্সোনাল লিড</span>
-              <span className="text-base font-black text-indigo-600">{data.personalLead} টি</span>
+            <div className="bg-[#F4F6F9] p-2.5 rounded-xl border border-[#E5E7EB]">
+              <span className="block text-[10px] text-[#64748B] font-semibold">Personal</span>
+              <span className="text-base font-bold font-mono tabular-nums text-[#0B4F9C]">{data.personalLead}</span>
             </div>
-            <div className="neu-card-sm bg-[#e6effa] p-2.5 rounded-xl border border-white/95">
-              <span className="block text-[9px] text-slate-500 font-bold uppercase">আয়</span>
-              <span className="text-xs font-black text-emerald-700 font-mono">৳{data.estimatedEarnings}</span>
+            <div className="bg-[#F4F6F9] p-2.5 rounded-xl border border-[#E5E7EB]">
+              <span className="block text-[10px] text-[#64748B] font-semibold">Est. Earnings</span>
+              <span className="text-sm font-bold text-[#047857] font-mono tabular-nums">৳{data.estimatedEarnings}</span>
             </div>
           </div>
 
-          {/* Convert Feedback Box */}
-          <div className="p-3 rounded-xl neu-card-sm bg-[#e6effa] border border-white/95 space-y-1">
-            <h4 className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1">
-              <Trophy size={13} className="text-blue-600" /> কনভার্ট মূল্যায়ন:
+          {/* Convert Feedback */}
+          <div className="p-3 rounded-xl bg-[#F8FAFC] border border-[#E5E7EB] space-y-1">
+            <h4 className="text-[11px] font-bold text-[#64748B] flex items-center gap-1.5">
+              <Trophy size={13} className="text-[#0B4F9C]" /> Convert Evaluation
             </h4>
-            <p className="text-[11px] sm:text-xs font-bold text-slate-900 leading-snug">
+            <p className="text-xs font-semibold text-[#0F172A] leading-relaxed">
               {data.feedbackText}
             </p>
           </div>
 
-          {/* Personal Lead Separate Feedback Box */}
-          <div className="p-3 rounded-xl neu-card-sm bg-[#e6effa] border border-white/95 space-y-1">
-            <h4 className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1">
-              <Target size={13} className="text-indigo-600" /> পার্সোনাল লিড মূল্যায়ন:
+          {/* Personal Lead Feedback */}
+          <div className="p-3 rounded-xl bg-[#F8FAFC] border border-[#E5E7EB] space-y-1">
+            <h4 className="text-[11px] font-bold text-[#64748B] flex items-center gap-1.5">
+              <Target size={13} className="text-[#FF6B00]" /> Personal Lead Evaluation
             </h4>
-            <p className="text-[11px] sm:text-xs font-bold text-slate-900 leading-snug">
+            <p className="text-xs font-semibold text-[#0F172A] leading-relaxed">
               {data.personalLeadFeedback}
             </p>
           </div>
 
-          {/* Remaining Days Note */}
-          <div className="p-3 rounded-xl neu-card-sm bg-[#e0ecf8] border border-blue-200 text-[11px] text-slate-700 flex items-center gap-2 font-bold">
-            <Calendar size={16} className="text-amber-600 shrink-0" />
-            <div>
-              <span>মাস শেষ হতে আর মাত্র </span>
-              <span className="text-amber-900 bg-amber-100 px-1.5 py-0.5 rounded border border-amber-200 font-black">
-                {data.daysRemaining} দিন
-              </span>
-              <span> বাকি। আরও ভালো করে কাজ করুন! 🚀</span>
-            </div>
+          {/* Remaining Days */}
+          <div className="p-3 rounded-xl bg-[#FFF9E6] border border-[#FDE68A] text-xs text-[#92400E] flex items-center gap-2 font-medium">
+            <Calendar size={15} className="text-[#D97706] shrink-0" />
+            <span>
+              <strong className="font-mono tabular-nums">{data.daysRemaining} Days</strong> left in this month. Keep up the momentum.
+            </span>
           </div>
 
           <button
             type="button"
             onClick={onClose}
-            className="w-full py-2.5 rounded-xl neu-btn-primary text-white font-black text-[11px] uppercase tracking-wider shadow-sm active:scale-98 transition-all cursor-pointer"
+            className="w-full py-3 rounded-xl bg-[#0B4F9C] hover:bg-[#094182] text-white font-bold text-xs transition-colors cursor-pointer"
           >
-            বুঝেছি, ধন্যবাদ 👍
+            Got it, Thanks
           </button>
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 }

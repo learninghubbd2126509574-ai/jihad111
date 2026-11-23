@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Download, FileText, Image as ImageIcon, Loader2, Eye, CheckCircle2, Sparkles, Shield, Trophy } from 'lucide-react';
+import { Download, FileText, Image as ImageIcon, Loader2, Eye, CheckCircle2, Trophy, X } from 'lucide-react';
 import RankingExportTemplate, { RankingMember } from './RankingExportTemplate';
 import { generateRankingPdf, generateRankingImage } from '../utils/exportRankingPdf';
 
@@ -10,9 +10,9 @@ interface RankingExportManagerProps {
   monthName?: string;
 }
 
-const RankingExportManager: React.FC<RankingExportManagerProps> = ({ 
-  leaderRanking, 
-  trainerRanking, 
+const RankingExportManager: React.FC<RankingExportManagerProps> = ({
+  leaderRanking,
+  trainerRanking,
   customLogo,
   monthName
 }) => {
@@ -21,31 +21,29 @@ const RankingExportManager: React.FC<RankingExportManagerProps> = ({
   const [showPreview, setShowPreview] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [successNotice, setSuccessNotice] = useState<string>('');
-  
+
   const captureRef = useRef<HTMLDivElement>(null);
 
   const handleDownloadPdf = async () => {
     if (!captureRef.current) return;
-    
+
     setIsExportingPdf(true);
-    setStatusMessage('Preparing high-definition PDF document...');
+    setStatusMessage('Preparing high-resolution PDF document...');
     setSuccessNotice('');
     try {
-      const today = new Date();
-      const dateStr = today.toISOString().split('T')[0];
+      const dateStr = new Date().toISOString().split('T')[0];
       const fileName = `Unity_Earning_Monthly_Performance_Report_${dateStr}.pdf`;
-      
+
       await generateRankingPdf({
         element: captureRef.current,
         fileName,
         onProgress: (status) => setStatusMessage(status)
       });
-      
-      setSuccessNotice('PDF Report downloaded successfully! Ready to share in groups.');
+
+      setSuccessNotice('PDF report downloaded successfully!');
       setTimeout(() => setSuccessNotice(''), 6000);
     } catch (error) {
       console.error('Error exporting ranking PDF:', error);
-      alert('Failed to generate PDF document. Please try again.');
     } finally {
       setIsExportingPdf(false);
       setStatusMessage('');
@@ -54,26 +52,24 @@ const RankingExportManager: React.FC<RankingExportManagerProps> = ({
 
   const handleDownloadPng = async () => {
     if (!captureRef.current) return;
-    
+
     setIsExportingPng(true);
-    setStatusMessage('Rendering high-resolution image...');
+    setStatusMessage('Rendering high-resolution PNG image...');
     setSuccessNotice('');
     try {
-      const today = new Date();
-      const dateStr = today.toISOString().split('T')[0];
+      const dateStr = new Date().toISOString().split('T')[0];
       const fileName = `Unity_Earning_Ranking_${dateStr}.png`;
-      
+
       await generateRankingImage({
         element: captureRef.current,
         fileName,
         onProgress: (status) => setStatusMessage(status)
       });
-      
-      setSuccessNotice('High-Res PNG image downloaded successfully!');
+
+      setSuccessNotice('PNG image downloaded successfully!');
       setTimeout(() => setSuccessNotice(''), 6000);
     } catch (error) {
       console.error('Error exporting ranking PNG:', error);
-      alert('Failed to generate ranking image.');
     } finally {
       setIsExportingPng(false);
       setStatusMessage('');
@@ -81,211 +77,178 @@ const RankingExportManager: React.FC<RankingExportManagerProps> = ({
   };
 
   return (
-    <div className="p-6 sm:p-7 bg-[#1e293b]/70 rounded-[32px] border border-blue-500/20 shadow-2xl relative overflow-hidden">
-      {/* Subtle Background Glow */}
-      <div className="absolute top-0 right-0 w-80 h-80 bg-blue-500/10 blur-[100px] pointer-events-none rounded-full" />
-      <div className="absolute bottom-0 left-0 w-60 h-60 bg-indigo-500/10 blur-[90px] pointer-events-none rounded-full" />
-
+    <div className="fintech-card p-5 space-y-5">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 relative z-10">
-        <div className="flex items-center gap-3.5">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-blue-500/30">
-            <Trophy size={24} />
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[#E5E7EB]">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-[#0B4F9C] flex items-center justify-center text-white shrink-0">
+            <Trophy size={20} />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-xl font-black text-white tracking-tight">Official Ranking & Performance PDF Hub</h3>
-              <span className="px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 text-[10px] font-black uppercase tracking-wider border border-blue-500/30">
-                PRO PDF
-              </span>
-            </div>
-            <p className="text-xs text-slate-300 font-medium mt-0.5">
-              Generate & download high-resolution Neumorphic PDF reports for Telegram & WhatsApp groups
+            <h3 className="text-base font-bold text-[#0F172A]">Official Ranking &amp; PDF Report</h3>
+            <p className="text-xs text-[#64748B]">
+              Download A4 reports formatted for Telegram and WhatsApp sharing
             </p>
           </div>
         </div>
 
-        {/* Live Records Count */}
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs font-bold text-slate-300 self-start sm:self-auto">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span>{leaderRanking.length} Leaders • {trainerRanking.length} Trainers</span>
+        <div className="text-xs font-semibold text-[#64748B] font-mono tabular-nums self-start sm:self-auto">
+          {leaderRanking.length} Leaders · {trainerRanking.length} Trainers
         </div>
       </div>
 
-      {/* Success Notice */}
       {successNotice && (
-        <div className="mb-6 p-4 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 flex items-center gap-3 text-sm font-bold animate-fadeIn">
-          <CheckCircle2 size={20} className="shrink-0 text-emerald-400" />
+        <div className="p-3.5 rounded-xl bg-[#ECFDF5] border border-[#A7F3D0] text-[#047857] flex items-center gap-2.5 text-xs font-bold">
+          <CheckCircle2 size={18} className="shrink-0" />
           <span>{successNotice}</span>
         </div>
       )}
 
-      {/* Status Progress */}
       {statusMessage && (
-        <div className="mb-6 p-4 rounded-2xl bg-blue-500/15 border border-blue-500/30 text-blue-200 flex items-center gap-3 text-sm font-bold animate-fadeIn">
-          <Loader2 size={20} className="shrink-0 animate-spin text-blue-400" />
+        <div className="p-3.5 rounded-xl bg-[#EEF5FF] border border-[#D6E6FF] text-[#0B4F9C] flex items-center gap-2.5 text-xs font-bold">
+          <Loader2 size={18} className="shrink-0 animate-spin" />
           <span>{statusMessage}</span>
         </div>
       )}
 
       {/* Action Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 relative z-10">
-        
-        {/* PDF Report Card (PRIMARY) */}
-        <div className="p-6 rounded-[28px] bg-gradient-to-br from-blue-950/40 via-[#0f172a]/60 to-slate-900/60 border border-blue-400/30 flex flex-col justify-between shadow-xl relative group hover:border-blue-400/50 transition-all">
-          <div className="absolute -top-3 right-6 px-3 py-1 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-[10px] font-black uppercase tracking-wider rounded-full shadow-md">
-            Recommended
-          </div>
-
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* PDF Card */}
+        <div className="p-5 rounded-2xl bg-[#F8FAFC] border border-[#D6E6FF] flex flex-col justify-between">
           <div>
-            <div className="flex items-center gap-2.5 mb-2.5 text-blue-400">
-              <FileText size={20} />
-              <h4 className="text-base font-black text-white">Monthly Performance PDF Report</h4>
+            <div className="flex items-center gap-2 mb-2 text-[#0B4F9C]">
+              <FileText size={18} />
+              <h4 className="text-sm font-bold text-[#0F172A]">Monthly Performance PDF Report</h4>
             </div>
-            <p className="text-xs text-slate-300 leading-relaxed font-medium">
-              Exports an official executive PDF document featuring crisp Neumorphic card styling, company header, authorized signature seal, and complete Leader & Trainer rankings.
+            <p className="text-xs text-[#64748B] leading-relaxed">
+              Export a clean A4 PDF report featuring the official organization logo and verified standings.
             </p>
-
-            <div className="mt-4 flex flex-wrap gap-2 text-[11px] font-bold text-slate-400">
-              <span className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/5 flex items-center gap-1">
-                <Sparkles size={12} className="text-amber-400" /> Vector Sharp Text
-              </span>
-              <span className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/5 flex items-center gap-1">
-                <Shield size={12} className="text-emerald-400" /> Official Seal & Header
-              </span>
-              <span className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/5">
-                A4 Standard Layout
-              </span>
-            </div>
           </div>
-          
-          <div className="mt-6 flex items-center gap-3">
+
+          <div className="mt-5 flex items-center gap-2">
             <button
+              type="button"
               onClick={handleDownloadPdf}
               disabled={isExportingPdf || isExportingPng}
-              className="flex-1 flex items-center justify-center gap-2.5 py-4 px-5 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white rounded-2xl font-black text-sm transition-all shadow-lg shadow-blue-600/30 active:scale-[0.98] disabled:opacity-50 cursor-pointer"
+              className="flex-1 flex items-center justify-center gap-2 py-3 px-4 bg-[#0B4F9C] hover:bg-[#094182] text-white rounded-xl font-bold text-xs transition-colors disabled:opacity-50 cursor-pointer"
             >
               {isExportingPdf ? (
                 <>
-                  <Loader2 size={18} className="animate-spin" />
-                  <span>Generating PDF Report...</span>
+                  <Loader2 size={15} className="animate-spin" />
+                  <span>Preparing...</span>
                 </>
               ) : (
                 <>
-                  <Download size={18} />
-                  <span>ডাউনলোড PDF রিপোর্ট</span>
+                  <Download size={15} />
+                  <span>Download PDF</span>
                 </>
               )}
             </button>
 
             <button
+              type="button"
               onClick={() => setShowPreview(true)}
               title="Preview Report"
-              className="p-4 bg-white/10 hover:bg-white/15 text-white rounded-2xl font-bold transition-all border border-white/10 active:scale-95 cursor-pointer"
+              className="p-3 bg-white hover:bg-[#F4F6F9] text-[#334155] rounded-xl font-bold transition-colors border border-[#E5E7EB] cursor-pointer"
             >
-              <Eye size={18} />
+              <Eye size={16} />
             </button>
           </div>
         </div>
 
-        {/* High-Res PNG Card */}
-        <div className="p-6 rounded-[28px] bg-white/[0.03] border border-white/10 flex flex-col justify-between hover:border-white/20 transition-all">
+        {/* PNG Card */}
+        <div className="p-5 rounded-2xl bg-[#F8FAFC] border border-[#E5E7EB] flex flex-col justify-between">
           <div>
-            <div className="flex items-center gap-2.5 mb-2.5 text-indigo-400">
-              <ImageIcon size={20} />
-              <h4 className="text-base font-black text-white">High-Resolution Image (PNG)</h4>
+            <div className="flex items-center gap-2 mb-2 text-[#047857]">
+              <ImageIcon size={18} />
+              <h4 className="text-sm font-bold text-[#0F172A]">High-Resolution Image (PNG)</h4>
             </div>
-            <p className="text-xs text-slate-300 leading-relaxed font-medium">
-              Create a standalone 300+ DPI PNG image optimized for quick photo sharing on social media, Facebook feeds, or chat attachments.
+            <p className="text-xs text-[#64748B] leading-relaxed">
+              Download a crisp PNG snapshot for quick sharing across social channels and team chats.
             </p>
-
-            <div className="mt-4 flex flex-wrap gap-2 text-[11px] font-bold text-slate-400">
-              <span className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/5">
-                3X Ultra Sharp Scale
-              </span>
-              <span className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/5">
-                Direct PNG File
-              </span>
-            </div>
           </div>
-          
-          <div className="mt-6 flex items-center gap-3">
+
+          <div className="mt-5">
             <button
+              type="button"
               onClick={handleDownloadPng}
               disabled={isExportingPdf || isExportingPng}
-              className="w-full flex items-center justify-center gap-2.5 py-4 px-5 bg-white/10 hover:bg-white/15 text-white rounded-2xl font-black text-sm transition-all border border-white/10 active:scale-[0.98] disabled:opacity-50 cursor-pointer"
+              className="w-full flex items-center justify-center gap-2 py-3 px-4 bg-white hover:bg-[#F4F6F9] text-[#0F172A] rounded-xl font-bold text-xs transition-colors border border-[#E5E7EB] disabled:opacity-50 cursor-pointer"
             >
               {isExportingPng ? (
                 <>
-                  <Loader2 size={18} className="animate-spin" />
-                  <span>Rendering Image...</span>
+                  <Loader2 size={15} className="animate-spin" />
+                  <span>Preparing...</span>
                 </>
               ) : (
                 <>
-                  <Download size={18} />
-                  <span>Download Image (PNG)</span>
+                  <Download size={15} />
+                  <span>Download PNG</span>
                 </>
               )}
             </button>
           </div>
         </div>
-
       </div>
 
       {/* Preview Modal */}
       {showPreview && (
-        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
-          <div className="bg-[#0f172a] border border-white/20 rounded-[32px] max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden shadow-2xl">
-            {/* Modal Header */}
-            <div className="p-5 sm:p-6 border-b border-white/10 flex items-center justify-between bg-white/[0.02]">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-blue-500/20 text-blue-400">
-                  <FileText size={20} />
+        <div
+          className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-slate-900/55"
+          onClick={() => setShowPreview(false)}
+        >
+          <div
+            className="bg-white border border-[#E5E7EB] rounded-2xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 sm:p-5 border-b border-[#E5E7EB] flex items-center justify-between bg-[#F8FAFC]">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-[#EEF5FF] text-[#0B4F9C]">
+                  <FileText size={18} />
                 </div>
                 <div>
-                  <h3 className="text-lg font-black text-white">Monthly Performance Report Preview</h3>
-                  <p className="text-xs text-slate-400">Neumorphic Document Layout</p>
+                  <h3 className="text-sm sm:text-base font-bold text-[#0F172A]">Performance Report Preview</h3>
+                  <p className="text-xs text-[#64748B]">Official A4 Document</p>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
                 <button
+                  type="button"
                   onClick={handleDownloadPdf}
                   disabled={isExportingPdf}
-                  className="py-2.5 px-4 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer shadow-md"
+                  className="py-2 px-3.5 bg-[#0B4F9C] hover:bg-[#094182] text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <Download size={14} />
-                  <span>Download PDF</span>
+                  <span>PDF</span>
                 </button>
                 <button
+                  type="button"
                   onClick={() => setShowPreview(false)}
-                  className="py-2.5 px-4 bg-white/10 hover:bg-white/15 text-white rounded-xl font-bold text-xs transition-all cursor-pointer"
+                  aria-label="Close preview"
+                  className="p-2 bg-white hover:bg-[#F4F6F9] border border-[#E5E7EB] text-[#64748B] rounded-xl transition-colors cursor-pointer"
                 >
-                  Close
+                  <X size={16} />
                 </button>
               </div>
             </div>
 
-            {/* Scrollable Preview Area */}
-            <div className="flex-1 overflow-auto p-6 flex justify-center bg-slate-950/80 custom-scrollbar">
-              <div className="origin-top scale-[0.8] sm:scale-[0.9] lg:scale-100 transition-transform">
-                {/* Visible Render of Template for user preview */}
-                <div style={{ width: '800px', pointerEvents: 'none' }}>
-                  <RankingExportTemplate 
-                    leaderRanking={leaderRanking}
-                    trainerRanking={trainerRanking}
-                    customLogo={customLogo}
-                    monthName={monthName}
-                    isPreview={true}
-                  />
-                </div>
+            <div className="flex-1 overflow-auto p-6 flex justify-center bg-[#F4F6F9] custom-scrollbar">
+              <div style={{ width: '800px', pointerEvents: 'none' }}>
+                <RankingExportTemplate
+                  leaderRanking={leaderRanking}
+                  trainerRanking={trainerRanking}
+                  customLogo={customLogo}
+                  monthName={monthName}
+                  isPreview={true}
+                />
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Hidden high-res template node for HTML2Canvas capture */}
-      <RankingExportTemplate 
+      {/* Hidden high-res template for export */}
+      <RankingExportTemplate
         ref={captureRef}
         leaderRanking={leaderRanking}
         trainerRanking={trainerRanking}

@@ -1,15 +1,12 @@
-import React, { useState, useMemo } from 'react';
-import { 
-  X, 
-  Search, 
-  Check, 
-  Users, 
-  CheckSquare, 
-  Square, 
-  Sparkles, 
-  AlertCircle,
+import React, { useState, useMemo, useEffect } from 'react';
+import {
+  X,
+  Search,
+  Check,
+  Users,
   Save,
-  UserCheck
+  UserCheck,
+  TrendingUp
 } from 'lucide-react';
 import CartoonAvatar from './CartoonAvatar';
 import { STLMember, Member, Result, RankingMember, formatStlDisplayName, resolveTLConvertData } from './StlWiseResultSection';
@@ -35,15 +32,17 @@ export default function StlAssignmentModal({
   results,
   onSave
 }: StlAssignmentModalProps) {
-  if (!isOpen || !stl) return null;
-
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedTlIds, setSelectedTlIds] = useState<string[]>(() => {
-    return stl.assignedTLs || [];
-  });
+  const [selectedTlIds, setSelectedTlIds] = useState<string[]>(() => stl?.assignedTLs || []);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Map to find which STL currently holds each TL
+  useEffect(() => {
+    if (isOpen && stl) {
+      setSelectedTlIds(stl.assignedTLs || []);
+      setSearchQuery('');
+    }
+  }, [isOpen, stl]);
+
   const tlToStlMap = useMemo(() => {
     const map = new Map<string, { stlId: string; stlName: string }>();
     allStls.forEach(otherStl => {
@@ -57,17 +56,15 @@ export default function StlAssignmentModal({
     return map;
   }, [allStls]);
 
-  // Filtered Team Leaders list by search query
   const filteredLeaders = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return teamLeaders;
-    return teamLeaders.filter(tl => 
-      tl.name.toLowerCase().includes(q) || 
+    return teamLeaders.filter(tl =>
+      tl.name.toLowerCase().includes(q) ||
       (tl.whatsapp && tl.whatsapp.includes(q))
     );
   }, [teamLeaders, searchQuery]);
 
-  // Total converts of currently selected TLs
   const currentTotalConvert = useMemo(() => {
     return selectedTlIds.reduce((sum, tlId) => {
       const data = resolveTLConvertData(tlId, teamLeaders, leaderRanking, results);
@@ -75,23 +72,12 @@ export default function StlAssignmentModal({
     }, 0);
   }, [selectedTlIds, results, teamLeaders, leaderRanking]);
 
+  if (!isOpen || !stl) return null;
+
   const toggleTL = (tlId: string) => {
-    setSelectedTlIds(prev => {
-      if (prev.includes(tlId)) {
-        return prev.filter(id => id !== tlId);
-      } else {
-        return [...prev, tlId];
-      }
-    });
-  };
-
-  const handleSelectAll = () => {
-    const allIds = teamLeaders.map(t => t.id);
-    setSelectedTlIds(allIds);
-  };
-
-  const handleClearAll = () => {
-    setSelectedTlIds([]);
+    setSelectedTlIds(prev =>
+      prev.includes(tlId) ? prev.filter(id => id !== tlId) : [...prev, tlId]
+    );
   };
 
   const handleSave = async () => {
@@ -109,26 +95,26 @@ export default function StlAssignmentModal({
   const formattedStlName = formatStlDisplayName(stl.name);
 
   return (
-    <div 
-      className="fixed inset-0 z-[400] flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-fade-in"
+    <div
+      className="fixed inset-0 z-[400] flex items-center justify-center p-4 bg-slate-900/45 modal-fade"
       onClick={onClose}
     >
-      <div 
-        className="w-full max-w-lg bg-[#dce7f4] border border-blue-200/90 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-scale-up"
+      <div
+        className="w-full max-w-lg bg-white border border-[#E5E7EB] rounded-2xl shadow-xl overflow-hidden flex flex-col max-h-[90vh] modal-scale"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="p-4 sm:p-5 border-b border-blue-200/80 bg-white/70 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-10 h-10 rounded-2xl neu-btn-primary flex items-center justify-center text-white flex-shrink-0 shadow-sm">
-              <Users size={20} />
+        <div className="p-4 sm:p-5 border-b border-[#E5E7EB] bg-[#F8FAFC] flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-[#0B4F9C] flex items-center justify-center text-white shrink-0">
+              <Users size={18} />
             </div>
             <div className="min-w-0">
-              <h3 className="text-base sm:text-lg font-black text-[#090d16] truncate">
-                {formattedStlName} এ TL এসাইন
+              <h3 className="text-base font-bold text-[#0F172A] truncate">
+                {formattedStlName} — TL Assignment
               </h3>
-              <p className="text-[11px] text-slate-500 font-medium truncate">
-                টিম লিডারদের সিলেক্ট করুন (Convert যোগ হবে)
+              <p className="text-xs text-[#64748B] truncate">
+                Select Team Leaders to assign
               </p>
             </div>
           </div>
@@ -136,143 +122,136 @@ export default function StlAssignmentModal({
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-xl neu-card-sm text-slate-500 hover:text-slate-800 transition-colors"
+            aria-label="Close"
+            className="p-2 rounded-lg bg-white border border-[#E5E7EB] text-[#64748B] hover:text-[#0F172A] transition-colors cursor-pointer"
           >
             <X size={18} />
           </button>
         </div>
 
-        {/* Live Calculation Preview Banner */}
-        <div className="px-4 py-2.5 sm:px-5 sm:py-3 bg-blue-50/70 border-b border-blue-200/70 flex items-center justify-between gap-3 flex-wrap text-xs">
-          <div className="flex items-center gap-1.5 font-bold text-slate-700">
-            <UserCheck size={15} className="text-blue-600" />
-            <span>সিলেক্টেড: </span>
-            <span className="neu-card-sm px-2 py-0.5 rounded-md text-blue-700 font-black">
-              {selectedTlIds.length} জন TL
+        {/* Summary Banner */}
+        <div className="px-5 py-3 bg-[#EEF5FF] border-b border-[#D6E6FF] flex items-center justify-between gap-3 flex-wrap text-xs">
+          <div className="flex items-center gap-1.5 font-semibold text-[#0F172A]">
+            <UserCheck size={15} className="text-[#0B4F9C]" />
+            <span>Selected:</span>
+            <span className="font-mono tabular-nums font-bold text-[#0B4F9C]">
+              {selectedTlIds.length} TL
             </span>
           </div>
 
-          <div className="flex items-center gap-1.5 font-bold text-slate-700">
-            <Sparkles size={14} className="text-amber-500" />
-            <span>STL Convert হবে: </span>
-            <span className="neu-card-sm px-2.5 py-0.5 rounded-md text-emerald-700 font-black bg-emerald-50">
+          <div className="flex items-center gap-1.5 font-semibold text-[#0F172A]">
+            <TrendingUp size={15} className="text-[#047857]" />
+            <span>Total Convert:</span>
+            <span className="font-mono tabular-nums font-bold text-[#047857]">
               {currentTotalConvert} Convert
             </span>
           </div>
         </div>
 
-        {/* Search Bar & Quick Toggles */}
-        <div className="p-3 sm:p-4 border-b border-blue-200/60 bg-[#e7eff8] space-y-2.5">
+        {/* Search & Quick Toggles */}
+        <div className="p-4 border-b border-[#E5E7EB] bg-white space-y-2.5">
           <div className="relative">
-            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
             <input
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              placeholder="টিম লিডারের নাম দিয়ে খুঁজুন..."
-              className="w-full pl-9 pr-4 py-2 rounded-xl neu-inset bg-white/70 border border-blue-200 text-xs text-[#090d16] placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              placeholder="Search Team Leader by name..."
+              className="w-full pl-9 pr-9 py-2 rounded-xl fintech-input text-xs text-[#0F172A]"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#94A3B8] hover:text-[#0F172A] cursor-pointer"
               >
                 <X size={14} />
               </button>
             )}
           </div>
 
-          <div className="flex items-center justify-between text-[11px]">
-            <span className="text-slate-500 font-medium">
-              মোট TL: {teamLeaders.length} জন
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-[#64748B] font-medium">
+              Total TLs: <strong className="font-mono tabular-nums text-[#0F172A]">{teamLeaders.length}</strong>
             </span>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               <button
                 type="button"
-                onClick={handleSelectAll}
-                className="text-blue-700 font-bold hover:underline"
+                onClick={() => setSelectedTlIds(teamLeaders.map(t => t.id))}
+                className="text-[#0B4F9C] font-bold hover:underline cursor-pointer"
               >
-                সব সিলেক্ট
+                Select All
               </button>
-              <span className="text-slate-300">|</span>
               <button
                 type="button"
-                onClick={handleClearAll}
-                className="text-red-600 font-bold hover:underline"
+                onClick={() => setSelectedTlIds([])}
+                className="text-[#DC2626] font-bold hover:underline cursor-pointer"
               >
-                সব মুছুন
+                Clear All
               </button>
             </div>
           </div>
         </div>
 
         {/* TL List */}
-        <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-2 custom-scrollbar max-h-[380px]">
+        <div className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar max-h-[360px] bg-[#F8FAFC]">
           {filteredLeaders.length === 0 ? (
-            <div className="text-center py-8 text-xs text-slate-500 italic">
-              কোনো টিম লিডার পাওয়া যায়নি
+            <div className="text-center py-8 text-xs text-[#64748B]">
+              No Team Leaders found
             </div>
           ) : (
             filteredLeaders.map(tl => {
               const isSelected = selectedTlIds.includes(tl.id);
               const otherStl = tlToStlMap.get(tl.id);
               const isUnderAnotherStl = otherStl && otherStl.stlId !== stl.id;
-              const tlData = resolveTLConvertData(tl.id, teamLeaders, leaderRanking, results, tl);
-              const converts = tlData.convert;
+              const converts = resolveTLConvertData(tl.id, teamLeaders, leaderRanking, results, tl).convert;
 
               return (
                 <div
                   key={tl.id}
                   onClick={() => toggleTL(tl.id)}
-                  className={`p-3 rounded-2xl border transition-all cursor-pointer select-none flex items-center justify-between gap-3 ${
-                    isSelected 
-                      ? 'neu-card bg-blue-50/90 border-blue-400 ring-1 ring-blue-300' 
-                      : 'neu-card-sm bg-white/70 border-slate-200/80 hover:border-blue-200'
+                  className={`p-3 rounded-xl border transition-colors cursor-pointer select-none flex items-center justify-between gap-3 ${
+                    isSelected
+                      ? 'bg-[#EEF5FF] border-[#0B4F9C]'
+                      : 'bg-white border-[#E5E7EB] hover:border-[#CBD5E1]'
                   }`}
                   role="checkbox"
                   aria-checked={isSelected}
                   tabIndex={0}
                 >
-                  {/* Left info & Checkbox */}
                   <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <div className={`w-5 h-5 rounded-lg flex items-center justify-center transition-all flex-shrink-0 ${
-                      isSelected ? 'bg-blue-600 text-white' : 'border border-slate-300 bg-white'
-                    }`}>
-                      {isSelected && <Check size={14} />}
+                    <div
+                      className={`w-5 h-5 rounded-md flex items-center justify-center shrink-0 ${
+                        isSelected ? 'bg-[#0B4F9C] text-white' : 'border border-[#CBD5E1] bg-white'
+                      }`}
+                    >
+                      {isSelected && <Check size={13} />}
                     </div>
 
-                    <div className="w-8 h-8 rounded-xl overflow-hidden neu-card-sm flex items-center justify-center flex-shrink-0 border border-blue-200/80">
+                    <div className="w-8 h-8 rounded-full overflow-hidden bg-[#F4F6F9] border border-[#E5E7EB] flex items-center justify-center shrink-0">
                       <CartoonAvatar src={tl.profilePic} name={tl.name} />
                     </div>
 
                     <div className="min-w-0 flex-1">
-                      <div className="font-black text-[#090d16] text-xs sm:text-sm tracking-tight truncate">
+                      <div className="font-bold text-[#0F172A] text-sm truncate">
                         {tl.name}
                       </div>
-                      
-                      {/* Subtitle / Status */}
-                      <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-                        {isUnderAnotherStl && (
-                          <span className="text-[9px] px-1.5 py-0.2 rounded font-bold bg-amber-100 text-amber-800 border border-amber-200">
-                            বর্তমানে {otherStl.stlName}-এ আছে
-                          </span>
-                        )}
-                        {isSelected && !isUnderAnotherStl && (
-                          <span className="text-[9px] font-bold text-blue-700">
-                            ✓ এই STL-এ যুক্ত
-                          </span>
-                        )}
-                      </div>
+                      {isUnderAnotherStl && (
+                        <p className="text-[11px] font-medium text-[#B45309]">
+                          Currently assigned to {otherStl.stlName}
+                        </p>
+                      )}
+                      {isSelected && !isUnderAnotherStl && (
+                        <p className="text-[11px] font-medium text-[#0B4F9C]">
+                          Assigned to this STL
+                        </p>
+                      )}
                     </div>
                   </div>
 
-                  {/* Right convert score */}
-                  <div className="text-right flex-shrink-0">
-                    <div className="text-[8px] sm:text-[9px] uppercase font-bold text-slate-400">
-                      Convert
-                    </div>
-                    <div className="text-xs sm:text-sm font-black text-emerald-700">
+                  <div className="text-right shrink-0">
+                    <div className="text-[10px] font-semibold text-[#64748B]">Convert</div>
+                    <div className="text-sm font-bold font-mono tabular-nums text-[#047857]">
                       {converts}
                     </div>
                   </div>
@@ -282,24 +261,24 @@ export default function StlAssignmentModal({
           )}
         </div>
 
-        {/* Footer Actions */}
-        <div className="p-3.5 sm:p-4 border-t border-blue-200/80 bg-white/70 flex items-center justify-between gap-3">
+        {/* Footer */}
+        <div className="p-4 border-t border-[#E5E7EB] bg-white flex items-center justify-end gap-2.5">
           <button
             type="button"
             onClick={onClose}
-            className="neu-btn px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 hover:text-slate-900 transition-colors"
+            className="px-4 py-2.5 rounded-xl bg-[#F4F6F9] hover:bg-[#E5E7EB] border border-[#E5E7EB] text-xs font-bold text-[#334155] transition-colors cursor-pointer"
           >
-            বাতিল
+            Cancel
           </button>
 
           <button
             type="button"
             onClick={handleSave}
             disabled={isSaving}
-            className="neu-btn-primary text-white font-black px-6 py-2.5 rounded-xl text-xs inline-flex items-center gap-2 active:scale-95 transition-all shadow-md disabled:opacity-50"
+            className="bg-[#0B4F9C] hover:bg-[#094182] text-white font-bold px-5 py-2.5 rounded-xl text-xs inline-flex items-center gap-2 transition-colors disabled:opacity-50 cursor-pointer"
           >
             <Save size={15} />
-            <span>{isSaving ? 'সংরক্ষণ হচ্ছে...' : 'এসাইনমেন্ট সংরক্ষণ করুন'}</span>
+            <span>{isSaving ? 'Saving...' : 'Save Changes'}</span>
           </button>
         </div>
       </div>
