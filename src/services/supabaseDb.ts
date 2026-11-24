@@ -110,26 +110,51 @@ export function collection(dbInstance: any, ...pathSegments: string[]): Collecti
   };
 }
 
+function generateAutoId(): string {
+  return 'doc_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36);
+}
+
 export function doc(
   dbInstanceOrCol: any,
   ...pathSegments: string[]
 ): DocumentReference {
-  let fullPath = '';
+  const cleanSegments = pathSegments
+    .map((s) => (s === undefined || s === null ? '' : String(s).trim()))
+    .filter((s) => s.length > 0 && s !== 'undefined' && s !== 'null');
+
   if (dbInstanceOrCol && dbInstanceOrCol.__isColRef) {
-    fullPath = [dbInstanceOrCol.collection, ...pathSegments].filter(Boolean).join('/');
-  } else {
-    fullPath = pathSegments.filter(Boolean).join('/');
+    const col = dbInstanceOrCol.collection;
+    if (cleanSegments.length === 0) {
+      const autoId = generateAutoId();
+      return {
+        __isDocRef: true,
+        collection: col,
+        id: autoId,
+        path: `${col}/${autoId}`,
+      };
+    }
+    const fullPath = [col, ...cleanSegments].join('/');
+    const parts = fullPath.split('/');
+    const id = parts.pop() || generateAutoId();
+    const resolvedCol = parts.join('/') || col;
+    return {
+      __isDocRef: true,
+      collection: resolvedCol,
+      id,
+      path: `${resolvedCol}/${id}`,
+    };
   }
 
-  const parts = fullPath.split('/');
-  const id = parts.pop() || '';
+  const fullPath = cleanSegments.join('/');
+  const parts = fullPath.split('/').filter(Boolean);
+  const id = parts.length >= 2 ? parts.pop()! : generateAutoId();
   const col = parts.join('/') || 'default';
 
   return {
     __isDocRef: true,
     collection: col,
     id,
-    path: fullPath,
+    path: `${col}/${id}`,
   };
 }
 
@@ -328,20 +353,29 @@ export async function setDoc(
 ): Promise<void> {
   let finalData = data;
   if (options?.merge) {
-    const existing = getLocalDoc(docRef.collection, docRef.id) || {};
-    finalData = { ...existing, ...data };
+    let existing = getLocalDoc(docRef.collection, docRef.id);
+    if (!existing) {
+      try {
+        const snap = await getDoc(docRef);
+        if (snap.exists()) existing = snap.data();
+      } catch {}
+    }
+    finalData = { ...(existing || {}), ...data };
   }
 
   // Optimistic local update
   setLocalDoc(docRef.collection, docRef.id, finalData);
 
   try {
-    await supabase.from('collections_data').upsert({
+    const { error } = await supabase.from('collections_data').upsert({
       collection: docRef.collection,
       id: docRef.id,
       data: finalData,
       updated_at: new Date().toISOString(),
     });
+    if (error) {
+      console.warn(`Supabase setDoc error for ${docRef.path}:`, error);
+    }
   } catch (err) {
     console.warn(`Supabase setDoc fallback for ${docRef.path}:`, err);
   }
@@ -351,8 +385,7 @@ export async function addDoc(
   colRef: CollectionReference,
   data: any
 ): Promise<DocumentReference> {
-  const newId =
-    'doc_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36);
+  const newId = generateAutoId();
   const docRef: DocumentReference = {
     __isDocRef: true,
     collection: colRef.collection,
@@ -363,13 +396,16 @@ export async function addDoc(
   setLocalDoc(colRef.collection, newId, data);
 
   try {
-    await supabase.from('collections_data').insert({
+    const { error } = await supabase.from('collections_data').insert({
       collection: colRef.collection,
       id: newId,
       data,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     });
+    if (error) {
+      console.warn(`Supabase addDoc error for ${colRef.path}:`, error);
+    }
   } catch (err) {
     console.warn(`Supabase addDoc fallback for ${colRef.path}:`, err);
   }
@@ -381,25 +417,35 @@ export async function updateDoc(
   docRef: DocumentReference,
   partialData: any
 ): Promise<void> {
-  const existing = getLocalDoc(docRef.collection, docRef.id) || {};
-  const merged = { ...existing, ...partialData };
+  let existing = getLocalDoc(docRef.collection, docRef.id);
+  if (!existing) {
+    try {
+      const snap = await getDoc(docRef);
+      if (snap.exists()) existing = snap.data();
+    } catch {}
+  }
+  const base = existing || {};
+  const merged = { ...base, ...partialData };
 
   // Handle special field transformations
   for (const [key, val] of Object.entries(partialData)) {
     if (val && typeof val === 'object' && (val as any).__isIncrement) {
-      merged[key] = (Number(existing[key]) || 0) + (val as any).delta;
+      merged[key] = (Number(base[key]) || 0) + (val as any).delta;
     }
   }
 
   setLocalDoc(docRef.collection, docRef.id, merged);
 
   try {
-    await supabase.from('collections_data').upsert({
+    const { error } = await supabase.from('collections_data').upsert({
       collection: docRef.collection,
       id: docRef.id,
       data: merged,
       updated_at: new Date().toISOString(),
     });
+    if (error) {
+      console.warn(`Supabase updateDoc error for ${docRef.path}:`, error);
+    }
   } catch (err) {
     console.warn(`Supabase updateDoc fallback for ${docRef.path}:`, err);
   }

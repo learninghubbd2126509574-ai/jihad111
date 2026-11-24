@@ -1248,40 +1248,56 @@ export default function App() {
       }
     } catch {}
 
-    // 5. Update members list if position is Team Leader or Team Trainer so they immediately appear in members & ranking
-    if (pendingUser.position === 'Team Leader') {
+    // 5. Prepare deterministic doc refs so optimistic state and Supabase share real IDs
+    const memberRef =
+      pendingUser.position === 'Team Leader' ||
+      pendingUser.position === 'Team Trainer' ||
+      pendingUser.position === 'Counsellor'
+        ? doc(collection(db, 'members'))
+        : null;
+    const leaderRankRef = pendingUser.position === 'Team Leader' ? doc(collection(db, 'leaderRanking')) : null;
+    const trainerRankRef = pendingUser.position === 'Team Trainer' ? doc(collection(db, 'trainerRanking')) : null;
+    const stlRef = pendingUser.position === 'STL' ? doc(collection(db, 'stlMembers')) : null;
+    const teacherRef = pendingUser.position === 'Teacher' ? doc(collection(db, 'teachers')) : null;
+
+    if (pendingUser.position === 'Team Leader' && memberRef && leaderRankRef) {
       setMembers((prev) => {
-        if (prev.some((m) => m.name === pendingUser.fullName)) return prev;
-        return [...prev, { name: pendingUser.fullName, type: 'leader', whatsapp: wa, createdAt: new Date() } as any];
+        if (prev.some((m) => m.name === pendingUser.fullName || m.whatsapp === wa)) return prev;
+        return [...prev, { id: memberRef.id, name: pendingUser.fullName, type: 'leader', whatsapp: wa, createdAt: new Date() } as any];
       });
       setLeaderRanking((prev) => {
-        if (prev.some((m) => m.name === pendingUser.fullName)) return prev;
-        return [...prev, { id: wa, name: pendingUser.fullName, score: 0, leads: 0, whatsapp: wa, createdAt: new Date() } as any];
+        if (prev.some((m) => m.name === pendingUser.fullName || (m as any).whatsapp === wa)) return prev;
+        return [...prev, { id: leaderRankRef.id, name: pendingUser.fullName, score: 0, leads: 0, whatsapp: wa, createdAt: new Date() } as any];
       });
-    } else if (pendingUser.position === 'Team Trainer') {
+    } else if (pendingUser.position === 'Team Trainer' && memberRef && trainerRankRef) {
       setMembers((prev) => {
-        if (prev.some((m) => m.name === pendingUser.fullName)) return prev;
-        return [...prev, { name: pendingUser.fullName, type: 'trainer', whatsapp: wa, createdAt: new Date() } as any];
+        if (prev.some((m) => m.name === pendingUser.fullName || m.whatsapp === wa)) return prev;
+        return [...prev, { id: memberRef.id, name: pendingUser.fullName, type: 'trainer', whatsapp: wa, createdAt: new Date() } as any];
       });
       setTrainerRanking((prev) => {
-        if (prev.some((m) => m.name === pendingUser.fullName)) return prev;
-        return [...prev, { id: wa, name: pendingUser.fullName, score: 0, leads: 0, whatsapp: wa, createdAt: new Date() } as any];
+        if (prev.some((m) => m.name === pendingUser.fullName || (m as any).whatsapp === wa)) return prev;
+        return [...prev, { id: trainerRankRef.id, name: pendingUser.fullName, score: 0, leads: 0, whatsapp: wa, createdAt: new Date() } as any];
       });
-    } else if (pendingUser.position === 'STL') {
+    } else if (pendingUser.position === 'STL' && stlRef) {
       setStlMembers((prev) => {
         if (prev.some((m) => m.name === pendingUser.fullName)) return prev;
-        return [...prev, { id: wa, name: pendingUser.fullName, whatsapp: wa, createdAt: new Date() } as any];
+        return [...prev, { id: stlRef.id, name: pendingUser.fullName, whatsapp: wa, createdAt: new Date() } as any];
       });
-    } else if (pendingUser.position === 'Teacher') {
+    } else if (pendingUser.position === 'Teacher' && teacherRef) {
       setTeachers((prev) => {
         if (prev.some((t) => t.name === pendingUser.fullName)) return prev;
-        return [...prev, { id: wa, name: pendingUser.fullName, createdAt: new Date() } as any];
+        return [...prev, { id: teacherRef.id, name: pendingUser.fullName, createdAt: new Date() } as any];
+      });
+    } else if (pendingUser.position === 'Counsellor' && memberRef) {
+      setMembers((prev) => {
+        if (prev.some((m) => m.name === pendingUser.fullName || m.whatsapp === wa)) return prev;
+        return [...prev, { id: memberRef.id, name: pendingUser.fullName, type: 'counsellor' as any, whatsapp: wa, createdAt: new Date() } as any];
       });
     }
 
     showMsg(`${pendingUser.fullName} has been approved!`, 'success');
 
-    // 6. Asynchronously sync to Firestore
+    // 6. Asynchronously sync to Supabase
     try {
       const batch = writeBatch(db);
       const userRef = doc(db, 'registeredUsers', wa);
@@ -1295,47 +1311,47 @@ export default function App() {
         batch.delete(doc(db, 'pendingRegistrations', wa));
       }
 
-      if (pendingUser.position === 'Team Leader') {
-        batch.set(doc(collection(db, 'members')), {
+      if (pendingUser.position === 'Team Leader' && memberRef && leaderRankRef) {
+        batch.set(memberRef, {
           name: pendingUser.fullName,
           type: 'leader',
           whatsapp: wa,
           createdAt: serverTimestamp(),
         });
-        batch.set(doc(collection(db, 'leaderRanking')), {
+        batch.set(leaderRankRef, {
           name: pendingUser.fullName,
           score: 0,
           leads: 0,
           whatsapp: wa,
           createdAt: serverTimestamp(),
         });
-      } else if (pendingUser.position === 'Team Trainer') {
-        batch.set(doc(collection(db, 'members')), {
+      } else if (pendingUser.position === 'Team Trainer' && memberRef && trainerRankRef) {
+        batch.set(memberRef, {
           name: pendingUser.fullName,
           type: 'trainer',
           whatsapp: wa,
           createdAt: serverTimestamp(),
         });
-        batch.set(doc(collection(db, 'trainerRanking')), {
+        batch.set(trainerRankRef, {
           name: pendingUser.fullName,
           score: 0,
           leads: 0,
           whatsapp: wa,
           createdAt: serverTimestamp(),
         });
-      } else if (pendingUser.position === 'STL') {
-        batch.set(doc(collection(db, 'stlMembers')), {
+      } else if (pendingUser.position === 'STL' && stlRef) {
+        batch.set(stlRef, {
           name: pendingUser.fullName,
           whatsapp: wa,
           createdAt: serverTimestamp(),
         });
-      } else if (pendingUser.position === 'Teacher') {
-        batch.set(doc(collection(db, 'teachers')), {
+      } else if (pendingUser.position === 'Teacher' && teacherRef) {
+        batch.set(teacherRef, {
           name: pendingUser.fullName,
           createdAt: serverTimestamp(),
         });
-      } else if (pendingUser.position === 'Counsellor') {
-        batch.set(doc(collection(db, 'members')), {
+      } else if (pendingUser.position === 'Counsellor' && memberRef) {
+        batch.set(memberRef, {
           name: pendingUser.fullName,
           type: 'counsellor' as any,
           whatsapp: wa,
@@ -1487,9 +1503,14 @@ export default function App() {
 
   const myMember = useMemo(() => {
     if (!currentAuthUser) return null;
+    const cleanWa = (currentAuthUser.whatsapp || '').replace(/\s+/g, '');
+    const cleanName = normalizeName(currentAuthUser.fullName || '');
     return (
       members.find(
-        (m) => m.name.trim().toLowerCase() === currentAuthUser.fullName.trim().toLowerCase()
+        (m) =>
+          (cleanWa && m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanWa) ||
+          m.name.trim().toLowerCase() === currentAuthUser.fullName.trim().toLowerCase() ||
+          (cleanName && normalizeName(m.name) === cleanName)
       ) || null
     );
   }, [members, currentAuthUser]);
@@ -1651,22 +1672,57 @@ export default function App() {
 
   // Submission & Stats Calculation
   const submitResult = async (
-    memberId: string,
+    rawMemberId: string,
     lead: number,
     convert: number,
     personalLead: number
   ) => {
-    const isWindowOpen =
-      config.timerActive && (config.timerEndTime ? Date.now() <= config.timerEndTime + 10000 : true);
-    if (!isWindowOpen) {
-      showMsg('Submission window is closed!', 'error');
+    if (!config.timerActive) {
+      showMsg('সাবমিশন টাইমার এখন বন্ধ আছে!', 'error');
       return;
     }
     try {
+      const cleanWa = (currentAuthUser?.whatsapp || '').replace(/\s+/g, '');
+      const cleanName = normalizeName(currentAuthUser?.fullName || '');
+
+      let member =
+        members.find((m) => m.id === rawMemberId) ||
+        members.find(
+          (m) =>
+            (cleanWa && m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanWa) ||
+            (cleanName && normalizeName(m.name) === cleanName)
+        );
+
+      let memberId = member?.id || rawMemberId;
+      if (!memberId || memberId === 'undefined' || memberId === 'null') {
+        memberId = cleanWa ? `member_${cleanWa}` : `member_${Date.now().toString(36)}`;
+      }
+
+      // Auto-register missing member entry if approved user's member record wasn't created yet
+      if (!member && currentAuthUser) {
+        const userPosLower = (currentAuthUser.position || '').toLowerCase();
+        const inferredType: Member['type'] = userPosLower.includes('trainer')
+          ? 'trainer'
+          : userPosLower.includes('counsellor')
+            ? ('counsellor' as any)
+            : 'leader';
+        const newMemberPayload: any = {
+          name: currentAuthUser.fullName,
+          type: inferredType,
+          whatsapp: currentAuthUser.whatsapp || '',
+          profilePic: currentAuthUser.profilePic || '',
+          createdAt: serverTimestamp(),
+        };
+        await setDoc(doc(db, 'members', memberId), newMemberPayload, { merge: true });
+        member = { id: memberId, ...newMemberPayload } as Member;
+        setMembers((prev) =>
+          prev.some((m) => m.id === memberId) ? prev : [member!, ...prev]
+        );
+      }
+
       const prevResult = results[memberId] || { lead: 0, convert: 0, personalLead: 0 };
       const diffScore = convert - (prevResult.convert || 0);
       const diffLeads = personalLead - (prevResult.personalLead || 0);
-      const member = members.find((m) => m.id === memberId);
 
       await setDoc(doc(db, 'results', memberId), {
         memberId,
@@ -1703,7 +1759,7 @@ export default function App() {
         {
           whatsapp: resolvedWhatsapp,
           memberId,
-          memberName: member?.name || '',
+          memberName: member?.name || currentAuthUser?.fullName || '',
           date: todayStr,
           lead,
           convert,
@@ -1718,7 +1774,7 @@ export default function App() {
         id: logDocId,
         whatsapp: resolvedWhatsapp,
         memberId,
-        memberName: member?.name || '',
+        memberName: member?.name || currentAuthUser?.fullName || '',
         date: todayStr,
         lead,
         convert,
@@ -1746,15 +1802,16 @@ export default function App() {
         });
       }
 
-      if (member) {
+      if (member && (member.type === 'leader' || member.type === 'trainer')) {
         const isLeader = member.type === 'leader';
         const rankingList = isLeader ? leaderRanking : trainerRanking;
         const cleanMemberName = normalizeName(member.name);
         const rankingEntry = rankingList.find(
           (r) =>
-            r.id === member.id ||
-            r.name.trim().toLowerCase() === member.name.trim().toLowerCase() ||
-            (cleanMemberName && normalizeName(r.name) === cleanMemberName)
+            r.id === member!.id ||
+            (resolvedWhatsapp && (r as any).whatsapp && (r as any).whatsapp.replace(/\s+/g, '') === resolvedWhatsapp.replace(/\s+/g, '')) ||
+            (r.name && r.name.trim().toLowerCase() === member!.name.trim().toLowerCase()) ||
+            (cleanMemberName && r.name && normalizeName(r.name) === cleanMemberName)
         );
         const coll = isLeader ? 'leaderRanking' : 'trainerRanking';
         const setRankingState = isLeader ? setLeaderRanking : setTrainerRanking;
@@ -1762,6 +1819,8 @@ export default function App() {
         if (rankingEntry) {
           if (diffScore !== 0 || diffLeads !== 0) {
             await updateDoc(doc(db, coll, rankingEntry.id), {
+              name: rankingEntry.name || member.name,
+              whatsapp: (rankingEntry as any).whatsapp || resolvedWhatsapp,
               score: increment(diffScore),
               leads: increment(diffLeads),
             });
@@ -1771,6 +1830,7 @@ export default function App() {
                   r.id === rankingEntry.id
                     ? {
                         ...r,
+                        name: r.name || member!.name,
                         score: (r.score || 0) + diffScore,
                         leads: (r.leads || 0) + diffLeads,
                       }
@@ -1786,12 +1846,13 @@ export default function App() {
             name: member.name,
             score: convert,
             leads: personalLead,
+            whatsapp: resolvedWhatsapp,
             createdAt: serverTimestamp(),
           });
           setRankingState((prev) => {
             const next = [
               ...prev,
-              { id: addedRef.id, name: member.name, score: convert, leads: personalLead } as RankingMember,
+              { id: addedRef.id, name: member!.name, score: convert, leads: personalLead, whatsapp: resolvedWhatsapp, createdAt: serverTimestamp() } as RankingMember,
             ].sort((a, b) => (b.score || 0) - (a.score || 0));
             writeCacheWithTTL(`unity_cache_${coll}`, next);
             return next;
@@ -1799,34 +1860,34 @@ export default function App() {
         }
       }
 
-      showMsg('Result submitted successfully!', 'success');
+      showMsg('রিপোর্ট সফলভাবে সাবমিট হয়েছে!', 'success');
 
-      const memberName = member?.name || currentAuthUser?.fullName || 'Member';
+      const memberName = member?.name || currentAuthUser?.fullName || 'সদস্য';
       const userPos = (currentAuthUser?.position || '').toLowerCase();
       const memberPos = ((member as any)?.position || '').toLowerCase();
       const posStr = (userPos || memberPos).toLowerCase();
 
-      let roleName = 'Member';
-      if (posStr.includes('trainer') || posStr.includes('ট্রেনার')) {
-        roleName = 'Trainer';
+      let roleName = 'সদস্য';
+      if (posStr.includes('trainer') || posStr.includes('ট্রেনার') || posStr.includes('ট্রেইনার')) {
+        roleName = 'টিম ট্রেইনার';
       } else if (
         posStr.includes('stl') ||
         posStr.includes('senior team leader') ||
         posStr.includes('সিনিয়র') ||
         posStr.includes('senior')
       ) {
-        roleName = 'STL';
+        roleName = 'এসটিএল';
       } else if (
         posStr.includes('leader') ||
         posStr.includes('লিডার') ||
         member?.type === 'leader'
       ) {
-        roleName = 'Team Leader';
+        roleName = 'টিম লিডার';
       } else {
-        roleName = member?.type === 'leader' ? 'Team Leader' : 'Trainer';
+        roleName = member?.type === 'leader' ? 'টিম লিডার' : 'টিম ট্রেইনার';
       }
 
-      const rate = roleName === 'Trainer' ? 50 : roleName === 'STL' ? 25 : 60;
+      const rate = roleName === 'টিম ট্রেইনার' ? 50 : roleName === 'এসটিএল' ? 25 : 60;
       const earnedAmount = convert * rate;
 
       let ratingTier: SubmissionFeedbackData['ratingTier'] = 'angry';
@@ -1834,34 +1895,34 @@ export default function App() {
 
       if (convert === 0) {
         ratingTier = 'angry';
-        feedbackMsg = `As ${roleName}, your converts are zero today. Increase momentum immediately.`;
+        feedbackMsg = `${roleName} হিসেবে আজ আপনার কোনো কনভার্ট হয়নি। দ্রুত কাজের গতি বাড়ান এবং আজই কনভার্ট নিশ্চিত করার চেষ্টা করুন।`;
       } else if (convert <= 2) {
         ratingTier = 'strict';
-        feedbackMsg = `As ${roleName}, only ${convert} converts recorded! Pick up pace to hit your monthly target.`;
+        feedbackMsg = `${roleName} হিসেবে আজ মাত্র ${convert}টি কনভার্ট হয়েছে! মাসিক টার্গেট পূরণ করতে কাজের গতি আরও বাড়ান।`;
       } else if (convert <= 4) {
         ratingTier = 'disappointed';
-        feedbackMsg = `As ${roleName}, ${convert} converts logged. Stay focused for stronger daily output.`;
+        feedbackMsg = `${roleName} হিসেবে আজ ${convert}টি কনভার্ট জমা হয়েছে। দৈনিক ফলাফল আরও শক্তিশালী করতে মনোযোগী থাকুন।`;
       } else if (convert < 10) {
         ratingTier = 'happy';
-        feedbackMsg = `Great work as ${roleName}! ${convert} converts achieved. Keep this momentum going!`;
+        feedbackMsg = `দারুণ কাজ করেছেন ${roleName} হিসেবে! আজ ${convert}টি কনভার্ট সম্পন্ন হয়েছে। এই ধারাবাহিকতা বজায় রাখুন!`;
       } else {
         ratingTier = 'legend';
-        feedbackMsg = `Outstanding performance as ${roleName}! ${convert} converts completed today.`;
+        feedbackMsg = `অসাধারণ পারফরম্যান্স! ${roleName} হিসেবে আজ ${convert}টি কনভার্ট সম্পন্ন করেছেন।`;
       }
 
-      if ((roleName === 'Team Leader' && convert >= 6) || (roleName === 'Trainer' && convert >= 4)) {
-        feedbackMsg += ' Congratulations! You qualify for today\'s performance bonus.';
+      if ((roleName === 'টিম লিডার' && convert >= 6) || (roleName === 'টিম ট্রেইনার' && convert >= 4)) {
+        feedbackMsg += ' অভিনন্দন! আপনি আজকের পারফরম্যান্স বোনাসের জন্য যোগ্য হয়েছেন।';
       }
 
       let personalLeadFeedback = '';
       if (personalLead <= 2) {
-        personalLeadFeedback = `Only ${personalLead} personal leads collected. Boost outreach immediately.`;
+        personalLeadFeedback = `আজ মাত্র ${personalLead}টি পার্সোনাল লিড সংগ্রহ হয়েছে। দ্রুত লিড সংগ্রহের কাজ বাড়ান।`;
       } else if (personalLead <= 5) {
-        personalLeadFeedback = `${personalLead} personal leads logged. Push harder to grow your pipeline.`;
+        personalLeadFeedback = `আজ ${personalLead}টি পার্সোনাল লিড জমা হয়েছে। টার্গেট বাড়াতে আরও চেষ্টা করুন।`;
       } else if (personalLead <= 8) {
-        personalLeadFeedback = `${personalLead} personal leads collected — steady and reliable progress.`;
+        personalLeadFeedback = `আজ ${personalLead}টি পার্সোনাল লিড সংগ্রহ হয়েছে — এটি একটি ভালো ও স্থিতিশীল অগ্রগতি।`;
       } else {
-        personalLeadFeedback = `Excellent! You collected ${personalLead} personal leads today!`;
+        personalLeadFeedback = `চমৎকার! আজ আপনি ${personalLead}টি পার্সোনাল লিড সংগ্রহ করেছেন!`;
       }
 
       const now = new Date();

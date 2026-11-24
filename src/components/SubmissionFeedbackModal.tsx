@@ -20,42 +20,46 @@ interface SubmissionFeedbackModalProps {
 }
 
 export default function SubmissionFeedbackModal({ data, onClose }: SubmissionFeedbackModalProps) {
-  let moodTitle = 'Performance Needs Attention';
+  let moodTitle = 'পারফরম্যান্সে আরও মনোযোগ প্রয়োজন';
   let statusColor = 'bg-[#FEF2F2] border-[#FECACA] text-[#DC2626]';
-  let statusLabel = 'Needs Focus';
+  let statusLabel = 'মনোযোগ দিন';
   let IconComp: React.ElementType = AlertTriangle;
 
   if (data.ratingTier === 'strict') {
-    moodTitle = 'Warning: Stronger Consistency Needed';
+    moodTitle = 'সতর্কবার্তা: আরও ধারাবাহিকতা প্রয়োজন';
     statusColor = 'bg-[#FFFBEB] border-[#FDE68A] text-[#B45309]';
-    statusLabel = 'Attention';
+    statusLabel = 'সতর্কতা';
     IconComp = AlertTriangle;
   } else if (data.ratingTier === 'disappointed') {
-    moodTitle = 'Room for Improvement';
+    moodTitle = 'আরও উন্নতির সুযোগ রয়েছে';
     statusColor = 'bg-[#FFF9E6] border-[#FDE68A] text-[#B45309]';
-    statusLabel = 'Average Result';
+    statusLabel = 'মোটামুটি ফলাফল';
     IconComp = Target;
   } else if (data.ratingTier === 'happy') {
-    moodTitle = 'Strong & Consistent Performance';
+    moodTitle = 'দারুণ ও ধারাবাহিক পারফরম্যান্স';
     statusColor = 'bg-[#EEF5FF] border-[#D6E6FF] text-[#0B4F9C]';
-    statusLabel = 'Good Progress';
+    statusLabel = 'ভালো অগ্রগতি';
     IconComp = CheckCircle2;
   } else if (data.ratingTier === 'legend') {
-    moodTitle = 'Outstanding Top Performance!';
+    moodTitle = 'অসাধারণ সেরা পারফরম্যান্স!';
     statusColor = 'bg-[#ECFDF5] border-[#A7F3D0] text-[#047857]';
-    statusLabel = 'Top Performer';
+    statusLabel = 'সেরা পারফর্মার';
     IconComp = Flame;
   }
 
-  const shortRoleName = data.role.toLowerCase().includes('trainer')
-    ? 'Trainer'
-    : data.role.toUpperCase().includes('STL')
-      ? 'STL'
-      : 'Team Leader';
+  const lowerRole = data.role.toLowerCase();
+  const shortRoleName =
+    lowerRole.includes('trainer') || data.role.includes('ট্রেইনার') || data.role.includes('ট্রেনার')
+      ? 'টিম ট্রেইনার'
+      : lowerRole.includes('stl') || data.role.includes('এসটিএল') || data.role.includes('সিনিয়র')
+        ? 'এসটিএল'
+        : lowerRole.includes('leader') || data.role.includes('লিডার')
+          ? 'টিম লিডার'
+          : 'সদস্য';
 
   return (
     <div
-      className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-slate-900/45 overflow-y-auto modal-fade"
+      className="fixed inset-0 z-[1500] flex items-center justify-center p-4 bg-slate-900/50 overflow-y-auto modal-fade"
       onClick={onClose}
     >
       <div
@@ -65,12 +69,12 @@ export default function SubmissionFeedbackModal({ data, onClose }: SubmissionFee
         {/* Header */}
         <div className="px-4 py-3.5 bg-[#F8FAFC] border-b border-[#E5E7EB] flex items-center justify-between shrink-0">
           <span className="text-xs font-bold text-[#0F172A]">
-            Performance Evaluation Feedback
+            পারফরম্যান্স মূল্যায়ন ফিডব্যাক
           </span>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
+            aria-label="বন্ধ করুন"
             className="w-8 h-8 rounded-lg bg-white border border-[#E5E7EB] flex items-center justify-center text-[#64748B] hover:text-[#0F172A] transition-colors cursor-pointer"
           >
             <X size={16} />
@@ -96,15 +100,15 @@ export default function SubmissionFeedbackModal({ data, onClose }: SubmissionFee
           {/* 3-Column Metrics */}
           <div className="grid grid-cols-3 gap-2 text-center">
             <div className="bg-[#F4F6F9] p-2.5 rounded-xl border border-[#E5E7EB]">
-              <span className="block text-[10px] text-[#64748B] font-semibold">Convert</span>
+              <span className="block text-[10px] text-[#64748B] font-semibold">কনভার্ট</span>
               <span className="text-base font-bold font-mono tabular-nums text-[#0F172A]">{data.convert}</span>
             </div>
             <div className="bg-[#F4F6F9] p-2.5 rounded-xl border border-[#E5E7EB]">
-              <span className="block text-[10px] text-[#64748B] font-semibold">Personal</span>
+              <span className="block text-[10px] text-[#64748B] font-semibold">পার্সোনাল লিড</span>
               <span className="text-base font-bold font-mono tabular-nums text-[#0B4F9C]">{data.personalLead}</span>
             </div>
             <div className="bg-[#F4F6F9] p-2.5 rounded-xl border border-[#E5E7EB]">
-              <span className="block text-[10px] text-[#64748B] font-semibold">Est. Earnings</span>
+              <span className="block text-[10px] text-[#64748B] font-semibold">সম্ভাব্য আয়</span>
               <span className="text-sm font-bold text-[#047857] font-mono tabular-nums">৳{data.estimatedEarnings}</span>
             </div>
           </div>
@@ -112,7 +116,7 @@ export default function SubmissionFeedbackModal({ data, onClose }: SubmissionFee
           {/* Convert Feedback */}
           <div className="p-3 rounded-xl bg-[#F8FAFC] border border-[#E5E7EB] space-y-1">
             <h4 className="text-[11px] font-bold text-[#64748B] flex items-center gap-1.5">
-              <Trophy size={13} className="text-[#0B4F9C]" /> Convert Evaluation
+              <Trophy size={13} className="text-[#0B4F9C]" /> কনভার্ট মূল্যায়ন
             </h4>
             <p className="text-xs font-semibold text-[#0F172A] leading-relaxed">
               {data.feedbackText}
@@ -122,7 +126,7 @@ export default function SubmissionFeedbackModal({ data, onClose }: SubmissionFee
           {/* Personal Lead Feedback */}
           <div className="p-3 rounded-xl bg-[#F8FAFC] border border-[#E5E7EB] space-y-1">
             <h4 className="text-[11px] font-bold text-[#64748B] flex items-center gap-1.5">
-              <Target size={13} className="text-[#FF6B00]" /> Personal Lead Evaluation
+              <Target size={13} className="text-[#FF6B00]" /> পার্সোনাল লিড মূল্যায়ন
             </h4>
             <p className="text-xs font-semibold text-[#0F172A] leading-relaxed">
               {data.personalLeadFeedback}
@@ -133,7 +137,7 @@ export default function SubmissionFeedbackModal({ data, onClose }: SubmissionFee
           <div className="p-3 rounded-xl bg-[#FFF9E6] border border-[#FDE68A] text-xs text-[#92400E] flex items-center gap-2 font-medium">
             <Calendar size={15} className="text-[#D97706] shrink-0" />
             <span>
-              <strong className="font-mono tabular-nums">{data.daysRemaining} Days</strong> left in this month. Keep up the momentum.
+              এই মাসে আর <strong className="font-mono tabular-nums">{data.daysRemaining} দিন</strong> বাকি আছে। কাজের ধারাবাহিকতা বজায় রাখুন।
             </span>
           </div>
 
@@ -142,7 +146,7 @@ export default function SubmissionFeedbackModal({ data, onClose }: SubmissionFee
             onClick={onClose}
             className="w-full py-3 rounded-xl bg-[#0B4F9C] hover:bg-[#094182] text-white font-bold text-xs transition-colors cursor-pointer"
           >
-            Got it, Thanks
+            ঠিক আছে, ধন্যবাদ
           </button>
         </div>
       </div>

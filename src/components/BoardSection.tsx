@@ -338,7 +338,7 @@ export const MemberCard: React.FC<MemberCardProps> = ({
                 <span className="text-sm font-bold font-mono tabular-nums text-[#0F172A]">{result.personalLead}</span>
               </div>
             </div>
-            {timerActive && (isAdmin || isMe) && (
+            {timerActive && (isAdmin || isActuallyMe) && (
               <button
                 type="button"
                 onClick={() => setIsEditing(true)}
@@ -349,7 +349,7 @@ export const MemberCard: React.FC<MemberCardProps> = ({
               </button>
             )}
           </div>
-        ) : (isAdmin || isMe) ? (
+        ) : (isAdmin || isActuallyMe) ? (
           <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-2.5 w-full sm:w-auto shrink-0">
             <div className="grid grid-cols-3 gap-2 flex-1">
               <div className="flex flex-col gap-1">

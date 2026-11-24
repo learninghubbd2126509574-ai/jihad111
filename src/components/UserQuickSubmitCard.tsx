@@ -6,6 +6,7 @@ interface Member {
   id: string;
   name: string;
   type: 'leader' | 'trainer' | 'counsellor';
+  whatsapp?: string;
   profilePic?: string;
 }
 
@@ -51,48 +52,68 @@ export default function UserQuickSubmitCard({
   const [submitting, setSubmitting] = useState(false);
 
   const eligibleMembers = useMemo(
-    () => members.filter(m => m.type === 'leader' || m.type === 'trainer'),
+    () => members.filter(m => m.id && (m.type === 'leader' || m.type === 'trainer')),
     [members]
   );
 
+  const fallbackMemberId = useMemo(() => {
+    const cleanWa = (currentAuthUser?.whatsapp || '').replace(/\s+/g, '');
+    return cleanWa ? `member_${cleanWa}` : '';
+  }, [currentAuthUser?.whatsapp]);
+
   useEffect(() => {
-    if (myMember) {
+    if (myMember?.id) {
       setSelectedMemberId(myMember.id);
-    } else if (eligibleMembers.length > 0 && !selectedMemberId) {
-      if (currentAuthUser?.fullName) {
-        const found = eligibleMembers.find(
-          m => m.name.trim().toLowerCase() === currentAuthUser.fullName.trim().toLowerCase()
-        );
-        if (found) {
-          setSelectedMemberId(found.id);
-          return;
-        }
+      return;
+    }
+
+    if (currentAuthUser) {
+      const cleanWa = (currentAuthUser.whatsapp || '').replace(/\s+/g, '');
+      const cleanName = (currentAuthUser.fullName || '').trim().toLowerCase();
+      const found = eligibleMembers.find(
+        m =>
+          (cleanWa && m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanWa) ||
+          (cleanName && m.name.trim().toLowerCase() === cleanName)
+      );
+      if (found?.id) {
+        setSelectedMemberId(found.id);
+        return;
       }
+      if (!isAdmin && fallbackMemberId) {
+        setSelectedMemberId(fallbackMemberId);
+        return;
+      }
+    }
+
+    if (eligibleMembers.length > 0 && (!selectedMemberId || !eligibleMembers.some(m => m.id === selectedMemberId))) {
       setSelectedMemberId(eligibleMembers[0].id);
     }
-  }, [myMember, currentAuthUser, eligibleMembers, selectedMemberId]);
+  }, [myMember, currentAuthUser, eligibleMembers, selectedMemberId, isAdmin, fallbackMemberId]);
+
+  const effectiveMemberId = selectedMemberId || myMember?.id || fallbackMemberId;
 
   useEffect(() => {
     setLead('0');
     setConvert('0');
     setPersonalLead('0');
     setHasSubmittedThisSession(false);
-  }, [selectedMemberId, isTimerActive]);
+  }, [effectiveMemberId, isTimerActive]);
 
-  const currentResult = selectedMemberId ? results[selectedMemberId] : undefined;
+  const currentResult = effectiveMemberId ? results[effectiveMemberId] : undefined;
   const isSubmitted = hasSubmittedThisSession || Boolean(currentResult?.submitted);
+  const canSubmit = isTimerActive && !submitting && Boolean(effectiveMemberId);
 
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!selectedMemberId || !isTimerActive) return;
+    if (!effectiveMemberId || !isTimerActive || submitting) return;
 
-    const l = parseInt(lead, 10) || 0;
-    const c = parseInt(convert, 10) || 0;
-    const p = parseInt(personalLead, 10) || 0;
+    const l = Math.max(0, parseInt(lead, 10) || 0);
+    const c = Math.max(0, parseInt(convert, 10) || 0);
+    const p = Math.max(0, parseInt(personalLead, 10) || 0);
 
     setSubmitting(true);
     try {
-      await onSubmit(selectedMemberId, l, c, p);
+      await onSubmit(effectiveMemberId, l, c, p);
       setHasSubmittedThisSession(true);
     } finally {
       setSubmitting(false);
@@ -159,15 +180,15 @@ export default function UserQuickSubmitCard({
         </div>
       </div>
 
-      {/* Member selector when admin or no matched member */}
-      {eligibleMembers.length > 0 && (!myMember || isAdmin) && (
+      {/* Member selector only when admin and eligible members exist */}
+      {isAdmin && eligibleMembers.length > 0 && (
         <div className="mb-4">
           <label className="text-xs text-[#334155] font-semibold block mb-1.5">
             Select Member Account
           </label>
           <div className="relative">
             <select
-              value={selectedMemberId}
+              value={effectiveMemberId}
               onChange={(e) => setSelectedMemberId(e.target.value)}
               className="w-full fintech-input rounded-xl px-3.5 py-2.5 text-sm font-semibold text-[#0F172A] appearance-none pr-9 cursor-pointer"
             >
@@ -239,13 +260,13 @@ export default function UserQuickSubmitCard({
 
         <button
           type="submit"
-          disabled={!isTimerActive || submitting || !selectedMemberId}
-          className={`w-full py-3.5 rounded-xl font-bold text-white text-sm transition-colors flex items-center justify-center gap-2 cursor-pointer ${
-            !isTimerActive
+          disabled={!canSubmit}
+          className={`w-full py-3.5 rounded-xl font-bold text-white text-sm transition-colors flex items-center justify-center gap-2 ${
+            !canSubmit
               ? 'bg-[#94A3B8] cursor-not-allowed opacity-70'
               : isSubmitted
-                ? 'bg-[#0B4F9C] hover:bg-[#094182]'
-                : 'bg-[#047857] hover:bg-[#065F46]'
+                ? 'bg-[#0B4F9C] hover:bg-[#094182] cursor-pointer'
+                : 'bg-[#047857] hover:bg-[#065F46] cursor-pointer'
           }`}
         >
           {submitting ? (
