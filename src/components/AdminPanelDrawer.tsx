@@ -327,6 +327,53 @@ const AdminPanelDrawer: React.FC<AdminPanelDrawerProps> = ({
 
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-5 custom-scrollbar space-y-3.5">
+          {pendingUsers.length > 0 && (
+            <div className="p-4 bg-[#FFFBEB] border-2 border-[#F59E0B] rounded-2xl shadow-sm space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Users size={16} className="text-[#B45309]" />
+                  <span className="text-xs sm:text-sm font-extrabold text-[#92400E]">
+                    New Registration Requests ({pendingUsers.length} Pending)
+                  </span>
+                </div>
+              </div>
+              <div className="space-y-2">
+                {pendingUsers.map((u) => (
+                  <div
+                    key={u.id || u.whatsapp}
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 bg-white rounded-xl border border-[#FDE68A]"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-[#0F172A] truncate">{u.fullName}</div>
+                      <div className="text-[11px] text-[#64748B] font-mono tabular-nums">
+                        {u.whatsapp} · Vacancy:{' '}
+                        <span className="font-semibold text-[#047857]">
+                          {u.vacancy || u.position}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => approveUser(u)}
+                        className="px-3 py-1.5 rounded-lg bg-[#047857] text-white text-xs font-bold hover:bg-[#065F46] transition-colors cursor-pointer"
+                      >
+                        Approve
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => rejectUser(u.id || u.whatsapp)}
+                        className="px-3 py-1.5 rounded-lg bg-[#FEF2F2] text-[#DC2626] border border-[#FECACA] text-xs font-bold hover:bg-[#FEE2E2] transition-colors cursor-pointer"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* 1. Website Branding & Logo */}
           <AdminAccordion
             title="Website Logo & Branding"

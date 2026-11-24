@@ -156,12 +156,12 @@ export async function getDoc<T = any>(
     }
 
     if (!data) {
-      const local = getLocalDoc<T>(docRef.collection, docRef.id);
+      removeLocalDoc(docRef.collection, docRef.id);
       return {
         id: docRef.id,
         ref: docRef,
-        exists: () => local !== null,
-        data: () => local || undefined,
+        exists: () => false,
+        data: () => undefined,
       };
     }
 
@@ -252,6 +252,21 @@ export async function getDocs<T = any>(
         empty: localDocs.length === 0,
         forEach: (cb) => localDocs.forEach(cb),
       };
+    }
+
+    // If this was a full collection fetch, sync the local key index so deleted/approved docs are cleared
+    if (constraints.length === 0) {
+      try {
+        const listKey = `unity_sb_keys_${colRef.collection}`;
+        const prevKeys: string[] = JSON.parse(localStorage.getItem(listKey) || '[]');
+        const nextIds = new Set((data || []).map((r) => r.id));
+        prevKeys.forEach((k) => {
+          if (!nextIds.has(k)) {
+            localStorage.removeItem(`unity_sb_${colRef.collection}_${k}`);
+          }
+        });
+        localStorage.setItem(listKey, JSON.stringify(Array.from(nextIds)));
+      } catch {}
     }
 
     const docs: DocumentSnapshot<T>[] = (data || []).map((row) => {

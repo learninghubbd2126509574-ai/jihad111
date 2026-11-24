@@ -42,6 +42,7 @@ interface MenuDrawerProps {
   onToggleStlAuth: () => void;
   onInstallApp: () => void;
   onOpenAdmin: () => void;
+  pendingCount?: number;
 }
 
 export const MenuDrawer: React.FC<MenuDrawerProps> = ({
@@ -67,6 +68,7 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
   onToggleStlAuth,
   onInstallApp,
   onOpenAdmin,
+  pendingCount = 0,
 }) => {
   if (!isOpen) return null;
 
@@ -273,6 +275,11 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
                 <span className="text-sm font-semibold">
                   {isAdmin ? 'Admin Panel' : 'Admin Login'}
                 </span>
+                {isAdmin && pendingCount > 0 && (
+                  <span className="px-2 py-0.5 rounded-full bg-[#DC2626] text-white text-[10px] font-extrabold font-mono tabular-nums">
+                    {pendingCount}
+                  </span>
+                )}
               </div>
               <ChevronRight size={15} className="text-[#94A3B8]" />
             </button>

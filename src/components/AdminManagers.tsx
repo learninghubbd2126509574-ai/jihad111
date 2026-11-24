@@ -95,6 +95,11 @@ export const AdminAccordion = ({
   colorClass?: string;
 }) => {
   const [isOpen, setIsOpen] = useState(defaultOpen);
+  React.useEffect(() => {
+    if (defaultOpen) {
+      setIsOpen(true);
+    }
+  }, [defaultOpen]);
   return (
     <div className="bg-white border border-[#E5E7EB] rounded-2xl overflow-hidden shadow-xs">
       <button

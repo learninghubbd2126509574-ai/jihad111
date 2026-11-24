@@ -391,7 +391,7 @@ export default function App() {
 
   const refreshApprovedUsers = useCallback(
     async (force = true) => {
-      if (!auth.currentUser && !isAdmin) return;
+      if (!isAdmin && !authenticatedUser) return;
       if (!force) {
         if (loadedCollectionsRef.current.has('registeredUsers')) return;
         const cachedUsers = readCacheWithTTL<UserRegistration[]>('unity_cache_registeredUsers');
@@ -426,7 +426,7 @@ export default function App() {
         }
       }
     },
-    [isAdmin]
+    [isAdmin, authenticatedUser]
   );
 
   const refreshQuickLinks = useCallback(
@@ -478,7 +478,7 @@ export default function App() {
   );
 
   const refreshAllBalancesAndLogs = useCallback(async (force = false) => {
-    if (!auth.currentUser) return;
+    if (!isAdmin && !authenticatedUser) return;
     if (!force) {
       if (loadedCollectionsRef.current.has('allBalancesAndLogs')) return;
       const cached = readCacheWithTTL<{ bMap: Record<string, UserBalance>; logs: SubmissionLog[] }>(
@@ -695,12 +695,12 @@ export default function App() {
     showMsg,
   ]);
 
-  // Fetch approvedUsers once Firebase Auth session is active
+  // Fetch approvedUsers once authenticated
   useEffect(() => {
-    if (firebaseUser && (isAdmin || authenticatedUser)) {
+    if (isAdmin || authenticatedUser) {
       refreshApprovedUsers(false);
     }
-  }, [firebaseUser, isAdmin, authenticatedUser, refreshApprovedUsers]);
+  }, [isAdmin, authenticatedUser, refreshApprovedUsers]);
 
   // Auto-dismiss top announcement popup after 3 seconds once visible inside dashboard
   useEffect(() => {
@@ -717,13 +717,13 @@ export default function App() {
     const needsFullBalances = userTab === 'sheet' || hasStlAccess || showAdminPanel;
 
     if (needsFullBalances) {
-      if (firebaseUser) {
+      if (isAdmin || authenticatedUser) {
         refreshAllBalancesAndLogs(false);
       }
       return;
     }
 
-    if (!firebaseUser || !authenticatedUser?.whatsapp) return;
+    if (!authenticatedUser?.whatsapp) return;
 
     const cleanWa = authenticatedUser.whatsapp.replace(/\s+/g, '');
     const scopedKey = `unity_cache_user_scoped_${cleanWa}`;
@@ -850,11 +850,25 @@ export default function App() {
     }
   }, [showTeacherHistory, fetchCollectionOnce]);
 
-  // 4. Lazy Admin Panel Listener (pendingRegistrations) + Secondary Admin Data
+  // 4. Admin Pending Registrations Listener (always active when Admin is logged in) + Secondary Admin Data
   useEffect(() => {
-    if (!isAdmin || !showAdminPanel) return;
+    if (!isAdmin) return;
 
-    refreshAdminSecondaryData(false);
+    const syncPendingFromDb = async () => {
+      try {
+        const snap = await getDocs(collection(db, 'pendingRegistrations'));
+        const list: UserRegistration[] = [];
+        snap.forEach((d) => list.push({ id: d.id, ...d.data() } as UserRegistration));
+        setPendingUsers(list);
+        try {
+          localStorage.setItem('unity_pending_users', JSON.stringify(list));
+        } catch {}
+      } catch (err) {
+        console.warn('Pending sync warning:', err);
+      }
+    };
+
+    syncPendingFromDb();
 
     const unsubPending = onSnapshot(
       collection(db, 'pendingRegistrations'),
@@ -862,11 +876,23 @@ export default function App() {
         const list: UserRegistration[] = [];
         snapshot.forEach((d) => list.push({ id: d.id, ...d.data() } as UserRegistration));
         setPendingUsers(list);
+        try {
+          localStorage.setItem('unity_pending_users', JSON.stringify(list));
+        } catch {}
       },
       (err) => console.warn('Pending listener warning:', err)
     );
 
-    return () => unsubPending();
+    if (showAdminPanel) {
+      refreshAdminSecondaryData(false);
+    }
+
+    const pollId = showAdminPanel ? window.setInterval(syncPendingFromDb, 6000) : null;
+
+    return () => {
+      unsubPending();
+      if (pollId) window.clearInterval(pollId);
+    };
   }, [isAdmin, showAdminPanel, refreshAdminSecondaryData]);
 
   // 5. Auto-Expire Timer Timeout (Zero 1s setInterval in Root!) + Admin Auto-Timer Check (30s)
@@ -1004,30 +1030,17 @@ export default function App() {
         return false;
       }
 
-      const isAlreadyApproved = approvedUsers.some((u) => u.whatsapp === whatsapp);
-      if (isAlreadyApproved) {
-        showMsg('This number is already registered!', 'error');
-        return false;
-      }
-
-      const isAlreadyPending = pendingUsers.some((u) => u.whatsapp === whatsapp);
-      if (isAlreadyPending) {
-        showMsg('This number is awaiting admin approval!', 'error');
-        return false;
-      }
-
       try {
-        const localPending: any[] = JSON.parse(localStorage.getItem('unity_pending_users') || '[]');
-        if (localPending.some((p) => p.whatsapp === whatsapp)) {
-          showMsg('This number is awaiting admin approval!', 'error');
+        const [approvedSnap, pendingSnap] = await Promise.all([
+          getDoc(doc(db, 'registeredUsers', whatsapp)),
+          getDoc(doc(db, 'pendingRegistrations', whatsapp)),
+        ]);
+        if (approvedSnap.exists()) {
+          showMsg('This number is already registered!', 'error');
           return false;
         }
-      } catch {}
-
-      try {
-        const approvedSnap = await getDocFromCache(doc(db, 'registeredUsers', whatsapp)).catch(() => null);
-        if (approvedSnap && approvedSnap.exists()) {
-          showMsg('This number is already registered!', 'error');
+        if (pendingSnap.exists()) {
+          showMsg('This number is awaiting admin approval!', 'error');
           return false;
         }
       } catch {}
@@ -3633,6 +3646,7 @@ export default function App() {
         }}
         onInstallApp={handleInstallApp}
         onOpenAdmin={() => setShowAdminPanel(true)}
+        pendingCount={pendingUsers.length}
       />
 
       {showAdminPanel && isAdmin && (
