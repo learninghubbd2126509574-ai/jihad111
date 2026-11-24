@@ -145,6 +145,8 @@ export default function App() {
     timerDuration: 1800,
     isLocked: false,
     securityPassword: 'unity2024',
+    leaderRankingActive: true,
+    trainerRankingActive: true,
   });
   const [timerDurationSelect, setTimerDurationSelect] = useState<number>(1800);
   const [isAuthReady, setIsAuthReady] = useState(false);
@@ -4124,7 +4126,7 @@ export default function App() {
           results={results}
           customLogo={config.customLogo}
           onClose={() => setShowLeaderRankingModal(false)}
-          isActive={config.leaderRankingActive || false}
+          isActive={config.leaderRankingActive !== false}
         />
       )}
 
@@ -4140,7 +4142,7 @@ export default function App() {
           results={results}
           customLogo={config.customLogo}
           onClose={() => setShowTrainerRankingModal(false)}
-          isActive={config.trainerRankingActive || false}
+          isActive={config.trainerRankingActive !== false}
         />
       )}
 

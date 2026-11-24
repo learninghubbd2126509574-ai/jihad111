@@ -779,7 +779,7 @@ const AdminPanelDrawer: React.FC<AdminPanelDrawerProps> = ({
                 onAdd={(name, score, leads) => addRankingMember('leader', name, score, leads)}
                 onDelete={(id) => deleteRankingMember('leader', id)}
                 onSetScore={(id, newScore) => setRankingScore('leader', id, newScore)}
-                isActive={config.leaderRankingActive || false}
+                isActive={config.leaderRankingActive !== false}
                 onToggleActive={(val) =>
                   updateAttendanceConfig(undefined, undefined, val, undefined)
                 }
@@ -792,7 +792,7 @@ const AdminPanelDrawer: React.FC<AdminPanelDrawerProps> = ({
                 onAdd={(name, score, leads) => addRankingMember('trainer', name, score, leads)}
                 onDelete={(id) => deleteRankingMember('trainer', id)}
                 onSetScore={(id, newScore) => setRankingScore('trainer', id, newScore)}
-                isActive={config.trainerRankingActive || false}
+                isActive={config.trainerRankingActive !== false}
                 onToggleActive={(val) =>
                   updateAttendanceConfig(undefined, undefined, undefined, val)
                 }
