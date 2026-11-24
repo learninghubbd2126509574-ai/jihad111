@@ -114,7 +114,6 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   onSelectTab,
   onOpenQuickLinks,
   isLinksOpen,
-  communityActive,
 }) => {
   const [clickedLinkId, setClickedLinkId] = useState<string | null>(null);
 
@@ -157,16 +156,12 @@ export const BottomNav: React.FC<BottomNavProps> = ({
       label: 'All Links',
       icon: <FilledAllLinksIcon />,
     },
-    ...(communityActive
-      ? [
-          {
-            kind: 'tab' as const,
-            id: 'community' as UserTabType,
-            label: 'Community',
-            icon: <FilledCommunityIcon />,
-          },
-        ]
-      : []),
+    {
+      kind: 'tab',
+      id: 'community',
+      label: 'Comm.',
+      icon: <FilledCommunityIcon />,
+    },
     {
       kind: 'tab',
       id: 'profile',

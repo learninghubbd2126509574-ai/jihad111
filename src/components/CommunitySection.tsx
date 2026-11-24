@@ -105,8 +105,6 @@ const CommunitySection: React.FC<CommunitySectionProps> = ({
   };
 
   useEffect(() => {
-    if (!communityActive && !isAdmin) return;
-
     const q = query(collection(db, 'communityPosts'), orderBy('createdAt', 'desc'), limit(postLimit));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetchedPosts = snapshot.docs.map(d => ({
@@ -119,7 +117,7 @@ const CommunitySection: React.FC<CommunitySectionProps> = ({
     });
 
     return () => unsubscribe();
-  }, [communityActive, isAdmin, postLimit]);
+  }, [postLimit]);
 
   const checkedPostsRef = useRef<Set<string>>(new Set());
 
@@ -172,6 +170,7 @@ const CommunitySection: React.FC<CommunitySectionProps> = ({
   };
 
   const createPost = async () => {
+    if (!communityActive) return;
     if (!newPostContent.trim() && !newPostImage) return;
     if (!currentUser) return;
 
@@ -258,20 +257,6 @@ const CommunitySection: React.FC<CommunitySectionProps> = ({
     }
   };
 
-  if (!communityActive && !isAdmin) {
-    return (
-      <div className="fintech-card py-16 px-6 text-center max-w-xl mx-auto">
-        <div className="w-14 h-14 bg-[#F4F6F9] border border-[#E5E7EB] rounded-2xl flex items-center justify-center mx-auto mb-4 text-[#64748B]">
-          <Lock size={26} />
-        </div>
-        <h3 className="text-lg font-bold text-[#0F172A] mb-1.5">Community Is Currently Closed</h3>
-        <p className="text-[#64748B] text-sm max-w-xs mx-auto leading-relaxed">
-          The Admin has temporarily disabled the Community feed.
-        </p>
-      </div>
-    );
-  }
-
   return (
     <div className="max-w-2xl mx-auto space-y-5">
       {/* Admin Control */}
@@ -282,9 +267,9 @@ const CommunitySection: React.FC<CommunitySectionProps> = ({
               <ShieldCheck size={20} />
             </div>
             <div>
-              <p className="text-sm font-bold text-[#0F172A]">Community Control</p>
+              <p className="text-sm font-bold text-[#0F172A]">Community Posting Control</p>
               <p className="text-xs text-[#64748B]">
-                {communityActive ? 'Enabled for members' : 'Currently disabled'}
+                {communityActive ? 'Enabled — everyone can write & post' : 'Disabled — nobody can post right now'}
               </p>
             </div>
           </div>
@@ -299,6 +284,21 @@ const CommunitySection: React.FC<CommunitySectionProps> = ({
           >
             {communityActive ? 'Disable' : 'Enable'}
           </button>
+        </div>
+      )}
+
+      {/* Posting Disabled Notice when Admin has turned off posting */}
+      {!communityActive && (
+        <div className="fintech-card p-4 sm:p-5 flex items-center gap-3.5 bg-[#FFFBEB] border border-[#FDE68A]">
+          <div className="w-10 h-10 rounded-xl bg-white border border-[#FDE68A] text-[#B45309] flex items-center justify-center shrink-0">
+            <Lock size={19} />
+          </div>
+          <div className="min-w-0">
+            <h3 className="text-sm font-bold text-[#0F172A]">Posting Is Currently Disabled</h3>
+            <p className="text-xs text-[#64748B] mt-0.5 leading-relaxed">
+              Admin has disabled community posting. Nobody can publish new posts until Admin enables it.
+            </p>
+          </div>
         </div>
       )}
 

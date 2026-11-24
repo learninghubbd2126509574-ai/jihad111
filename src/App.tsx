@@ -3719,7 +3719,7 @@ export default function App() {
             <CommunitySection
               currentUser={currentAuthUser}
               isAdmin={isAdmin}
-              communityActive={config.communityActive !== false}
+              communityActive={Boolean(config.communityActive)}
               approvedUsers={approvedUsers}
               members={members}
               onToggleActive={async (val) => {
@@ -3756,7 +3756,7 @@ export default function App() {
         onSelectTab={setUserTab}
         onOpenQuickLinks={() => setShowQuickLinksModal(true)}
         isLinksOpen={showQuickLinksModal}
-        communityActive={config.communityActive !== false}
+        communityActive={Boolean(config.communityActive)}
         userAvatar={currentAuthUser?.profilePic}
         userName={currentAuthUser?.fullName}
       />
@@ -3881,7 +3881,7 @@ export default function App() {
             }}
             toggleCommunityActive={async () => {
               await updateDoc(doc(db, 'config', 'global'), {
-                communityActive: !(config.communityActive !== false),
+                communityActive: !Boolean(config.communityActive),
               });
             }}
             addSTLMember={addSTLMember}
@@ -4300,7 +4300,7 @@ export default function App() {
         }}
         onInstalled={() => {
           setShowInstallModal(false);
-          showMsg('Unity Earning added to Home Screen!', 'success');
+          showMsg('অ্যাপটি ফোনের হোম স্ক্রিনে সফলভাবে যুক্ত হয়েছে!', 'success');
           if (pendingPerformanceModal && authenticatedUser) {
             setPendingPerformanceModal(false);
             setShowLoginPerformanceModal(true);

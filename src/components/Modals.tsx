@@ -90,15 +90,7 @@ export const QuickLinksModal = ({
   links: QuickLink[];
   onClose: () => void;
 }) => {
-  const defaultLinks = [
-    { id: 'dl-1', name: 'Daily Result Submission Portal', url: 'https://forms.gle/unity_earning_submission' },
-    { id: 'dl-2', name: 'Official WhatsApp Community & Support Group', url: 'https://whatsapp.com/group/unityearning' },
-    { id: 'dl-3', name: 'Unity Earning Training Guide & Video Portal', url: 'https://youtube.com/@unityearning' },
-    { id: 'dl-4', name: 'Monthly Performance Leaderboard & Ranking', url: 'https://unityearning.com/leaderboard' },
-    { id: 'dl-5', name: 'Official Telegram Announcements Channel', url: 'https://t.me/unityearning_official' },
-  ];
-
-  const displayLinks = links && links.length > 0 ? [...links, ...defaultLinks.filter(d => !links.some(l => l.name.toLowerCase() === d.name.toLowerCase()))] : defaultLinks;
+  const displayLinks = links || [];
 
   return (
     <div
@@ -129,26 +121,35 @@ export const QuickLinksModal = ({
         </div>
 
         <div className="flex-1 overflow-y-auto p-5 space-y-2.5 custom-scrollbar">
-          {displayLinks.map((link) => {
-            const href = link.url.startsWith('http') ? link.url : `https://${link.url}`;
-            return (
-              <a
-                key={link.id || link.name}
-                href={href}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-between p-3.5 rounded-xl bg-[#F8FAFC] hover:bg-[#EEF5FF] border border-[#E5E7EB] hover:border-[#D6E6FF] transition-colors group"
-              >
-                <div className="min-w-0 pr-3">
-                  <div className="text-xs font-bold text-[#0F172A] group-hover:text-[#0B4F9C] truncate">
-                    {link.name}
+          {displayLinks.length === 0 ? (
+            <div className="py-10 text-center space-y-1">
+              <p className="text-xs font-bold text-[#475569]">No links added yet</p>
+              <p className="text-[11px] text-[#94A3B8]">
+                Links added by Admin will appear here.
+              </p>
+            </div>
+          ) : (
+            displayLinks.map((link) => {
+              const href = link.url.startsWith('http') ? link.url : `https://${link.url}`;
+              return (
+                <a
+                  key={link.id || link.name}
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-between p-3.5 rounded-xl bg-[#F8FAFC] hover:bg-[#EEF5FF] border border-[#E5E7EB] hover:border-[#D6E6FF] transition-colors group"
+                >
+                  <div className="min-w-0 pr-3">
+                    <div className="text-xs font-bold text-[#0F172A] group-hover:text-[#0B4F9C] truncate">
+                      {link.name}
+                    </div>
+                    <div className="text-[11px] text-[#64748B] truncate">{link.url}</div>
                   </div>
-                  <div className="text-[11px] text-[#64748B] truncate">{link.url}</div>
-                </div>
-                <ExternalLink size={15} className="text-[#0B4F9C] shrink-0" />
-              </a>
-            );
-          })}
+                  <ExternalLink size={15} className="text-[#0B4F9C] shrink-0" />
+                </a>
+              );
+            })
+          )}
         </div>
       </div>
     </div>
@@ -975,7 +976,6 @@ export const RankingBoardModal = ({
   allTrainers,
   approvedUsers = [],
   rosterMembers = [],
-  results = {},
   customLogo,
   onClose,
   isActive,
@@ -1002,24 +1002,6 @@ export const RankingBoardModal = ({
     return approvedUsers.find(
       (u) => u.fullName?.trim().toLowerCase().replace(/\s+/g, ' ') === clean
     )?.profilePic;
-  };
-  const findTodayResult = (m: RankingMember): Result | undefined => {
-    if (results[m.id]?.submitted) return results[m.id];
-    const cleanName = (m.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
-    const wa = ((m as any).whatsapp || '').replace(/\s+/g, '');
-    if (wa) {
-      if (results[wa]?.submitted) return results[wa];
-      if (results[`member_${wa}`]?.submitted) return results[`member_${wa}`];
-    }
-    const rosterMatch = rosterMembers.find(
-      (rm) =>
-        (wa && rm.whatsapp && rm.whatsapp.replace(/\s+/g, '') === wa) ||
-        (cleanName && rm.name?.trim().toLowerCase().replace(/\s+/g, ' ') === cleanName)
-    );
-    if (rosterMatch && results[rosterMatch.id]?.submitted) {
-      return results[rosterMatch.id];
-    }
-    return results[m.id];
   };
   const sortedMembers = [...members].sort((a, b) => (b.score || 0) - (a.score || 0));
   const [exporting, setExporting] = useState(false);
@@ -1096,48 +1078,45 @@ export const RankingBoardModal = ({
           ) : sortedMembers.length === 0 ? (
             <p className="text-xs text-[#64748B] text-center py-12">No data available</p>
           ) : (
-            sortedMembers.map((m, idx) => {
-              const todayRes = findTodayResult(m);
-              const todayConv = todayRes?.submitted ? todayRes.convert || 0 : 0;
-              return (
-                <div
-                  key={m.id}
-                  className={`flex items-center justify-between p-3 rounded-xl border ${
+            sortedMembers.map((m, idx) => (
+              <div
+                key={m.id}
+                className={`flex items-center justify-between gap-3 p-3 rounded-xl border ${
+                  idx < 3
+                    ? 'bg-[#FFF9E6] border-[#FDE68A]'
+                    : 'bg-[#F8FAFC] border-[#E5E7EB]'
+                }`}
+              >
+                <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                  <span
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-extrabold font-mono tabular-nums shrink-0 ${
+                      idx === 0
+                        ? 'bg-[#FF6B00] text-white'
+                        : idx < 3
+                          ? 'bg-[#B45309] text-white'
+                          : 'bg-white border border-[#E5E7EB] text-[#64748B]'
+                    }`}
+                  >
+                    {idx + 1}
+                  </span>
+                  <div className="w-8 h-8 rounded-full overflow-hidden border border-[#E2E8F0] bg-white shrink-0">
+                    <CartoonAvatar src={findAvatar(m.name)} name={m.name} />
+                  </div>
+                  <span className="text-sm font-bold text-[#0F172A] leading-snug break-words">
+                    {m.name}
+                  </span>
+                </div>
+                <span
+                  className={`shrink-0 min-w-[2.25rem] px-2.5 py-1 rounded-lg text-center text-sm font-extrabold font-mono tabular-nums ${
                     idx < 3
-                      ? 'bg-[#FFF9E6] border-[#FDE68A]'
-                      : 'bg-[#F8FAFC] border-[#E5E7EB]'
+                      ? 'bg-white text-[#B45309] border border-[#FDE68A]'
+                      : 'bg-[#EEF5FF] text-[#0B4F9C] border border-[#D6E6FF]'
                   }`}
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span
-                      className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-extrabold font-mono tabular-nums shrink-0 ${
-                        idx === 0
-                          ? 'bg-[#FF6B00] text-white'
-                          : idx < 3
-                            ? 'bg-[#B45309] text-white'
-                            : 'bg-white border border-[#E5E7EB] text-[#64748B]'
-                      }`}
-                    >
-                      {idx + 1}
-                    </span>
-                    <div className="w-8 h-8 rounded-full overflow-hidden border border-[#E2E8F0] bg-white shrink-0">
-                      <CartoonAvatar src={findAvatar(m.name)} name={m.name} />
-                    </div>
-                    <span className="text-sm font-bold text-[#0F172A] truncate">{m.name}</span>
-                  </div>
-                  <div className="text-right shrink-0 flex flex-col items-end">
-                    {todayConv > 0 && (
-                      <span className="text-[10px] font-bold font-mono tabular-nums text-[#047857] bg-[#ECFDF5] border border-[#A7F3D0] px-1.5 py-0.5 rounded-md leading-none mb-1">
-                        +{todayConv} Today
-                      </span>
-                    )}
-                    <span className="text-sm font-extrabold font-mono tabular-nums text-[#0B4F9C] leading-tight">
-                      Total: {m.score || 0} Converts
-                    </span>
-                  </div>
-                </div>
-              );
-            })
+                  {m.score || 0}
+                </span>
+              </div>
+            ))
           )}
         </div>
 

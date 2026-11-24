@@ -591,8 +591,8 @@ const AdminPanelDrawer: React.FC<AdminPanelDrawerProps> = ({
                     <MessageSquare size={18} />
                   </div>
                   <div>
-                    <h4 className="text-xs font-bold text-[#0F172A]">Community Tab</h4>
-                    <p className="text-[11px] text-[#64748B]">Enable or disable the team community feed</p>
+                    <h4 className="text-xs font-bold text-[#0F172A]">Community Posting</h4>
+                    <p className="text-[11px] text-[#64748B]">Enable to allow everyone to write &amp; post</p>
                   </div>
                 </div>
                 <button
@@ -604,7 +604,7 @@ const AdminPanelDrawer: React.FC<AdminPanelDrawerProps> = ({
                       : 'bg-[#F4F6F9] text-[#64748B] border-[#E5E7EB]'
                   }`}
                 >
-                  {config.communityActive ? 'Active' : 'Closed'}
+                  {config.communityActive ? 'Enabled' : 'Disabled'}
                 </button>
               </div>
             </div>
