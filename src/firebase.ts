@@ -1,21 +1,11 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { initializeFirestore, getFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import firebaseConfig from '../firebase-applet-config.json';
+import { db as supabaseDb } from './services/supabaseDb';
 
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-let firestoreInstance;
-try {
-  firestoreInstance = initializeFirestore(app, {
-    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
-  }, firebaseConfig.firestoreDatabaseId);
-} catch (e) {
-  // If already initialized or cache configuration error, fallback to getFirestore
-  firestoreInstance = getFirestore(app, firebaseConfig.firestoreDatabaseId);
-}
-
-export const db = firestoreInstance;
+export const db = supabaseDb;
 export const auth = getAuth(app);
 export const storage = getStorage(app);

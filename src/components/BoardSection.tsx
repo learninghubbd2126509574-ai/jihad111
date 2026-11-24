@@ -192,7 +192,10 @@ export const MemberCard: React.FC<MemberCardProps> = ({
       <div className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-4">
         <div className="flex items-start gap-3.5 flex-1 min-w-0">
           <div className="w-11 h-11 rounded-full flex items-center justify-center relative overflow-hidden shrink-0 bg-[#F4F6F9] border border-[#E5E7EB]">
-            <CartoonAvatar src={matchedUser?.profilePic} name={member.name} />
+            <CartoonAvatar
+              src={(member as any).profilePic || matchedUser?.profilePic}
+              name={member.name}
+            />
           </div>
 
           <div className="min-w-0 flex-1">

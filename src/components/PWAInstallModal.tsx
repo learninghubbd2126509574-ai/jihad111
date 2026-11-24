@@ -1,42 +1,42 @@
 import React, { useState } from 'react';
-import { Download, Smartphone, Share, PlusSquare, CheckCircle2, X } from 'lucide-react';
+import { Download, Smartphone, X } from 'lucide-react';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 
 interface PWAInstallModalProps {
   isOpen: boolean;
   onClose: () => void;
   onInstalled?: () => void;
+  onUnavailable?: () => void;
 }
 
 export const PWAInstallModal: React.FC<PWAInstallModalProps> = ({
   isOpen,
   onClose,
   onInstalled,
+  onUnavailable,
 }) => {
   const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
   const [installing, setInstalling] = useState(false);
-  const [showBrowserGuide, setShowBrowserGuide] = useState(false);
 
   if (!isOpen || isInstalled) return null;
 
   const handleInstallClick = async () => {
-    if (isIOS) {
-      setShowBrowserGuide(true);
-      return;
-    }
-
-    if (isInstallable) {
+    if (isInstallable && !isIOS) {
       setInstalling(true);
       const result = await install();
       setInstalling(false);
       if (result === 'accepted') {
         onInstalled?.();
         onClose();
+        return;
       }
-      return;
+      if (result === 'dismissed') {
+        return;
+      }
     }
 
-    setShowBrowserGuide(true);
+    onUnavailable?.();
+    onClose();
   };
 
   return (
@@ -50,7 +50,6 @@ export const PWAInstallModal: React.FC<PWAInstallModalProps> = ({
         className="relative w-full max-w-sm bg-white border border-[#E2E8F0] rounded-2xl shadow-2xl overflow-hidden modal-scale"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Top Accent Header */}
         <div className="bg-gradient-to-r from-[#072B66] via-[#0B4F9C] to-[#1363C6] px-5 pt-5 pb-4 text-white relative">
           <button
             type="button"
@@ -68,88 +67,34 @@ export const PWAInstallModal: React.FC<PWAInstallModalProps> = ({
               className="w-14 h-14 rounded-2xl border-2 border-white/30 shadow-md shrink-0 bg-[#0B4F9C]"
             />
             <div className="min-w-0">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-sky-200 block">
-                Official App Shortcut
-              </span>
               <h2 id="pwa-install-title" className="text-lg font-extrabold leading-tight">
                 Install Unity Earning
               </h2>
-              <p className="text-xs text-blue-100 mt-0.5">
-                Add directly to your Home Screen
+              <p className="text-xs text-blue-100 mt-1">
+                Add this app directly to your phone Home Screen
               </p>
             </div>
           </div>
         </div>
 
-        {/* Body */}
-        <div className="p-5 space-y-4">
-          <div className="space-y-2.5 text-xs text-[#334155]">
-            <div className="flex items-center gap-2.5">
-              <CheckCircle2 size={16} className="text-[#047857] shrink-0" />
-              <span>Instant one-tap launch from your phone Home Screen</span>
-            </div>
-            <div className="flex items-center gap-2.5">
-              <CheckCircle2 size={16} className="text-[#047857] shrink-0" />
-              <span>Full-screen app experience without browser clutter</span>
-            </div>
-            <div className="flex items-center gap-2.5">
-              <CheckCircle2 size={16} className="text-[#047857] shrink-0" />
-              <span>Fast loading & automatic updates with zero APK needed</span>
-            </div>
-          </div>
+        <div className="p-5 flex flex-col gap-2.5">
+          <button
+            type="button"
+            onClick={handleInstallClick}
+            disabled={installing}
+            className="w-full py-3 px-4 rounded-xl bg-[#0B4F9C] hover:bg-[#094182] active:scale-[0.99] text-white font-bold text-sm flex items-center justify-center gap-2 shadow-[0_6px_18px_rgba(11,79,156,0.28)] transition-all cursor-pointer disabled:opacity-70"
+          >
+            <Download size={17} strokeWidth={2.2} />
+            <span>{installing ? 'Installing...' : 'Install App'}</span>
+          </button>
 
-          {(isIOS || showBrowserGuide) && (
-            <div className="p-3.5 rounded-xl bg-[#F8FAFC] border border-[#D6E6FF] space-y-2 text-xs text-[#0F172A]">
-              {isIOS ? (
-                <>
-                  <p className="font-bold text-[#0B4F9C] flex items-center gap-1.5">
-                    <Smartphone size={14} /> Add to iPhone / iPad Home Screen:
-                  </p>
-                  <p className="leading-relaxed text-[#334155]">
-                    1. Tap the <Share size={13} className="inline mx-0.5 text-[#0B4F9C]" />{' '}
-                    <strong>Share</strong> button in Safari&apos;s toolbar.
-                    <br />
-                    2. Scroll down and tap{' '}
-                    <PlusSquare size={13} className="inline mx-0.5 text-[#0B4F9C]" />{' '}
-                    <strong>Add to Home Screen</strong>, then tap <strong>Add</strong>.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <p className="font-bold text-[#0B4F9C] flex items-center gap-1.5">
-                    <Smartphone size={14} /> Add via Chrome Menu:
-                  </p>
-                  <p className="leading-relaxed text-[#334155]">
-                    Tap your browser menu (<strong>⋮</strong>) at the top-right corner and select{' '}
-                    <strong>&ldquo;Install app&rdquo;</strong> or{' '}
-                    <strong>&ldquo;Add to Home screen&rdquo;</strong>.
-                  </p>
-                </>
-              )}
-            </div>
-          )}
-
-          <div className="flex flex-col gap-2 pt-1">
-            {(!isIOS || !showBrowserGuide) && (
-              <button
-                type="button"
-                onClick={handleInstallClick}
-                disabled={installing}
-                className="w-full py-3 px-4 rounded-xl bg-[#0B4F9C] hover:bg-[#094182] active:scale-[0.99] text-white font-bold text-sm flex items-center justify-center gap-2 shadow-[0_6px_18px_rgba(11,79,156,0.28)] transition-all cursor-pointer disabled:opacity-70"
-              >
-                <Download size={17} strokeWidth={2.2} />
-                <span>{installing ? 'Installing...' : 'Install Now'}</span>
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={onClose}
-              className="w-full py-2.5 px-4 rounded-xl bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#475569] font-semibold text-xs transition-colors cursor-pointer"
-            >
-              Maybe Later
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full py-2.5 px-4 rounded-xl bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#475569] font-semibold text-xs transition-colors cursor-pointer"
+          >
+            Later
+          </button>
         </div>
       </div>
     </div>
@@ -191,9 +136,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
     >
       <div className="flex items-center gap-2.5">
         <Smartphone size={16} className="text-[#047857]" />
-        <span className="text-sm font-semibold">
-          {isIOS ? 'Add to Home Screen' : 'Install App'}
-        </span>
+        <span className="text-sm font-semibold">Install App</span>
       </div>
       <Download size={15} className="text-[#047857]" />
     </button>

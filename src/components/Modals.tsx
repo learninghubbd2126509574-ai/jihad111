@@ -25,16 +25,19 @@ import {
   Gift,
 } from 'lucide-react';
 import RankingExportTemplate from './RankingExportTemplate';
+import CartoonAvatar from './CartoonAvatar';
 import { generateRankingPdf } from '../utils/exportRankingPdf';
 import {
   Application,
   AttendanceRecord,
   Config,
+  Member,
   PickingItem,
   QuickLink,
   RankingMember,
   SocialLinks,
   Teacher,
+  UserRegistration,
 } from '../types';
 
 export const Toast: React.FC<{
@@ -969,6 +972,8 @@ export const RankingBoardModal = ({
   members,
   allLeaders,
   allTrainers,
+  approvedUsers = [],
+  rosterMembers = [],
   customLogo,
   onClose,
   isActive,
@@ -979,10 +984,22 @@ export const RankingBoardModal = ({
   members: RankingMember[];
   allLeaders: RankingMember[];
   allTrainers: RankingMember[];
+  approvedUsers?: UserRegistration[];
+  rosterMembers?: Member[];
   customLogo?: string;
   onClose: () => void;
   isActive: boolean;
 }) => {
+  const findAvatar = (name: string) => {
+    const clean = name.trim().toLowerCase().replace(/\s+/g, ' ');
+    const memberMatch = rosterMembers.find(
+      (m) => m.name?.trim().toLowerCase().replace(/\s+/g, ' ') === clean && (m as any).profilePic
+    );
+    if ((memberMatch as any)?.profilePic) return (memberMatch as any).profilePic as string;
+    return approvedUsers.find(
+      (u) => u.fullName?.trim().toLowerCase().replace(/\s+/g, ' ') === clean
+    )?.profilePic;
+  };
   const [exporting, setExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState('');
   const exportRef = useRef<HTMLDivElement>(null);
@@ -1078,6 +1095,9 @@ export const RankingBoardModal = ({
                   >
                     {idx + 1}
                   </span>
+                  <div className="w-8 h-8 rounded-full overflow-hidden border border-[#E2E8F0] bg-white shrink-0">
+                    <CartoonAvatar src={findAvatar(m.name)} name={m.name} />
+                  </div>
                   <span className="text-sm font-bold text-[#0F172A] truncate">{m.name}</span>
                 </div>
                 <span className="text-sm font-extrabold font-mono tabular-nums text-[#0B4F9C] shrink-0">
@@ -1105,17 +1125,32 @@ export const OverallStatsModal = ({
   onClose,
   leaders,
   trainers,
+  approvedUsers = [],
+  rosterMembers = [],
   customLogo,
 }: {
   onClose: () => void;
   leaders: RankingMember[];
   trainers: RankingMember[];
+  approvedUsers?: UserRegistration[];
+  rosterMembers?: Member[];
   customLogo?: string;
 }) => {
   const [tab, setTab] = useState<'leaders' | 'trainers'>('leaders');
   const [exporting, setExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState('');
   const exportRef = useRef<HTMLDivElement>(null);
+
+  const findAvatar = (name: string) => {
+    const clean = name.trim().toLowerCase().replace(/\s+/g, ' ');
+    const memberMatch = rosterMembers.find(
+      (m) => m.name?.trim().toLowerCase().replace(/\s+/g, ' ') === clean && (m as any).profilePic
+    );
+    if ((memberMatch as any)?.profilePic) return (memberMatch as any).profilePic as string;
+    return approvedUsers.find(
+      (u) => u.fullName?.trim().toLowerCase().replace(/\s+/g, ' ') === clean
+    )?.profilePic;
+  };
 
   const list = tab === 'leaders' ? leaders : trainers;
 
@@ -1207,6 +1242,9 @@ export const OverallStatsModal = ({
                 <span className="w-6 text-center text-xs font-mono font-bold text-[#64748B] tabular-nums">
                   {idx + 1}.
                 </span>
+                <div className="w-8 h-8 rounded-full overflow-hidden border border-[#E2E8F0] bg-white shrink-0">
+                  <CartoonAvatar src={findAvatar(m.name)} name={m.name} />
+                </div>
                 <span className="text-xs font-bold text-[#0F172A] truncate">{m.name}</span>
               </div>
               <span className="text-xs font-extrabold font-mono tabular-nums text-[#047857]">

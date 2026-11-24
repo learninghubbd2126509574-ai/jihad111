@@ -11,6 +11,7 @@ import {
   Loader2
 } from 'lucide-react';
 import {
+  db,
   collection,
   query,
   orderBy,
@@ -22,12 +23,12 @@ import {
   increment,
   setDoc,
   getDoc,
+  getDocs,
   limit,
   serverTimestamp
-} from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../firebase';
+} from '../services/supabaseDb';
 import CartoonAvatar from './CartoonAvatar';
+import { Member, UserRegistration } from '../types';
 
 interface CommunityPost {
   id: string;
@@ -54,6 +55,8 @@ interface CommunitySectionProps {
   currentUser: any;
   isAdmin: boolean;
   communityActive: boolean;
+  approvedUsers?: UserRegistration[];
+  members?: Member[];
   onToggleActive?: (active: boolean) => void;
 }
 
@@ -61,10 +64,12 @@ const CommunitySection: React.FC<CommunitySectionProps> = ({
   currentUser,
   isAdmin,
   communityActive,
+  approvedUsers = [],
+  members = [],
   onToggleActive
 }) => {
   const [posts, setPosts] = useState<CommunityPost[]>([]);
-  const [postLimit, setPostLimit] = useState(25);
+  const [postLimit, setPostLimit] = useState(12);
   const [newPostContent, setNewPostContent] = useState('');
   const [newPostImage, setNewPostImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -81,6 +86,23 @@ const CommunitySection: React.FC<CommunitySectionProps> = ({
   const [activeCommentsPostId, setActiveCommentsPostId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const resolveLiveAvatar = (userId?: string, name?: string, fallback?: string) => {
+    const cleanId = (userId || '').replace(/\s+/g, '');
+    const cleanName = (name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const memberMatch = members.find(
+      (m) =>
+        (cleanId && m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanId) ||
+        (cleanName && m.name?.trim().toLowerCase().replace(/\s+/g, ' ') === cleanName)
+    );
+    if ((memberMatch as any)?.profilePic) return (memberMatch as any).profilePic as string;
+    const userMatch = approvedUsers.find(
+      (u) =>
+        (cleanId && u.whatsapp && u.whatsapp.replace(/\s+/g, '') === cleanId) ||
+        (cleanName && u.fullName?.trim().toLowerCase().replace(/\s+/g, ' ') === cleanName)
+    );
+    return userMatch?.profilePic || fallback || '';
+  };
 
   useEffect(() => {
     if (!communityActive && !isAdmin) return;
@@ -157,9 +179,12 @@ const CommunitySection: React.FC<CommunitySectionProps> = ({
     try {
       let imageUrl = '';
       if (newPostImage) {
-        const imageRef = ref(storage, `community/${Date.now()}_${newPostImage.name}`);
-        const uploadResult = await uploadBytes(imageRef, newPostImage);
-        imageUrl = await getDownloadURL(uploadResult.ref);
+        imageUrl = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = () => resolve('');
+          reader.readAsDataURL(newPostImage);
+        });
       }
 
       await addDoc(collection(db, 'communityPosts'), {
@@ -356,6 +381,7 @@ const CommunitySection: React.FC<CommunitySectionProps> = ({
                 currentUser={currentUser}
                 isAdmin={isAdmin}
                 isLiked={!!userLikes[post.id]}
+                resolveAvatar={resolveLiveAvatar}
                 onLike={() => toggleLike(post)}
                 onDelete={() => deletePost(post.id)}
                 onCommentToggle={() => setActiveCommentsPostId(activeCommentsPostId === post.id ? null : post.id)}
@@ -366,7 +392,7 @@ const CommunitySection: React.FC<CommunitySectionProps> = ({
               <div className="text-center py-2">
                 <button
                   type="button"
-                  onClick={() => setPostLimit(prev => prev + 25)}
+                  onClick={() => setPostLimit(prev => prev + 12)}
                   className="px-5 py-2.5 rounded-xl bg-white hover:bg-[#F8FAFC] border border-[#E5E7EB] text-xs font-bold text-[#0B4F9C] transition-colors cursor-pointer"
                 >
                   Load More Posts
@@ -380,40 +406,47 @@ const CommunitySection: React.FC<CommunitySectionProps> = ({
   );
 };
 
-const PostCard = ({ post, currentUser, isAdmin, isLiked, onLike, onDelete, onCommentToggle, isCommentActive }: any) => {
+const PostCard = ({ post, currentUser, isAdmin, isLiked, resolveAvatar, onLike, onDelete, onCommentToggle, isCommentActive }: any) => {
   const isAuthor = currentUser && (currentUser.whatsapp === post.authorId || currentUser.uid === post.authorId);
   const [comments, setComments] = useState<PostComment[]>([]);
+  const [commentsLoaded, setCommentsLoaded] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [sendingComment, setSendingComment] = useState(false);
 
   useEffect(() => {
-    if (!isCommentActive) return;
+    if (!isCommentActive || commentsLoaded) return;
 
-    const q = query(collection(db, 'communityPosts', post.id, 'comments'), orderBy('createdAt', 'asc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const fetchedComments = snapshot.docs.map(d => ({
-        id: d.id,
-        ...d.data()
-      })) as PostComment[];
-      setComments(fetchedComments);
-    }, (error) => {
-      console.error("Error loading comments:", error);
-    });
-
-    return () => unsubscribe();
-  }, [isCommentActive, post.id]);
+    const loadComments = async () => {
+      try {
+        const q = query(collection(db, 'communityPosts', post.id, 'comments'), orderBy('createdAt', 'asc'), limit(50));
+        const snapshot = await getDocs(q);
+        const fetchedComments = snapshot.docs.map(d => ({
+          id: d.id,
+          ...d.data()
+        })) as PostComment[];
+        setComments(fetchedComments);
+        setCommentsLoaded(true);
+      } catch (error) {
+        console.error("Error loading comments:", error);
+      }
+    };
+    loadComments();
+  }, [isCommentActive, commentsLoaded, post.id]);
 
   const addComment = async () => {
     if (!commentText.trim() || !currentUser) return;
     setSendingComment(true);
+    const trimmed = commentText;
     try {
-      await addDoc(collection(db, 'communityPosts', post.id, 'comments'), {
+      const payload = {
         userId: currentUser.whatsapp || currentUser.uid,
         userName: currentUser.fullName,
         userAvatar: currentUser.profilePic || '',
-        text: commentText,
+        text: trimmed,
         createdAt: serverTimestamp()
-      });
+      };
+      const docRef = await addDoc(collection(db, 'communityPosts', post.id, 'comments'), payload);
+      setComments(prev => [...prev, { id: docRef.id, ...payload, createdAt: new Date() }]);
       setCommentText('');
     } catch (error) {
       console.error("Error adding comment:", error);
@@ -428,6 +461,7 @@ const PostCard = ({ post, currentUser, isAdmin, isLiked, onLike, onDelete, onCom
 
     try {
       await deleteDoc(doc(db, 'communityPosts', post.id, 'comments', commentId));
+      setComments(prev => prev.filter(c => c.id !== commentId));
     } catch (error) {
       console.error("Error deleting comment:", error);
     }
@@ -437,13 +471,17 @@ const PostCard = ({ post, currentUser, isAdmin, isLiked, onLike, onDelete, onCom
     ? new Intl.DateTimeFormat('en-US', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(post.createdAt.toDate())
     : 'Just now';
 
+  const postAuthorAvatar = resolveAvatar
+    ? resolveAvatar(post.authorId, post.authorName, post.authorAvatar)
+    : post.authorAvatar;
+
   return (
     <article className="fintech-card overflow-hidden">
       {/* Header */}
       <div className="p-4 sm:p-5 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-10 h-10 rounded-full bg-[#F4F6F9] border border-[#E5E7EB] overflow-hidden shrink-0">
-            <CartoonAvatar src={post.authorAvatar} name={post.authorName} />
+            <CartoonAvatar src={postAuthorAvatar} name={post.authorName} />
           </div>
           <div className="min-w-0">
             <h4 className="font-bold text-[#0F172A] text-sm leading-tight truncate">{post.authorName}</h4>
@@ -528,7 +566,10 @@ const PostCard = ({ post, currentUser, isAdmin, isLiked, onLike, onDelete, onCom
                 return (
                   <div key={comment.id} className="flex gap-2.5">
                     <div className="w-8 h-8 rounded-full bg-white border border-[#E5E7EB] overflow-hidden shrink-0">
-                      <CartoonAvatar src={comment.userAvatar} name={comment.userName} />
+                      <CartoonAvatar
+                        src={resolveAvatar ? resolveAvatar(comment.userId, comment.userName, comment.userAvatar) : comment.userAvatar}
+                        name={comment.userName}
+                      />
                     </div>
                     <div className="flex-1 bg-white p-3 rounded-xl border border-[#E5E7EB]">
                       <div className="flex items-center justify-between mb-1 gap-2">

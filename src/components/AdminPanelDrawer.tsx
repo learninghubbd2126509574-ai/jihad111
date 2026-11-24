@@ -46,6 +46,7 @@ import {
   StlManager,
   TeacherManagementSection,
   UserManagementSection,
+  SupabaseStatusManager,
 } from './AdminManagers';
 import {
   Application,
@@ -708,6 +709,7 @@ const AdminPanelDrawer: React.FC<AdminPanelDrawerProps> = ({
             colorClass="text-[#DC2626]"
           >
             <div className="space-y-4">
+              <SupabaseStatusManager showMsg={showMsg} />
               <AdminPasswordManager onUpdate={updateAdminPassword} />
               <SecurityManager config={config} onUpdate={updateSecurity} />
               <StlManager config={config} onUpdate={updateStlSettings} />

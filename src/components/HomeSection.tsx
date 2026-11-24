@@ -15,12 +15,14 @@ import {
   X,
 } from 'lucide-react';
 import CartoonAvatar from './CartoonAvatar';
-import { Config, Result, UserRegistration } from '../types';
+import { Config, Member, Result, UserRegistration } from '../types';
 
 import bannerTeamwork from '../assets/images/unity_banner_teamwork_1795424636443.jpg';
 import bannerElearning from '../assets/images/unity_banner_elearning_1795424635783.jpg';
 import bannerLeadership from '../assets/images/unity_banner_leadership_1795424635763.jpg';
 import bannerSuccess from '../assets/images/unity_banner_success_1795424637056.jpg';
+import bannerMentorship from '../assets/images/unity_banner_mentorship_1795425885667.jpg';
+import bannerCommunity from '../assets/images/unity_banner_community_1795425884718.jpg';
 
 export interface RankedDisplayMember {
   id: string;
@@ -40,6 +42,7 @@ interface HomeSectionProps {
   };
   config: Config;
   results: Record<string, Result>;
+  members?: Member[];
   approvedUsers: UserRegistration[];
   topLeader: RankedDisplayMember | null;
   topTrainer: RankedDisplayMember | null;
@@ -90,6 +93,20 @@ const HERO_SLIDES: BannerSlide[] = [
     title: 'Unity Earning',
     subtitle: 'Smart E-Learning & Daily Results',
   },
+  {
+    id: 'mentorship',
+    src: bannerMentorship,
+    alt: 'Unity Earning Digital Mentorship and Skill Tracking',
+    title: 'Unity Earning',
+    subtitle: 'E-Learning & Mentorship Excellence',
+  },
+  {
+    id: 'community',
+    src: bannerCommunity,
+    alt: 'Unity Earning Collaborative Learning Community',
+    title: 'Unity Earning',
+    subtitle: 'Learn · Lead · Grow Together',
+  },
 ];
 
 // Extra slide appended for seamless 2-up wrap on desktop
@@ -99,6 +116,7 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
   stats,
   config,
   results,
+  members = [],
   approvedUsers,
   topLeader,
   topTrainer,
@@ -123,13 +141,21 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
     return () => window.clearInterval(timer);
   }, [isPaused]);
 
-  const findAvatar = (name: string) =>
-    approvedUsers.find(
-      (u) => u.fullName.trim().toLowerCase() === name.trim().toLowerCase()
+  const findAvatar = (name: string) => {
+    const clean = name.trim().toLowerCase().replace(/\s+/g, ' ');
+    const memberMatch = members.find(
+      (m) => m.name?.trim().toLowerCase().replace(/\s+/g, ' ') === clean && (m as any).profilePic
+    );
+    if ((memberMatch as any)?.profilePic) return (memberMatch as any).profilePic as string;
+    return approvedUsers.find(
+      (u) => u.fullName?.trim().toLowerCase().replace(/\s+/g, ' ') === clean
     )?.profilePic;
+  };
 
-  const eliteLeader = topLeader || sortedLeadersByRanking[0] || null;
-  const eliteTrainer = topTrainer || sortedTrainersByRanking[0] || null;
+  const eliteLeader =
+    topLeader && topLeader.result?.submitted && topLeader.result?.convert > 0 ? topLeader : null;
+  const eliteTrainer =
+    topTrainer && topTrainer.result?.submitted && topTrainer.result?.convert > 0 ? topTrainer : null;
 
   const kpiCards = [
     {
@@ -343,37 +369,37 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
           </button>
         </div>
 
-        {/* 4 KPI Summary Cards (2x2 on mobile/tablet, 4-col on desktop) */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {/* 4 Slim KPI Summary Cards (2x2 on mobile/tablet, 4-col on desktop) */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
           {kpiCards.map((card) => (
             <button
               key={card.label}
               type="button"
               onClick={card.onClick}
-              className="group text-left bg-white border border-[#E2E8F0] hover:border-[#CBD5E1] rounded-2xl p-3.5 sm:p-4 shadow-[0_2px_10px_rgba(15,23,42,0.04)] hover:shadow-[0_6px_16px_rgba(15,23,42,0.07)] transition-all flex flex-col justify-between gap-2.5 cursor-pointer"
+              className="group text-left bg-white border border-[#E2E8F0] hover:border-[#CBD5E1] rounded-xl px-3 py-2 sm:px-3.5 sm:py-2.5 shadow-[0_1px_6px_rgba(15,23,42,0.04)] hover:shadow-[0_4px_12px_rgba(15,23,42,0.07)] transition-all flex flex-col justify-between gap-1 cursor-pointer"
             >
-              <div className="flex items-center justify-between gap-2 w-full">
-                <div
-                  className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center shrink-0 ${card.iconBg}`}
-                >
-                  {card.icon}
-                </div>
-                <span
-                  className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 transition-colors ${card.chevronBg}`}
-                  aria-hidden="true"
-                >
-                  <ChevronRight size={14} strokeWidth={2.2} />
-                </span>
-              </div>
-              <div className="w-full">
-                <span className="text-xs font-semibold text-[#64748B] leading-snug block">
+              <div className="flex items-center justify-between gap-1.5 w-full">
+                <span className="text-[11px] sm:text-xs font-semibold text-[#64748B] leading-tight whitespace-nowrap">
                   {card.label}
                 </span>
+                <ChevronRight
+                  size={13}
+                  strokeWidth={2.2}
+                  className="text-[#94A3B8] group-hover:text-[#0B4F9C] shrink-0 transition-colors"
+                  aria-hidden="true"
+                />
+              </div>
+              <div className="flex items-center justify-between gap-2 w-full">
                 <span
-                  className={`text-2xl font-extrabold font-mono tabular-nums leading-tight block mt-0.5 ${card.valueColor}`}
+                  className={`text-lg sm:text-xl font-extrabold font-mono tabular-nums leading-none ${card.valueColor}`}
                 >
                   {card.value}
                 </span>
+                <div
+                  className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center shrink-0 [&>svg]:w-4 [&>svg]:h-4 ${card.iconBg}`}
+                >
+                  {card.icon}
+                </div>
               </div>
             </button>
           ))}

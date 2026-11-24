@@ -20,8 +20,7 @@ import {
   addMonths,
   subMonths
 } from 'date-fns';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../firebase';
+import { collection, query, where, getDocs, db } from '../services/supabaseDb';
 import CartoonAvatar from './CartoonAvatar';
 import {
   Member,

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense } from 'react';
 import {
+  db,
   collection,
   doc,
   onSnapshot,
@@ -18,7 +19,7 @@ import {
   increment,
   writeBatch,
   where,
-} from 'firebase/firestore';
+} from './services/supabaseDb';
 import {
   onAuthStateChanged,
   signOut,
@@ -38,7 +39,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { format } from 'date-fns';
-import { db, auth } from './firebase';
+import { auth } from './firebase';
 
 import {
   Application,
@@ -112,6 +113,27 @@ import {
 
 const AdminPanelDrawer = lazy(() => import('./components/AdminPanelDrawer'));
 const CommunitySection = lazy(() => import('./components/CommunitySection'));
+
+const CACHE_TTL_MS = 5 * 60 * 1000;
+
+function readCacheWithTTL<T>(key: string, ttlMs = CACHE_TTL_MS): T | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed.ts !== 'number') return null;
+    if (Date.now() - parsed.ts > ttlMs) return null;
+    return parsed.data as T;
+  } catch {
+    return null;
+  }
+}
+
+function writeCacheWithTTL<T>(key: string, data: T): void {
+  try {
+    localStorage.setItem(key, JSON.stringify({ ts: Date.now(), data }));
+  } catch {}
+}
 
 export default function App() {
   const [firebaseUser, setUser] = useState<FirebaseUser | null>(null);
@@ -279,7 +301,7 @@ export default function App() {
     return () => unsubscribe();
   }, [showMsg]);
 
-  // Helper: fetch collection once per session (with cache fallback + force refresh on mutations)
+  // Helper: fetch collection once per session & 5-min localStorage TTL cache (with offline cache fallback)
   const fetchCollectionOnce = useCallback(
     async <T,>(
       cacheKey: string,
@@ -288,13 +310,23 @@ export default function App() {
       force = false,
       sorter?: (a: T, b: T) => number
     ) => {
-      if (!force && loadedCollectionsRef.current.has(cacheKey)) return;
+      if (!force) {
+        if (loadedCollectionsRef.current.has(cacheKey)) return;
+        const cachedList = readCacheWithTTL<T[]>(`unity_cache_${cacheKey}`);
+        if (cachedList) {
+          const next = sorter ? [...cachedList].sort(sorter) : cachedList;
+          setter(next);
+          loadedCollectionsRef.current.add(cacheKey);
+          return;
+        }
+      }
       try {
         const snap = await getDocs(q);
         const list: T[] = [];
         snap.forEach((d: any) => list.push({ id: d.id, ...d.data() } as T));
         if (sorter) list.sort(sorter);
         setter(list);
+        writeCacheWithTTL(`unity_cache_${cacheKey}`, list);
         loadedCollectionsRef.current.add(cacheKey);
       } catch (err) {
         try {
@@ -360,13 +392,22 @@ export default function App() {
   const refreshApprovedUsers = useCallback(
     async (force = true) => {
       if (!auth.currentUser && !isAdmin) return;
-      if (!force && loadedCollectionsRef.current.has('registeredUsers')) return;
+      if (!force) {
+        if (loadedCollectionsRef.current.has('registeredUsers')) return;
+        const cachedUsers = readCacheWithTTL<UserRegistration[]>('unity_cache_registeredUsers');
+        if (cachedUsers) {
+          setApprovedUsers(cachedUsers);
+          loadedCollectionsRef.current.add('registeredUsers');
+          return;
+        }
+      }
       const q = query(collection(db, 'registeredUsers'), where('status', '==', 'active'));
       try {
         const snap = await getDocs(q);
         const list: UserRegistration[] = [];
         snap.forEach((d) => list.push({ id: d.id, ...d.data() } as UserRegistration));
         setApprovedUsers(list);
+        writeCacheWithTTL('unity_cache_registeredUsers', list);
         try {
           localStorage.setItem('unity_approved_users', JSON.stringify(list));
         } catch {}
@@ -438,7 +479,18 @@ export default function App() {
 
   const refreshAllBalancesAndLogs = useCallback(async (force = false) => {
     if (!auth.currentUser) return;
-    if (!force && loadedCollectionsRef.current.has('allBalancesAndLogs')) return;
+    if (!force) {
+      if (loadedCollectionsRef.current.has('allBalancesAndLogs')) return;
+      const cached = readCacheWithTTL<{ bMap: Record<string, UserBalance>; logs: SubmissionLog[] }>(
+        'unity_cache_allBalancesAndLogs'
+      );
+      if (cached) {
+        setUserBalances(cached.bMap);
+        setSubmissionLogs(cached.logs);
+        loadedCollectionsRef.current.add('allBalancesAndLogs');
+        return;
+      }
+    }
     const now = new Date();
     const monthStartStr = format(new Date(now.getFullYear(), now.getMonth(), 1), 'yyyy-MM-dd');
     const balQ = collection(db, 'userBalances');
@@ -456,6 +508,7 @@ export default function App() {
       logSnap.forEach((d) => logs.push({ id: d.id, ...d.data() } as SubmissionLog));
       setSubmissionLogs(logs);
 
+      writeCacheWithTTL('unity_cache_allBalancesAndLogs', { bMap, logs });
       loadedCollectionsRef.current.add('allBalancesAndLogs');
     } catch (err) {
       try {
@@ -515,13 +568,48 @@ export default function App() {
     [fetchCollectionOnce]
   );
 
-  // 1. ONLY 3 Always-On Real-time Listeners (config, members, results) + 1-time startup getDocs
+  // 0. Pre-login lightweight config load (cached 5 mins -> single getDoc instead of heavy startup listeners)
   useEffect(() => {
+    if (isAdmin || authenticatedUser) return;
+    const cachedConfig = readCacheWithTTL<Config>('unity_cache_config');
+    if (cachedConfig) {
+      setConfig(cachedConfig);
+      setIsConfigReady(true);
+      return;
+    }
+    let active = true;
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, 'config', 'global'));
+        if (active && snap.exists()) {
+          const data = snap.data() as Config;
+          setConfig(data);
+          writeCacheWithTTL('unity_cache_config', data);
+        }
+      } catch {
+        try {
+          const cacheSnap = await getDocFromCache(doc(db, 'config', 'global'));
+          if (active && cacheSnap.exists()) setConfig(cacheSnap.data() as Config);
+        } catch {}
+      } finally {
+        if (active) setIsConfigReady(true);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [isAdmin, authenticatedUser]);
+
+  // 1. Authenticated-only Real-time Listeners (config, members, results) + TTL-cached initial collections
+  useEffect(() => {
+    if (!isAdmin && !authenticatedUser) return;
+
     const unsubConfig = onSnapshot(
       doc(db, 'config', 'global'),
       (snapshot) => {
         if (snapshot.exists()) {
           const newConfig = snapshot.data() as Config;
+          writeCacheWithTTL('unity_cache_config', newConfig);
           setConfig((prev) => {
             if (
               newConfig.announcement !== prev.announcement ||
@@ -588,7 +676,7 @@ export default function App() {
       }
     );
 
-    // One-time startup reads (session cached)
+    // One-time startup reads (5-min localStorage TTL + session cached)
     refreshLeaderRanking(false);
     refreshTrainerRanking(false);
     refreshStlMembers(false);
@@ -599,6 +687,8 @@ export default function App() {
       unsubResults();
     };
   }, [
+    authenticatedUser,
+    isAdmin,
     refreshLeaderRanking,
     refreshStlMembers,
     refreshTrainerRanking,
@@ -622,7 +712,7 @@ export default function App() {
     }
   }, [isAdmin, authenticatedUser, config.announcementActive, config.announcement, announcementDismissed]);
 
-  // 2. Scoped User Balances & Submission Logs vs Sheet/STL/Admin Full Month Load
+  // 2. Scoped User Balances & Submission Logs (cached getDoc/getDocs instead of always-on listeners)
   useEffect(() => {
     const needsFullBalances = userTab === 'sheet' || hasStlAccess || showAdminPanel;
 
@@ -636,39 +726,70 @@ export default function App() {
     if (!firebaseUser || !authenticatedUser?.whatsapp) return;
 
     const cleanWa = authenticatedUser.whatsapp.replace(/\s+/g, '');
+    const scopedKey = `unity_cache_user_scoped_${cleanWa}`;
+    if (loadedCollectionsRef.current.has(scopedKey)) return;
+
+    const cachedScoped = readCacheWithTTL<{ balance?: UserBalance; logs: SubmissionLog[] }>(scopedKey);
+    if (cachedScoped) {
+      if (cachedScoped.balance) {
+        setUserBalances((prev) => ({ ...prev, [cleanWa]: cachedScoped.balance! }));
+      }
+      setSubmissionLogs(cachedScoped.logs);
+      loadedCollectionsRef.current.add(scopedKey);
+      return;
+    }
+
     const now = new Date();
     const monthStartStr = format(new Date(now.getFullYear(), now.getMonth(), 1), 'yyyy-MM-dd');
+    const balRef = doc(db, 'userBalances', cleanWa);
+    const logQ = query(
+      collection(db, 'submissionLogs'),
+      where('whatsapp', '==', cleanWa),
+      where('date', '>=', monthStartStr)
+    );
 
-    const unsubUserBal = onSnapshot(
-      doc(db, 'userBalances', cleanWa),
-      (snap) => {
-        if (snap.exists()) {
-          setUserBalances((prev) => ({
-            ...prev,
-            [cleanWa]: { id: snap.id, ...snap.data() } as UserBalance,
-          }));
+    let active = true;
+    (async () => {
+      try {
+        const [balSnap, logSnap] = await Promise.all([getDoc(balRef), getDocs(logQ)]);
+        if (!active) return;
+
+        let balObj: UserBalance | undefined;
+        if (balSnap.exists()) {
+          balObj = { id: balSnap.id, ...balSnap.data() } as UserBalance;
+          setUserBalances((prev) => ({ ...prev, [cleanWa]: balObj! }));
         }
-      },
-      (err) => console.warn('Scoped balance listener warning:', err)
-    );
 
-    const unsubUserLogs = onSnapshot(
-      query(
-        collection(db, 'submissionLogs'),
-        where('whatsapp', '==', cleanWa),
-        where('date', '>=', monthStartStr)
-      ),
-      (snap) => {
-        const list: SubmissionLog[] = [];
-        snap.forEach((d) => list.push({ id: d.id, ...d.data() } as SubmissionLog));
-        setSubmissionLogs(list);
-      },
-      (err) => console.warn('Scoped logs listener warning:', err)
-    );
+        const logs: SubmissionLog[] = [];
+        logSnap.forEach((d) => logs.push({ id: d.id, ...d.data() } as SubmissionLog));
+        setSubmissionLogs(logs);
+
+        writeCacheWithTTL(scopedKey, { balance: balObj, logs });
+        loadedCollectionsRef.current.add(scopedKey);
+      } catch (err) {
+        try {
+          const [balCache, logCache] = await Promise.all([
+            getDocFromCache(balRef),
+            getDocsFromCache(logQ),
+          ]);
+          if (!active) return;
+          if (balCache.exists()) {
+            setUserBalances((prev) => ({
+              ...prev,
+              [cleanWa]: { id: balCache.id, ...balCache.data() } as UserBalance,
+            }));
+          }
+          const logs: SubmissionLog[] = [];
+          logCache.forEach((d) => logs.push({ id: d.id, ...d.data() } as SubmissionLog));
+          setSubmissionLogs(logs);
+        } catch {
+          console.warn('Scoped balance/logs fetch warning:', err);
+        }
+      }
+    })();
 
     return () => {
-      unsubUserBal();
-      unsubUserLogs();
+      active = false;
     };
   }, [
     authenticatedUser?.whatsapp,
@@ -1367,29 +1488,60 @@ export default function App() {
     }
     setSavingPic(true);
     try {
+      const cleanWa = currentAuthUser.whatsapp.replace(/\s+/g, '');
+      const cleanName = normalizeName(currentAuthUser.fullName || '');
+
       await updateDoc(doc(db, 'registeredUsers', currentAuthUser.whatsapp), {
         profilePic: avatarValue,
       });
 
-      const matchedMember = members.find(
+      const matchedMembers = members.filter(
         (m) =>
-          (m.whatsapp &&
-            m.whatsapp.replace(/\s+/g, '') === currentAuthUser.whatsapp.replace(/\s+/g, '')) ||
-          (m.name && m.name.trim().toLowerCase() === currentAuthUser.fullName.trim().toLowerCase())
+          (m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanWa) ||
+          (cleanName && m.name && normalizeName(m.name) === cleanName)
       );
-      if (matchedMember?.id) {
+      if (matchedMembers.length > 0) {
+        await Promise.all(
+          matchedMembers.map((m) =>
+            updateDoc(doc(db, 'members', m.id), { profilePic: avatarValue } as any).catch(() => null)
+          )
+        );
+        const matchedIds = new Set(matchedMembers.map((m) => m.id));
+        setMembers((prev) =>
+          prev.map((m) => (matchedIds.has(m.id) ? ({ ...m, profilePic: avatarValue } as any) : m))
+        );
+      }
+
+      const matchedStl = stlMembers.find(
+        (s) =>
+          ((s as any).whatsapp && (s as any).whatsapp.replace(/\s+/g, '') === cleanWa) ||
+          (cleanName && s.name && normalizeName(s.name) === cleanName)
+      );
+      if (matchedStl?.id) {
         try {
-          await updateDoc(doc(db, 'members', matchedMember.id), {
+          await updateDoc(doc(db, 'stlMembers', matchedStl.id), {
             profilePic: avatarValue,
           } as any);
+          setStlMembers((prev) => {
+            const next = prev.map((s) =>
+              s.id === matchedStl.id ? ({ ...s, profilePic: avatarValue } as any) : s
+            );
+            writeCacheWithTTL('unity_cache_stlMembers', next);
+            return next;
+          });
         } catch {}
       }
 
       const updatedUser = { ...currentAuthUser, profilePic: avatarValue };
       setAuthenticatedUser(updatedUser);
-      setApprovedUsers((prev) =>
-        prev.map((u) => (u.whatsapp === updatedUser.whatsapp ? updatedUser : u))
-      );
+      setApprovedUsers((prev) => {
+        const next = prev.map((u) => (u.whatsapp === updatedUser.whatsapp ? updatedUser : u));
+        try {
+          localStorage.setItem('unity_approved_users', JSON.stringify(next));
+          writeCacheWithTTL('unity_cache_registeredUsers', next);
+        } catch {}
+        return next;
+      });
       localStorage.setItem('unity_user', JSON.stringify(updatedUser));
       showMsg(successText, 'success');
     } catch {
@@ -1410,7 +1562,7 @@ export default function App() {
     }
     setSavingPic(true);
     try {
-      const compressed = await compressImageFile(file, 400, 'image/jpeg', 0.72);
+      const compressed = await compressImageFile(file, 220, 'image/jpeg', 0.72);
       await syncProfileImageToUser(compressed, 'Profile picture updated successfully!');
     } catch {
       showMsg('Failed to process image', 'error');
@@ -1512,6 +1664,19 @@ export default function App() {
         updatedAt: serverTimestamp(),
       });
 
+      setResults((prev) => ({
+        ...prev,
+        [memberId]: {
+          id: memberId,
+          memberId,
+          lead,
+          convert,
+          personalLead,
+          submitted: true,
+          updatedAt: { seconds: Math.floor(Date.now() / 1000) } as any,
+        },
+      }));
+
       const todayStr = format(new Date(), 'yyyy-MM-dd');
       const matchedApproved = approvedUsers.find(
         (u) => u.fullName.trim().toLowerCase() === (member?.name || '').trim().toLowerCase()
@@ -1519,8 +1684,9 @@ export default function App() {
       const resolvedWhatsapp =
         member?.whatsapp || matchedApproved?.whatsapp || currentAuthUser?.whatsapp || '';
 
+      const logDocId = `${memberId}_${todayStr}`;
       await setDoc(
-        doc(db, 'submissionLogs', `${memberId}_${todayStr}`),
+        doc(db, 'submissionLogs', logDocId),
         {
           whatsapp: resolvedWhatsapp,
           memberId,
@@ -1533,6 +1699,33 @@ export default function App() {
         },
         { merge: true }
       );
+
+      // Optimistically update local submissionLogs & cache so no real-time listener is needed
+      const localLogEntry: SubmissionLog = {
+        id: logDocId,
+        whatsapp: resolvedWhatsapp,
+        memberId,
+        memberName: member?.name || '',
+        date: todayStr,
+        lead,
+        convert,
+        personalLead,
+        submittedAt: { seconds: Math.floor(Date.now() / 1000) },
+      };
+      setSubmissionLogs((prev) => {
+        const exists = prev.some((l) => l.id === logDocId);
+        const next = exists
+          ? prev.map((l) => (l.id === logDocId ? localLogEntry : l))
+          : [...prev, localLogEntry];
+        const cleanAuthWa = (currentAuthUser?.whatsapp || '').replace(/\s+/g, '');
+        if (cleanAuthWa && resolvedWhatsapp.replace(/\s+/g, '') === cleanAuthWa) {
+          writeCacheWithTTL(`unity_cache_user_scoped_${cleanAuthWa}`, {
+            balance: userBalances[cleanAuthWa],
+            logs: next,
+          });
+        }
+        return next;
+      });
 
       if (member?.type === 'leader' && diffScore !== 0) {
         await updateDoc(doc(db, 'config', 'global'), {
@@ -1551,6 +1744,7 @@ export default function App() {
             (cleanMemberName && normalizeName(r.name) === cleanMemberName)
         );
         const coll = isLeader ? 'leaderRanking' : 'trainerRanking';
+        const setRankingState = isLeader ? setLeaderRanking : setTrainerRanking;
 
         if (rankingEntry) {
           if (diffScore !== 0 || diffLeads !== 0) {
@@ -1558,17 +1752,38 @@ export default function App() {
               score: increment(diffScore),
               leads: increment(diffLeads),
             });
+            setRankingState((prev) => {
+              const next = prev
+                .map((r) =>
+                  r.id === rankingEntry.id
+                    ? {
+                        ...r,
+                        score: (r.score || 0) + diffScore,
+                        leads: (r.leads || 0) + diffLeads,
+                      }
+                    : r
+                )
+                .sort((a, b) => (b.score || 0) - (a.score || 0));
+              writeCacheWithTTL(`unity_cache_${coll}`, next);
+              return next;
+            });
           }
         } else {
-          await addDoc(collection(db, coll), {
+          const addedRef = await addDoc(collection(db, coll), {
             name: member.name,
             score: convert,
             leads: personalLead,
             createdAt: serverTimestamp(),
           });
+          setRankingState((prev) => {
+            const next = [
+              ...prev,
+              { id: addedRef.id, name: member.name, score: convert, leads: personalLead } as RankingMember,
+            ].sort((a, b) => (b.score || 0) - (a.score || 0));
+            writeCacheWithTTL(`unity_cache_${coll}`, next);
+            return next;
+          });
         }
-        if (isLeader) refreshLeaderRanking(true);
-        else refreshTrainerRanking(true);
       }
 
       showMsg('Result submitted successfully!', 'success');
@@ -2407,32 +2622,62 @@ export default function App() {
     if (!isAdmin) return;
     setShowConfirm({
       title: "Clear all of today's submission data?",
+      message:
+        "This will reset today's session submissions, total converts, total leads, and elite performers back to zero.",
       onConfirm: async () => {
         try {
-          const snap = await getDocs(collection(db, 'results'));
-          let batch = writeBatch(db);
-          let count = 0;
-          for (const d of snap.docs) {
-            const data = d.data();
-            if (data.submitted || data.lead > 0 || data.convert > 0 || data.personalLead > 0) {
-              batch.set(d.ref, {
-                memberId: d.id,
+          // 1. Immediately reset local results state so Total Lead, Total Convert, and Elite performers reset to 0
+          const emptyResults: Record<string, Result> = {};
+          members.forEach((m) => {
+            emptyResults[m.id] = {
+              id: m.id,
+              memberId: m.id,
+              lead: 0,
+              convert: 0,
+              personalLead: 0,
+              submitted: false,
+              updatedAt: null,
+            };
+            if (m.whatsapp) {
+              emptyResults[m.whatsapp] = {
+                id: m.whatsapp,
+                memberId: m.whatsapp,
                 lead: 0,
                 convert: 0,
                 personalLead: 0,
                 submitted: false,
-                updatedAt: serverTimestamp(),
-              });
-              count++;
-              if (count >= 490) {
-                await batch.commit();
-                batch = writeBatch(db);
-                count = 0;
-              }
+                updatedAt: null,
+              };
             }
+          });
+          setResults(emptyResults);
+
+          // 2. Persist zeroed results to database
+          const snap = await getDocs(collection(db, 'results'));
+          const batch = writeBatch(db);
+          for (const d of snap.docs) {
+            batch.set(d.ref, {
+              memberId: d.id,
+              lead: 0,
+              convert: 0,
+              personalLead: 0,
+              submitted: false,
+              updatedAt: serverTimestamp(),
+            });
           }
-          if (count > 0) await batch.commit();
-          showMsg("Today's results cleared!");
+          for (const m of members) {
+            batch.set(doc(db, 'results', m.id), {
+              memberId: m.id,
+              lead: 0,
+              convert: 0,
+              personalLead: 0,
+              submitted: false,
+              updatedAt: serverTimestamp(),
+            });
+          }
+          await batch.commit();
+
+          showMsg("Today's submission data cleared! Totals and Elite performers reset to zero.", 'success');
           setShowConfirm(null);
         } catch (err) {
           handleFirestoreError(err, OperationType.WRITE, 'results', showMsg);
@@ -2747,8 +2992,14 @@ export default function App() {
         batch.update(doc(db, 'config', 'global'), { totalConverts: increment(diffScore) });
       }
       await batch.commit();
-      if (type === 'leader') refreshLeaderRanking(true);
-      else refreshTrainerRanking(true);
+      const setRankingState = type === 'leader' ? setLeaderRanking : setTrainerRanking;
+      setRankingState((prev) => {
+        const next = prev
+          .map((r) => (r.id === id ? { ...r, score: newScore } : r))
+          .sort((a, b) => (b.score || 0) - (a.score || 0));
+        writeCacheWithTTL(`unity_cache_${coll}`, next);
+        return next;
+      });
       showMsg('Score updated successfully!');
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `${coll}/${id}`, showMsg);
@@ -2810,12 +3061,13 @@ export default function App() {
             r.name.trim().toLowerCase() === m.name.trim().toLowerCase() ||
             (cleanM && normalizeName(r.name) === cleanM)
         );
+        const res = results[m.id] || (m.whatsapp ? results[m.whatsapp] : undefined);
         return {
           ...m,
           type: 'leader' as const,
           score: rankingEntry?.score || 0,
           leads: rankingEntry?.leads || 0,
-          result: results[m.id] || {
+          result: res || {
             id: m.id,
             memberId: m.id,
             lead: 0,
@@ -2837,12 +3089,13 @@ export default function App() {
             r.name.trim().toLowerCase() === m.name.trim().toLowerCase() ||
             (cleanM && normalizeName(r.name) === cleanM)
         );
+        const res = results[m.id] || (m.whatsapp ? results[m.whatsapp] : undefined);
         return {
           ...m,
           type: 'trainer' as const,
           score: rankingEntry?.score || 0,
           leads: rankingEntry?.leads || 0,
-          result: results[m.id] || {
+          result: res || {
             id: m.id,
             memberId: m.id,
             lead: 0,
@@ -2880,9 +3133,10 @@ export default function App() {
     };
 
     allLeaders.forEach((m) => {
-      if (m.result.submitted) {
-        todayConverts += m.result.convert;
-        todayLeads += m.result.lead;
+      const r = m.result;
+      if (r && r.submitted) {
+        todayConverts += Number(r.convert) || 0;
+        todayLeads += (Number(r.lead) || 0) + (Number(r.personalLead) || 0);
       }
     });
 
@@ -3168,6 +3422,7 @@ export default function App() {
             stats={stats}
             config={config}
             results={results}
+            members={members}
             approvedUsers={approvedUsers}
             topLeader={topLeader}
             topTrainer={topTrainer}
@@ -3306,6 +3561,8 @@ export default function App() {
               currentUser={currentAuthUser}
               isAdmin={isAdmin}
               communityActive={config.communityActive !== false}
+              approvedUsers={approvedUsers}
+              members={members}
               onToggleActive={async (val) => {
                 await updateDoc(doc(db, 'config', 'global'), { communityActive: val });
               }}
@@ -3701,6 +3958,8 @@ export default function App() {
           members={sortedLeaderRanking}
           allLeaders={sortedLeaderRanking}
           allTrainers={sortedTrainerRanking}
+          approvedUsers={approvedUsers}
+          rosterMembers={members}
           customLogo={config.customLogo}
           onClose={() => setShowLeaderRankingModal(false)}
           isActive={config.leaderRankingActive || false}
@@ -3714,6 +3973,8 @@ export default function App() {
           members={sortedTrainerRanking}
           allLeaders={sortedLeaderRanking}
           allTrainers={sortedTrainerRanking}
+          approvedUsers={approvedUsers}
+          rosterMembers={members}
           customLogo={config.customLogo}
           onClose={() => setShowTrainerRankingModal(false)}
           isActive={config.trainerRankingActive || false}
@@ -3725,6 +3986,8 @@ export default function App() {
           onClose={() => setShowOverallStatsModal(false)}
           leaders={sortedLeaderRanking}
           trainers={sortedTrainerRanking}
+          approvedUsers={approvedUsers}
+          rosterMembers={members}
           customLogo={config.customLogo}
         />
       )}
@@ -3875,6 +4138,13 @@ export default function App() {
         }}
         onInstalled={() => {
           showMsg('Unity Earning added to Home Screen!', 'success');
+          if (pendingPerformanceModal && authenticatedUser) {
+            setPendingPerformanceModal(false);
+            setShowLoginPerformanceModal(true);
+          }
+        }}
+        onUnavailable={() => {
+          showMsg('Tap Chrome menu -> Install app to add Unity Earning to Home Screen', 'info');
           if (pendingPerformanceModal && authenticatedUser) {
             setPendingPerformanceModal(false);
             setShowLoginPerformanceModal(true);

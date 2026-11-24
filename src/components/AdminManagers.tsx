@@ -35,7 +35,9 @@ import {
   X,
   Building2,
   Users,
+  Database,
 } from 'lucide-react';
+import { SUPABASE_SETUP_SQL, checkSupabaseConnection, SUPABASE_URL } from '../supabase';
 import CartoonAvatar from './CartoonAvatar';
 import {
   Application,
@@ -2240,3 +2242,107 @@ export const CounsellingManager = ({
     </div>
   );
 };
+
+export const SupabaseStatusManager = ({
+  showMsg,
+}: {
+  showMsg: (msg: string, type?: 'success' | 'error' | 'info') => void;
+}) => {
+  const [checking, setChecking] = useState(false);
+  const [statusInfo, setStatusInfo] = useState<{
+    connected: boolean;
+    tableReady: boolean;
+    message: string;
+  } | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const testConnection = async () => {
+    setChecking(true);
+    const res = await checkSupabaseConnection();
+    setStatusInfo(res);
+    setChecking(false);
+    if (res.tableReady) {
+      showMsg('Supabase is connected & ready!', 'success');
+    } else {
+      showMsg(res.message, 'info');
+    }
+  };
+
+  React.useEffect(() => {
+    testConnection();
+  }, []);
+
+  const handleCopySql = () => {
+    try {
+      navigator.clipboard.writeText(SUPABASE_SETUP_SQL);
+      setCopied(true);
+      showMsg('Supabase SQL Setup script copied!', 'success');
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      showMsg('Please copy the SQL script manually.', 'error');
+    }
+  };
+
+  return (
+    <div className="p-4 bg-white border border-[#E5E7EB] rounded-xl space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Database size={16} className="text-[#047857]" />
+          <h4 className="text-xs font-bold text-[#0F172A]">Supabase Database</h4>
+        </div>
+        <span
+          className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+            statusInfo?.tableReady
+              ? 'bg-[#ECFDF5] text-[#047857] border border-[#A7F3D0]'
+              : 'bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A]'
+          }`}
+        >
+          {statusInfo?.tableReady ? 'Cloud Ready' : 'Setup Required'}
+        </span>
+      </div>
+
+      <div className="p-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl space-y-1.5 text-xs">
+        <div className="flex items-center justify-between text-[11px]">
+          <span className="text-[#64748B]">Project URL:</span>
+          <span className="font-mono text-[#0F172A] font-semibold truncate max-w-[210px]">
+            {SUPABASE_URL}
+          </span>
+        </div>
+        <div className="flex items-center justify-between text-[11px]">
+          <span className="text-[#64748B]">Quota / Read Limit:</span>
+          <span className="font-bold text-[#047857]">Unlimited (Zero Daily Limit)</span>
+        </div>
+      </div>
+
+      <div className="p-3 bg-[#EEF5FF] border border-[#D6E6FF] rounded-xl text-xs space-y-2">
+        <p className="text-[11px] font-medium text-[#0B4F9C] leading-relaxed">
+          {statusInfo?.tableReady
+            ? 'Supabase is fully configured. All data, ranking, and results sync to Supabase!'
+            : 'To complete cloud sync, open your Supabase Dashboard -> SQL Editor, paste the SQL setup script and click Run.'}
+        </p>
+
+        <div className="flex gap-2 pt-1">
+          <button
+            type="button"
+            onClick={handleCopySql}
+            className="flex-1 py-2 px-3 bg-[#0B4F9C] hover:bg-[#094182] text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+          >
+            {copied ? <Check size={14} /> : <Copy size={14} />}
+            <span>{copied ? 'Copied SQL!' : 'Copy Supabase SQL Setup'}</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={checking}
+            onClick={testConnection}
+            className="py-2 px-3 bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#334155] font-bold rounded-xl text-xs flex items-center gap-1 transition-colors cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw size={13} className={checking ? 'animate-spin' : ''} />
+            <span>Test</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
