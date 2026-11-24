@@ -16,7 +16,6 @@ import {
   Shield,
 } from 'lucide-react';
 import CartoonAvatar from './CartoonAvatar';
-import { PWAInstallButton } from './PWAInstallModal';
 import { Config, UserRegistration } from '../types';
 
 interface MenuDrawerProps {
@@ -40,7 +39,6 @@ interface MenuDrawerProps {
   onOpenPicking: () => void;
   onOpenSocials: () => void;
   onToggleStlAuth: () => void;
-  onInstallApp: () => void;
   onOpenAdmin: () => void;
   pendingCount?: number;
 }
@@ -66,7 +64,6 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
   onOpenPicking,
   onOpenSocials,
   onToggleStlAuth,
-  onInstallApp,
   onOpenAdmin,
   pendingCount = 0,
 }) => {
@@ -256,11 +253,6 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
                 <ChevronRight size={15} className="text-[#94A3B8]" />
               </button>
             )}
-
-            <PWAInstallButton
-              onBeforeOpen={onClose}
-              onOpenInstallModal={onInstallApp}
-            />
 
             <button
               type="button"

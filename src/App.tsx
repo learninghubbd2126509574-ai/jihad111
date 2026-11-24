@@ -235,9 +235,10 @@ export default function App() {
   const [stlAuthenticated, setStlAuthenticated] = useState(false);
   const [showStlLoginModal, setShowStlLoginModal] = useState(false);
   const [showAdminLoginModal, setShowAdminLoginModal] = useState(false);
-  const { isInstallable, isInstalled, isIOS, install: triggerNativeInstall } = usePWAInstall();
+  const { isInstalled, isStandalone } = usePWAInstall();
   const [showInstallModal, setShowInstallModal] = useState(false);
   const [pendingPerformanceModal, setPendingPerformanceModal] = useState(false);
+  const wasLoggedInForInstallRef = useRef(false);
 
   const loadedCollectionsRef = useRef<Set<string>>(new Set());
 
@@ -246,6 +247,21 @@ export default function App() {
   const initialAdminPass = '212650';
   const [isAdmin, setIsAdmin] = useState(false);
   const hasStlAccess = isAdmin || stlAuthenticated;
+
+  useEffect(() => {
+    const loggedInNow = Boolean(isAdmin || authenticatedUser);
+    if (loggedInNow && !wasLoggedInForInstallRef.current) {
+      wasLoggedInForInstallRef.current = true;
+      if (!isInstalled && !isStandalone) {
+        if (authenticatedUser && !isAdmin) {
+          setPendingPerformanceModal(true);
+        }
+        setShowInstallModal(true);
+      }
+    } else if (!loggedInNow) {
+      wasLoggedInForInstallRef.current = false;
+    }
+  }, [isAdmin, authenticatedUser, isInstalled, isStandalone]);
 
   const showMsg = useCallback(
     (msg: string, type: 'success' | 'error' | 'info' = 'success') => {
@@ -3129,25 +3145,6 @@ export default function App() {
     }
   };
 
-  const handleInstallApp = async () => {
-    if (isInstalled) {
-      showMsg('Unity Earning is already installed on your device!', 'info');
-      return;
-    }
-    if (isInstallable && !isIOS) {
-      const outcome = await triggerNativeInstall();
-      if (outcome === 'accepted') {
-        showMsg('App added to your Home Screen!', 'success');
-        setShowInstallModal(false);
-        return;
-      }
-      if (outcome === 'dismissed') {
-        return;
-      }
-    }
-    setShowInstallModal(true);
-  };
-
   // Derived Stats & Rankings
   const {
     stats,
@@ -3793,7 +3790,6 @@ export default function App() {
             setShowStlLoginModal(true);
           }
         }}
-        onInstallApp={handleInstallApp}
         onOpenAdmin={() => setShowAdminPanel(true)}
         pendingCount={pendingUsers.length}
       />
@@ -4294,7 +4290,7 @@ export default function App() {
       )}
 
       <PWAInstallModal
-        isOpen={showInstallModal && !isInstalled}
+        isOpen={showInstallModal && !isInstalled && !isStandalone}
         onClose={() => {
           setShowInstallModal(false);
           if (pendingPerformanceModal && authenticatedUser) {
@@ -4303,14 +4299,8 @@ export default function App() {
           }
         }}
         onInstalled={() => {
+          setShowInstallModal(false);
           showMsg('Unity Earning added to Home Screen!', 'success');
-          if (pendingPerformanceModal && authenticatedUser) {
-            setPendingPerformanceModal(false);
-            setShowLoginPerformanceModal(true);
-          }
-        }}
-        onUnavailable={() => {
-          showMsg('Tap Chrome menu -> Install app to add Unity Earning to Home Screen', 'info');
           if (pendingPerformanceModal && authenticatedUser) {
             setPendingPerformanceModal(false);
             setShowLoginPerformanceModal(true);

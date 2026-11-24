@@ -5,10 +5,13 @@ export interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
 }
 
+const PWA_INSTALLED_STORAGE_KEY = 'unity_pwa_installed_v2';
+
 // Capture beforeinstallprompt globally as early as possible so events fired on
 // initial page load (before login) are preserved across component mounts.
 let globalDeferredPrompt: BeforeInstallPromptEvent | null = null;
 let globalInstalled = false;
+let globalStandalone = false;
 const listeners = new Set<() => void>();
 
 function checkIsStandalone(): boolean {
@@ -19,19 +22,56 @@ function checkIsStandalone(): boolean {
   );
 }
 
+function readPersistedInstalled(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(PWA_INSTALLED_STORAGE_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function writePersistedInstalled(installed: boolean): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem('unity_pwa_installed');
+    if (installed) {
+      window.localStorage.setItem(PWA_INSTALLED_STORAGE_KEY, 'true');
+    } else {
+      window.localStorage.removeItem(PWA_INSTALLED_STORAGE_KEY);
+    }
+  } catch {
+    // Ignore storage errors in restricted contexts
+  }
+}
+
+function notifyAll(): void {
+  listeners.forEach((notify) => notify());
+}
+
 if (typeof window !== 'undefined') {
-  globalInstalled = checkIsStandalone();
+  globalStandalone = checkIsStandalone();
+  if (globalStandalone) {
+    writePersistedInstalled(true);
+  }
+  globalInstalled = globalStandalone || readPersistedInstalled();
 
   window.addEventListener('beforeinstallprompt', (e: Event) => {
     e.preventDefault();
     globalDeferredPrompt = e as BeforeInstallPromptEvent;
-    listeners.forEach((notify) => notify());
+    // Chrome only fires beforeinstallprompt when the PWA is not currently installed.
+    if (!checkIsStandalone()) {
+      globalInstalled = false;
+      writePersistedInstalled(false);
+    }
+    notifyAll();
   });
 
   window.addEventListener('appinstalled', () => {
     globalInstalled = true;
     globalDeferredPrompt = null;
-    listeners.forEach((notify) => notify());
+    writePersistedInstalled(true);
+    notifyAll();
   });
 }
 
@@ -39,15 +79,25 @@ export function usePWAInstall() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(
     () => globalDeferredPrompt
   );
+  const [isStandalone, setIsStandalone] = useState<boolean>(
+    () => globalStandalone || checkIsStandalone()
+  );
   const [isInstalled, setIsInstalled] = useState<boolean>(
-    () => globalInstalled || checkIsStandalone()
+    () => globalInstalled || checkIsStandalone() || readPersistedInstalled()
   );
   const [isIOS, setIsIOS] = useState(false);
 
   useEffect(() => {
     const sync = () => {
+      const standaloneNow = checkIsStandalone();
+      if (standaloneNow) {
+        globalStandalone = true;
+        globalInstalled = true;
+        writePersistedInstalled(true);
+      }
       setDeferredPrompt(globalDeferredPrompt);
-      setIsInstalled(globalInstalled || checkIsStandalone());
+      setIsStandalone(standaloneNow || globalStandalone);
+      setIsInstalled(standaloneNow || globalInstalled || readPersistedInstalled());
     };
 
     sync();
@@ -59,7 +109,9 @@ export function usePWAInstall() {
     const mediaQuery = window.matchMedia('(display-mode: standalone)');
     const handleMediaChange = (e: MediaQueryListEvent) => {
       if (e.matches) {
+        globalStandalone = true;
         globalInstalled = true;
+        writePersistedInstalled(true);
         sync();
       }
     };
@@ -75,6 +127,15 @@ export function usePWAInstall() {
     };
   }, []);
 
+  const markInstalled = useCallback(() => {
+    globalInstalled = true;
+    globalDeferredPrompt = null;
+    writePersistedInstalled(true);
+    setIsInstalled(true);
+    setDeferredPrompt(null);
+    notifyAll();
+  }, []);
+
   const install = useCallback(async (): Promise<'accepted' | 'dismissed' | 'unavailable'> => {
     const promptEvent = globalDeferredPrompt || deferredPrompt;
     if (!promptEvent) return 'unavailable';
@@ -85,9 +146,10 @@ export function usePWAInstall() {
       if (outcome === 'accepted') {
         globalInstalled = true;
         globalDeferredPrompt = null;
+        writePersistedInstalled(true);
         setIsInstalled(true);
         setDeferredPrompt(null);
-        listeners.forEach((notify) => notify());
+        notifyAll();
         return 'accepted';
       }
       return 'dismissed';
@@ -99,7 +161,9 @@ export function usePWAInstall() {
   return {
     isInstallable: !!deferredPrompt,
     isInstalled,
+    isStandalone,
     isIOS,
     install,
+    markInstalled,
   };
 }

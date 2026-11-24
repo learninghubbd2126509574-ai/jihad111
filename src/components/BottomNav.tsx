@@ -18,72 +18,62 @@ interface NavColorTheme {
 }
 
 const FilledHomeIcon: React.FC = () => (
-  <svg viewBox="0 0 24 24" fill="currentColor" className="w-[20px] h-[20px]" aria-hidden="true">
-    <path
-      fillRule="evenodd"
-      clipRule="evenodd"
-      d="M11.34 2.72a1 1 0 0 1 1.32 0l8.25 7.26A1 1 0 0 1 20.25 11.75H19v7.5A1.75 1.75 0 0 1 17.25 21H14.5a.75.75 0 0 1-.75-.75v-4.5a1.75 1.75 0 0 0-3.5 0v4.5a.75.75 0 0 1-.75.75H6.75A1.75 1.75 0 0 1 5 19.25v-7.5H3.75a1 1 0 0 1-.66-1.77l8.25-7.26Z"
-    />
+  <svg viewBox="0 0 24 24" fill="currentColor" className="w-[21px] h-[21px]" aria-hidden="true">
+    <path d="M11.47 3.841a.75.75 0 0 1 1.06 0l8.69 8.69a.75.75 0 1 0 1.06-1.061l-8.689-8.69a2.25 2.25 0 0 0-3.182 0l-8.69 8.69a.75.75 0 1 0 1.061 1.06l8.69-8.689Z" />
+    <path d="m12 5.432 8.159 8.159c.03.03.06.058.091.086v6.198c0 1.035-.84 1.875-1.875 1.875H15a.75.75 0 0 1-.75-.75v-4.5a.75.75 0 0 0-.75-.75h-3a.75.75 0 0 0-.75.75V21a.75.75 0 0 1-.75.75H5.625a1.875 1.875 0 0 1-1.875-1.875v-6.198a2.29 2.29 0 0 0 .091-.086L12 5.432Z" />
   </svg>
 );
 
 const FilledSubmitIcon: React.FC = () => (
-  <svg viewBox="0 0 24 24" fill="currentColor" className="w-[20px] h-[20px]" aria-hidden="true">
+  <svg viewBox="0 0 24 24" fill="currentColor" className="w-[21px] h-[21px]" aria-hidden="true">
     <path
       fillRule="evenodd"
       clipRule="evenodd"
-      d="M12 2.5C6.75 2.5 2.5 6.75 2.5 12S6.75 21.5 12 21.5s9.5-4.25 9.5-9.5S17.25 2.5 12 2.5Zm.9 5.5a.9.9 0 1 0-1.8 0v3.1H8a.9.9 0 1 0 0 1.8h3.1V16a.9.9 0 1 0 1.8 0v-3.1H16a.9.9 0 1 0 0-1.8h-3.1V8Z"
+      d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25ZM12.75 9a.75.75 0 0 0-1.5 0v2.25H9a.75.75 0 0 0 0 1.5h2.25V15a.75.75 0 0 0 1.5 0v-2.25H15a.75.75 0 0 0 0-1.5h-2.25V9Z"
     />
   </svg>
 );
 
 const FilledWithdrawIcon: React.FC = () => (
-  <svg viewBox="0 0 24 24" fill="currentColor" className="w-[20px] h-[20px]" aria-hidden="true">
-    <path d="M5.25 4A2.25 2.25 0 0 0 3 6.25v1.03c.54-.33 1.18-.53 1.88-.53h13.62V6.25A2.25 2.25 0 0 0 16.25 4H5.25Z" />
-    <path
-      fillRule="evenodd"
-      clipRule="evenodd"
-      d="M4.88 8.25A1.88 1.88 0 0 0 3 10.13v7.62A2.25 2.25 0 0 0 5.25 20h13.5A2.25 2.25 0 0 0 21 17.75v-7.25a2.25 2.25 0 0 0-2.25-2.25H4.88Zm10.87 4.5a1.38 1.38 0 1 0 0 2.75h2.25a1.38 1.38 0 1 0 0-2.75h-2.25Z"
-    />
+  <svg viewBox="0 0 24 24" fill="currentColor" className="w-[21px] h-[21px]" aria-hidden="true">
+    <path d="M2.273 5.625A4.483 4.483 0 0 1 5.25 4.5h13.5c1.141 0 2.183.425 2.977 1.125A3 3 0 0 0 18.75 3H5.25a3 3 0 0 0-2.977 2.625ZM2.273 8.625A4.483 4.483 0 0 1 5.25 7.5h13.5c1.141 0 2.183.425 2.977 1.125A3 3 0 0 0 18.75 6H5.25a3 3 0 0 0-2.977 2.625ZM5.25 9a3 3 0 0 0-3 3v6a3 3 0 0 0 3 3h13.5a3 3 0 0 0 3-3v-6a3 3 0 0 0-3-3H15a.75.75 0 0 0-.75.75 2.25 2.25 0 0 1-4.5 0A.75.75 0 0 0 9 9H5.25Z" />
   </svg>
 );
 
 const FilledSheetIcon: React.FC = () => (
-  <svg viewBox="0 0 24 24" fill="currentColor" className="w-[20px] h-[20px]" aria-hidden="true">
+  <svg viewBox="0 0 24 24" fill="currentColor" className="w-[21px] h-[21px]" aria-hidden="true">
     <path
       fillRule="evenodd"
       clipRule="evenodd"
-      d="M6.25 2.75A2.25 2.25 0 0 0 4 5v14a2.25 2.25 0 0 0 2.25 2.25h11.5A2.25 2.25 0 0 0 20 19V8.56a2.25 2.25 0 0 0-.66-1.59l-3.56-3.56a2.25 2.25 0 0 0-1.59-.66H6.25Zm8 1.85 3.9 3.9h-3.15a.75.75 0 0 1-.75-.75V4.6ZM8 12.25a.75.75 0 0 1 .75-.75h6.5a.75.75 0 0 1 0 1.5h-6.5a.75.75 0 0 1-.75-.75Zm0 3.75a.75.75 0 0 1 .75-.75h4.5a.75.75 0 0 1 0 1.5h-4.5A.75.75 0 0 1 8 16Z"
+      d="M5.625 1.5c-1.036 0-1.875.84-1.875 1.875v17.25c0 1.035.84 1.875 1.875 1.875h12.75c1.035 0 1.875-.84 1.875-1.875V12.75A3.75 3.75 0 0 0 16.5 9h-1.875a1.875 1.875 0 0 1-1.875-1.875V5.25A3.75 3.75 0 0 0 9 1.5H5.625ZM7.5 15a.75.75 0 0 1 .75-.75h7.5a.75.75 0 0 1 0 1.5h-7.5A.75.75 0 0 1 7.5 15Zm.75 2.25a.75.75 0 0 0 0 1.5H12a.75.75 0 0 0 0-1.5H8.25Z"
     />
+    <path d="M12.971 1.816A5.23 5.23 0 0 1 14.25 5.25v1.875c0 .207.168.375.375.375H16.5a5.23 5.23 0 0 1 3.434 1.279 9.768 9.768 0 0 0-6.963-6.963Z" />
   </svg>
 );
 
 const FilledAllLinksIcon: React.FC = () => (
-  <svg viewBox="0 0 24 24" fill="currentColor" className="w-[20px] h-[20px]" aria-hidden="true">
+  <svg viewBox="0 0 24 24" fill="currentColor" className="w-[21px] h-[21px]" aria-hidden="true">
     <path
       fillRule="evenodd"
       clipRule="evenodd"
-      d="M12 2.5C6.75 2.5 2.5 6.75 2.5 12S6.75 21.5 12 21.5s9.5-4.25 9.5-9.5S17.25 2.5 12 2.5Zm-2.3 6.2a2.9 2.9 0 0 0-2.9 2.9v.8a2.9 2.9 0 0 0 2.9 2.9h1.2a.9.9 0 1 0 0-1.8H9.7a1.1 1.1 0 0 1-1.1-1.1v-.8a1.1 1.1 0 0 1 1.1-1.1h1.2a.9.9 0 1 0 0-1.8H9.7Zm4.6 0a.9.9 0 1 0 0 1.8h1.1a1.1 1.1 0 0 1 1.1 1.1v.8a1.1 1.1 0 0 1-1.1 1.1h-1.1a.9.9 0 1 0 0 1.8h1.1a2.9 2.9 0 0 0 2.9-2.9v-.8a2.9 2.9 0 0 0-2.9-2.9h-1.1Zm-4.1 2.4a.9.9 0 1 0 0 1.8h3.6a.9.9 0 1 0 0-1.8h-3.6Z"
+      d="M9.5 6.5A5.5 5.5 0 0 0 4 12a5.5 5.5 0 0 0 5.5 5.5h2a1.25 1.25 0 1 0 0-2.5h-2a3 3 0 1 1 0-6h2a1.25 1.25 0 1 0 0-2.5h-2Zm5 0a1.25 1.25 0 1 0 0 2.5h2a3 3 0 1 1 0 6h-2a1.25 1.25 0 1 0 0 2.5h2A5.5 5.5 0 0 0 20 12a5.5 5.5 0 0 0-5.5-5.5h-2ZM8.25 10.75a1.25 1.25 0 1 0 0 2.5h7.5a1.25 1.25 0 1 0 0-2.5h-7.5Z"
     />
   </svg>
 );
 
 const FilledCommunityIcon: React.FC = () => (
-  <svg viewBox="0 0 24 24" fill="currentColor" className="w-[20px] h-[20px]" aria-hidden="true">
-    <path
-      fillRule="evenodd"
-      clipRule="evenodd"
-      d="M4.75 3.5A2.75 2.75 0 0 0 2 6.25v8.5A2.75 2.75 0 0 0 4.75 17.5H6v2.75a.75.75 0 0 0 1.25.56l3.7-3.31h8.3A2.75 2.75 0 0 0 22 14.75v-8.5A2.75 2.75 0 0 0 19.25 3.5H4.75Zm3.5 6a1.15 1.15 0 1 0 0 2.3 1.15 1.15 0 0 0 0-2.3Zm3.75 0a1.15 1.15 0 1 0 0 2.3 1.15 1.15 0 0 0 0-2.3Zm3.75 0a1.15 1.15 0 1 0 0 2.3 1.15 1.15 0 0 0 0-2.3Z"
-    />
+  <svg viewBox="0 0 24 24" fill="currentColor" className="w-[21px] h-[21px]" aria-hidden="true">
+    <path d="M4.913 2.658c2.075-.27 4.19-.408 6.337-.408 2.147 0 4.262.139 6.337.408 1.922.25 3.291 1.861 3.405 3.727a4.403 4.403 0 0 0-1.032-.211 50.89 50.89 0 0 0-8.42 0c-2.358.196-4.04 2.19-4.04 4.434v4.286a4.47 4.47 0 0 0 2.433 3.984L7.28 21.53A.75.75 0 0 1 6 21v-4.03a48.527 48.527 0 0 1-1.087-.128C2.905 16.58 1.5 14.833 1.5 12.862V6.638c0-1.97 1.405-3.718 3.413-3.979Z" />
+    <path d="M15.75 7.5c-1.376 0-2.739.057-4.086.169C10.124 7.797 9 9.103 9 10.609v4.285c0 1.507 1.128 2.814 2.67 2.94 1.243.102 2.5.157 3.768.165l2.782 2.781a.75.75 0 0 0 1.28-.53v-2.39l.33-.026c1.542-.125 2.67-1.433 2.67-2.94v-4.286c0-1.505-1.125-2.811-2.664-2.94A49.392 49.392 0 0 0 15.75 7.5Z" />
   </svg>
 );
 
 const FilledProfileIcon: React.FC = () => (
-  <svg viewBox="0 0 24 24" fill="currentColor" className="w-[20px] h-[20px]" aria-hidden="true">
+  <svg viewBox="0 0 24 24" fill="currentColor" className="w-[21px] h-[21px]" aria-hidden="true">
     <path
       fillRule="evenodd"
       clipRule="evenodd"
-      d="M12 2.5C6.75 2.5 2.5 6.75 2.5 12S6.75 21.5 12 21.5s9.5-4.25 9.5-9.5S17.25 2.5 12 2.5Zm0 3.75a3.15 3.15 0 1 1 0 6.3 3.15 3.15 0 0 1 0-6.3Zm0 13.15a7.2 7.2 0 0 1-5.53-2.58c.66-1.78 2.86-2.97 5.53-2.97s4.87 1.19 5.53 2.97A7.2 7.2 0 0 1 12 19.4Z"
+      d="M7.5 6a4.5 4.5 0 1 1 9 0 4.5 4.5 0 0 1-9 0ZM3.751 20.105a8.25 8.25 0 0 1 16.498 0 .75.75 0 0 1-.437.695A18.683 18.683 0 0 1 12 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 0 1-.437-.695Z"
     />
   </svg>
 );
@@ -251,7 +241,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
                   rel="noopener noreferrer"
                   onClick={() => handleLinkClick(item.id)}
                   className={`group relative z-10 flex flex-col items-center justify-center flex-1 min-w-0 h-12 px-0.5 rounded-xl transition-colors duration-200 active:scale-95 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0B4F9C] ${
-                    isActive ? 'text-white' : `text-[#64748B] ${theme.hoverText}`
+                    isActive ? 'text-white' : `text-[#475569] ${theme.hoverText}`
                   }`}
                 >
                   {innerContent}
@@ -269,7 +259,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
                     onOpenQuickLinks();
                   }}
                   className={`group relative z-10 flex flex-col items-center justify-center flex-1 min-w-0 h-12 px-0.5 rounded-xl transition-colors duration-200 active:scale-95 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#BE123C] ${
-                    isActive ? 'text-white' : `text-[#64748B] ${theme.hoverText}`
+                    isActive ? 'text-white' : `text-[#475569] ${theme.hoverText}`
                   }`}
                 >
                   {innerContent}
@@ -287,7 +277,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
                 }}
                 aria-current={isActive ? 'page' : undefined}
                 className={`group relative z-10 flex flex-col items-center justify-center flex-1 min-w-0 h-12 px-0.5 rounded-xl transition-colors duration-200 active:scale-95 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0B4F9C] ${
-                  isActive ? 'text-white' : `text-[#64748B] ${theme.hoverText}`
+                  isActive ? 'text-white' : `text-[#475569] ${theme.hoverText}`
                 }`}
               >
                 {innerContent}
