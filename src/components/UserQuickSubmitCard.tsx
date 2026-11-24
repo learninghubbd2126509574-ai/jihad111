@@ -92,14 +92,23 @@ export default function UserQuickSubmitCard({
 
   const effectiveMemberId = selectedMemberId || myMember?.id || fallbackMemberId;
 
+  const currentResult = effectiveMemberId ? results[effectiveMemberId] : undefined;
+
   useEffect(() => {
-    setLead('0');
-    setConvert('0');
-    setPersonalLead('0');
-    setHasSubmittedThisSession(false);
+    if (currentResult?.submitted) {
+      setLead(String(currentResult.lead ?? 0));
+      setConvert(String(currentResult.convert ?? 0));
+      setPersonalLead(String(currentResult.personalLead ?? 0));
+      setHasSubmittedThisSession(true);
+    } else {
+      setLead('0');
+      setConvert('0');
+      setPersonalLead('0');
+      setHasSubmittedThisSession(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [effectiveMemberId, isTimerActive]);
 
-  const currentResult = effectiveMemberId ? results[effectiveMemberId] : undefined;
   const isSubmitted = hasSubmittedThisSession || Boolean(currentResult?.submitted);
   const canSubmit = isTimerActive && !submitting && Boolean(effectiveMemberId);
 

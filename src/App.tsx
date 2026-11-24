@@ -676,15 +676,46 @@ export default function App() {
       }
     );
 
-    // One-time startup reads (5-min localStorage TTL + session cached)
-    refreshLeaderRanking(false);
-    refreshTrainerRanking(false);
+    const unsubLeaderRanking = onSnapshot(
+      collection(db, 'leaderRanking'),
+      (snapshot) => {
+        const list: RankingMember[] = [];
+        snapshot.forEach((d) => list.push({ id: d.id, ...d.data() } as RankingMember));
+        list.sort((a, b) => (b.score || 0) - (a.score || 0));
+        setLeaderRanking(list);
+        writeCacheWithTTL('unity_cache_leaderRanking', list);
+        loadedCollectionsRef.current.add('leaderRanking');
+      },
+      (err) => {
+        console.warn('Leader ranking listener warning:', err);
+        refreshLeaderRanking(false);
+      }
+    );
+
+    const unsubTrainerRanking = onSnapshot(
+      collection(db, 'trainerRanking'),
+      (snapshot) => {
+        const list: RankingMember[] = [];
+        snapshot.forEach((d) => list.push({ id: d.id, ...d.data() } as RankingMember));
+        list.sort((a, b) => (b.score || 0) - (a.score || 0));
+        setTrainerRanking(list);
+        writeCacheWithTTL('unity_cache_trainerRanking', list);
+        loadedCollectionsRef.current.add('trainerRanking');
+      },
+      (err) => {
+        console.warn('Trainer ranking listener warning:', err);
+        refreshTrainerRanking(false);
+      }
+    );
+
     refreshStlMembers(false);
 
     return () => {
       unsubConfig();
       unsubMembers();
       unsubResults();
+      unsubLeaderRanking();
+      unsubTrainerRanking();
     };
   }, [
     authenticatedUser,
@@ -1720,7 +1751,11 @@ export default function App() {
         );
       }
 
-      const prevResult = results[memberId] || { lead: 0, convert: 0, personalLead: 0 };
+      const cleanMemberWa = (member?.whatsapp || cleanWa || '').replace(/\s+/g, '');
+      const prevResult =
+        results[memberId] ||
+        (cleanMemberWa ? results[cleanMemberWa] : undefined) ||
+        { lead: 0, convert: 0, personalLead: 0 };
       const diffScore = convert - (prevResult.convert || 0);
       const diffLeads = personalLead - (prevResult.personalLead || 0);
 
@@ -1797,6 +1832,10 @@ export default function App() {
       });
 
       if (member?.type === 'leader' && diffScore !== 0) {
+        setConfig((prev) => ({
+          ...prev,
+          totalConverts: Math.max(0, (prev.totalConverts || 0) + diffScore),
+        }));
         await updateDoc(doc(db, 'config', 'global'), {
           totalConverts: increment(diffScore),
         });
@@ -1806,10 +1845,11 @@ export default function App() {
         const isLeader = member.type === 'leader';
         const rankingList = isLeader ? leaderRanking : trainerRanking;
         const cleanMemberName = normalizeName(member.name);
+        const cleanResolvedWa = resolvedWhatsapp.replace(/\s+/g, '');
         const rankingEntry = rankingList.find(
           (r) =>
             r.id === member!.id ||
-            (resolvedWhatsapp && (r as any).whatsapp && (r as any).whatsapp.replace(/\s+/g, '') === resolvedWhatsapp.replace(/\s+/g, '')) ||
+            (cleanResolvedWa && (r.id === cleanResolvedWa || ((r as any).whatsapp && (r as any).whatsapp.replace(/\s+/g, '') === cleanResolvedWa))) ||
             (r.name && r.name.trim().toLowerCase() === member!.name.trim().toLowerCase()) ||
             (cleanMemberName && r.name && normalizeName(r.name) === cleanMemberName)
         );
@@ -1817,12 +1857,18 @@ export default function App() {
         const setRankingState = isLeader ? setLeaderRanking : setTrainerRanking;
 
         if (rankingEntry) {
-          if (diffScore !== 0 || diffLeads !== 0) {
+          const currentScore = Number(rankingEntry.score || 0);
+          const currentLeads = Number(rankingEntry.leads || 0);
+          const projectedScore = currentScore + diffScore;
+          const nextScore = Math.max(convert, projectedScore);
+          const nextLeads = Math.max(personalLead, currentLeads + diffLeads);
+
+          if (diffScore !== 0 || diffLeads !== 0 || nextScore !== currentScore || !rankingEntry.name) {
             await updateDoc(doc(db, coll, rankingEntry.id), {
               name: rankingEntry.name || member.name,
               whatsapp: (rankingEntry as any).whatsapp || resolvedWhatsapp,
-              score: increment(diffScore),
-              leads: increment(diffLeads),
+              score: projectedScore < convert ? convert : increment(diffScore),
+              leads: currentLeads + diffLeads < personalLead ? personalLead : increment(diffLeads),
             });
             setRankingState((prev) => {
               const next = prev
@@ -1831,8 +1877,9 @@ export default function App() {
                     ? {
                         ...r,
                         name: r.name || member!.name,
-                        score: (r.score || 0) + diffScore,
-                        leads: (r.leads || 0) + diffLeads,
+                        whatsapp: (r as any).whatsapp || resolvedWhatsapp,
+                        score: nextScore,
+                        leads: nextLeads,
                       }
                     : r
                 )
@@ -3129,18 +3176,22 @@ export default function App() {
       .filter(isLeaderMember)
       .map((m) => {
         const cleanM = normalizeName(m.name);
+        const cleanMWa = (m.whatsapp || '').replace(/\s+/g, '');
         const rankingEntry = leaderRanking.find(
           (r) =>
             r.id === m.id ||
-            r.name.trim().toLowerCase() === m.name.trim().toLowerCase() ||
-            (cleanM && normalizeName(r.name) === cleanM)
+            (cleanMWa && (r.id === cleanMWa || ((r as any).whatsapp && (r as any).whatsapp.replace(/\s+/g, '') === cleanMWa))) ||
+            (r.name && r.name.trim().toLowerCase() === m.name.trim().toLowerCase()) ||
+            (cleanM && r.name && normalizeName(r.name) === cleanM)
         );
-        const res = results[m.id] || (m.whatsapp ? results[m.whatsapp] : undefined);
+        const res =
+          results[m.id] ||
+          (cleanMWa ? results[cleanMWa] || results[`member_${cleanMWa}`] : undefined);
         return {
           ...m,
           type: 'leader' as const,
-          score: rankingEntry?.score || 0,
-          leads: rankingEntry?.leads || 0,
+          score: rankingEntry?.score ?? (res?.submitted ? res.convert : 0),
+          leads: rankingEntry?.leads ?? (res?.submitted ? res.personalLead : 0),
           result: res || {
             id: m.id,
             memberId: m.id,
@@ -3157,18 +3208,22 @@ export default function App() {
       .filter(isTrainerMember)
       .map((m) => {
         const cleanM = normalizeName(m.name);
+        const cleanMWa = (m.whatsapp || '').replace(/\s+/g, '');
         const rankingEntry = trainerRanking.find(
           (r) =>
             r.id === m.id ||
-            r.name.trim().toLowerCase() === m.name.trim().toLowerCase() ||
-            (cleanM && normalizeName(r.name) === cleanM)
+            (cleanMWa && (r.id === cleanMWa || ((r as any).whatsapp && (r as any).whatsapp.replace(/\s+/g, '') === cleanMWa))) ||
+            (r.name && r.name.trim().toLowerCase() === m.name.trim().toLowerCase()) ||
+            (cleanM && r.name && normalizeName(r.name) === cleanM)
         );
-        const res = results[m.id] || (m.whatsapp ? results[m.whatsapp] : undefined);
+        const res =
+          results[m.id] ||
+          (cleanMWa ? results[cleanMWa] || results[`member_${cleanMWa}`] : undefined);
         return {
           ...m,
           type: 'trainer' as const,
-          score: rankingEntry?.score || 0,
-          leads: rankingEntry?.leads || 0,
+          score: rankingEntry?.score ?? (res?.submitted ? res.convert : 0),
+          leads: rankingEntry?.leads ?? (res?.submitted ? res.personalLead : 0),
           result: res || {
             id: m.id,
             memberId: m.id,
@@ -3181,13 +3236,21 @@ export default function App() {
         };
       });
 
+    const getTimestampMs = (ts: any) => {
+      if (!ts) return Date.now();
+      if (typeof ts.toMillis === 'function') return ts.toMillis();
+      if (typeof ts.seconds === 'number') return ts.seconds * 1000;
+      if (typeof ts === 'number') return ts;
+      return Date.now();
+    };
+
     const sortByPerformance = (a: any, b: any) => {
       const convA = a.result?.convert || 0;
       const convB = b.result?.convert || 0;
       if (convB !== convA) return convB - convA;
       if (convA > 0 && convB > 0) {
-        const timeA = a.result?.updatedAt?.toMillis?.() || Date.now();
-        const timeB = b.result?.updatedAt?.toMillis?.() || Date.now();
+        const timeA = getTimestampMs(a.result?.updatedAt);
+        const timeB = getTimestampMs(b.result?.updatedAt);
         if (timeA !== timeB) return timeA - timeB;
       }
       const pLeadA = a.result?.personalLead || 0;
@@ -3203,35 +3266,34 @@ export default function App() {
       const convA = a.result?.convert || 0;
       const convB = b.result?.convert || 0;
       if (convB !== convA) return convB - convA;
-      return a.name.localeCompare(b.name);
+      return (a.name || '').localeCompare(b.name || '');
     };
-
-    allLeaders.forEach((m) => {
-      const r = m.result;
-      if (r && r.submitted) {
-        todayConverts += Number(r.convert) || 0;
-        todayLeads += (Number(r.lead) || 0) + (Number(r.personalLead) || 0);
-      }
-    });
 
     // Merge any ranking entries that aren't in members yet so Leaderboard Top 3 & Elite stay complete
     const mergedLeadersForRanking = [...allLeaders];
     leaderRanking.forEach((r) => {
-      const cleanR = normalizeName(r.name);
+      const cleanR = normalizeName(r.name || '');
+      const cleanRWa = ((r as any).whatsapp || '').replace(/\s+/g, '');
       const exists = mergedLeadersForRanking.some(
         (m) =>
           m.id === r.id ||
-          m.name.trim().toLowerCase() === r.name.trim().toLowerCase() ||
+          (cleanRWa && m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanRWa) ||
+          (m.whatsapp && r.id === m.whatsapp.replace(/\s+/g, '')) ||
+          (r.name && m.name.trim().toLowerCase() === r.name.trim().toLowerCase()) ||
           (cleanR && normalizeName(m.name) === cleanR)
       );
       if (!exists) {
+        const res =
+          results[r.id] ||
+          (cleanRWa ? results[cleanRWa] || results[`member_${cleanRWa}`] : undefined);
         mergedLeadersForRanking.push({
           id: r.id,
-          name: r.name,
+          name: r.name || cleanRWa || 'Leader',
+          whatsapp: (r as any).whatsapp || '',
           type: 'leader' as const,
           score: r.score || 0,
           leads: r.leads || 0,
-          result: results[r.id] || {
+          result: res || {
             id: r.id,
             memberId: r.id,
             lead: 0,
@@ -3246,21 +3308,28 @@ export default function App() {
 
     const mergedTrainersForRanking = [...allTrainers];
     trainerRanking.forEach((r) => {
-      const cleanR = normalizeName(r.name);
+      const cleanR = normalizeName(r.name || '');
+      const cleanRWa = ((r as any).whatsapp || '').replace(/\s+/g, '');
       const exists = mergedTrainersForRanking.some(
         (m) =>
           m.id === r.id ||
-          m.name.trim().toLowerCase() === r.name.trim().toLowerCase() ||
+          (cleanRWa && m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanRWa) ||
+          (m.whatsapp && r.id === m.whatsapp.replace(/\s+/g, '')) ||
+          (r.name && m.name.trim().toLowerCase() === r.name.trim().toLowerCase()) ||
           (cleanR && normalizeName(m.name) === cleanR)
       );
       if (!exists) {
+        const res =
+          results[r.id] ||
+          (cleanRWa ? results[cleanRWa] || results[`member_${cleanRWa}`] : undefined);
         mergedTrainersForRanking.push({
           id: r.id,
-          name: r.name,
+          name: r.name || cleanRWa || 'Trainer',
+          whatsapp: (r as any).whatsapp || '',
           type: 'trainer' as const,
           score: r.score || 0,
           leads: r.leads || 0,
-          result: results[r.id] || {
+          result: res || {
             id: r.id,
             memberId: r.id,
             lead: 0,
@@ -3278,25 +3347,29 @@ export default function App() {
       if (u.status === 'blocked') return;
       const pos = (u.position || '').toLowerCase().trim();
       const cleanU = normalizeName(u.fullName);
+      const cleanUWa = (u.whatsapp || '').replace(/\s+/g, '');
       if (pos === 'team trainer' || pos === 'trainer') {
         const exists = mergedTrainersForRanking.some(
           (m) =>
+            (cleanUWa && m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanUWa) ||
             m.name.trim().toLowerCase() === u.fullName.trim().toLowerCase() ||
             (cleanU && normalizeName(m.name) === cleanU)
         );
         if (!exists) {
           const trainerRankMatch = trainerRanking.find(
             (r) =>
-              r.name.trim().toLowerCase() === u.fullName.trim().toLowerCase() ||
-              (cleanU && normalizeName(r.name) === cleanU)
+              (cleanUWa && ((r as any).whatsapp === cleanUWa || r.id === cleanUWa)) ||
+              (r.name && r.name.trim().toLowerCase() === u.fullName.trim().toLowerCase()) ||
+              (cleanU && r.name && normalizeName(r.name) === cleanU)
           );
           mergedTrainersForRanking.push({
             id: trainerRankMatch?.id || u.id || u.whatsapp,
             name: u.fullName,
+            whatsapp: u.whatsapp,
             type: 'trainer' as const,
             score: trainerRankMatch?.score || (u as any).score || 0,
             leads: trainerRankMatch?.leads || (u as any).leads || 0,
-            result: results[trainerRankMatch?.id || u.whatsapp] || {
+            result: results[trainerRankMatch?.id || ''] || results[u.whatsapp] || results[`member_${cleanUWa}`] || {
               id: u.whatsapp,
               memberId: u.whatsapp,
               lead: 0,
@@ -3310,22 +3383,25 @@ export default function App() {
       } else if (pos === 'team leader') {
         const exists = mergedLeadersForRanking.some(
           (m) =>
+            (cleanUWa && m.whatsapp && m.whatsapp.replace(/\s+/g, '') === cleanUWa) ||
             m.name.trim().toLowerCase() === u.fullName.trim().toLowerCase() ||
             (cleanU && normalizeName(m.name) === cleanU)
         );
         if (!exists) {
           const leaderRankMatch = leaderRanking.find(
             (r) =>
-              r.name.trim().toLowerCase() === u.fullName.trim().toLowerCase() ||
-              (cleanU && normalizeName(r.name) === cleanU)
+              (cleanUWa && ((r as any).whatsapp === cleanUWa || r.id === cleanUWa)) ||
+              (r.name && r.name.trim().toLowerCase() === u.fullName.trim().toLowerCase()) ||
+              (cleanU && r.name && normalizeName(r.name) === cleanU)
           );
           mergedLeadersForRanking.push({
             id: leaderRankMatch?.id || u.id || u.whatsapp,
             name: u.fullName,
+            whatsapp: u.whatsapp,
             type: 'leader' as const,
             score: leaderRankMatch?.score || (u as any).score || 0,
             leads: leaderRankMatch?.leads || (u as any).leads || 0,
-            result: results[leaderRankMatch?.id || u.whatsapp] || {
+            result: results[leaderRankMatch?.id || ''] || results[u.whatsapp] || results[`member_${cleanUWa}`] || {
               id: u.whatsapp,
               memberId: u.whatsapp,
               lead: 0,
@@ -3339,9 +3415,19 @@ export default function App() {
       }
     });
 
+    mergedLeadersForRanking.forEach((m) => {
+      const r = m.result;
+      if (r && r.submitted) {
+        todayConverts += Number(r.convert) || 0;
+        todayLeads += (Number(r.lead) || 0) + (Number(r.personalLead) || 0);
+      }
+    });
+
     const sortedL = [...allLeaders].sort(sortByPerformance);
     const sortedT = [...allTrainers].sort(sortByPerformance);
-    const allSorted = [...allLeaders, ...allTrainers].sort(sortByPerformance);
+    const perfLeaders = [...mergedLeadersForRanking].sort(sortByPerformance);
+    const perfTrainers = [...mergedTrainersForRanking].sort(sortByPerformance);
+    const allSorted = [...perfLeaders, ...perfTrainers].sort(sortByPerformance);
     const sortedLR = [...mergedLeadersForRanking].sort(sortByTotalRanking);
     const sortedTR = [...mergedTrainersForRanking].sort(sortByTotalRanking);
 
@@ -3352,8 +3438,8 @@ export default function App() {
         todayLeads,
         converts: todayConverts,
       },
-      topLeader: sortedL[0]?.result?.submitted && sortedL[0]?.result?.convert > 0 ? sortedL[0] : null,
-      topTrainer: sortedT[0]?.result?.submitted && sortedT[0]?.result?.convert > 0 ? sortedT[0] : null,
+      topLeader: perfLeaders[0]?.result?.submitted && perfLeaders[0]?.result?.convert > 0 ? perfLeaders[0] : null,
+      topTrainer: perfTrainers[0]?.result?.submitted && perfTrainers[0]?.result?.convert > 0 ? perfTrainers[0] : null,
       topOverall:
         allSorted[0]?.result?.submitted && allSorted[0]?.result?.convert > 0 ? allSorted[0] : null,
       sortedLeaders: sortedL,
@@ -4030,11 +4116,12 @@ export default function App() {
         <RankingBoardModal
           title="Team Leader Ranking"
           icon={Crown}
-          members={sortedLeaderRanking}
-          allLeaders={sortedLeaderRanking}
-          allTrainers={sortedTrainerRanking}
+          members={sortedLeadersByRanking as any}
+          allLeaders={sortedLeadersByRanking as any}
+          allTrainers={sortedTrainersByRanking as any}
           approvedUsers={approvedUsers}
           rosterMembers={members}
+          results={results}
           customLogo={config.customLogo}
           onClose={() => setShowLeaderRankingModal(false)}
           isActive={config.leaderRankingActive || false}
@@ -4045,11 +4132,12 @@ export default function App() {
         <RankingBoardModal
           title="Team Trainer Ranking"
           icon={Award}
-          members={sortedTrainerRanking}
-          allLeaders={sortedLeaderRanking}
-          allTrainers={sortedTrainerRanking}
+          members={sortedTrainersByRanking as any}
+          allLeaders={sortedLeadersByRanking as any}
+          allTrainers={sortedTrainersByRanking as any}
           approvedUsers={approvedUsers}
           rosterMembers={members}
+          results={results}
           customLogo={config.customLogo}
           onClose={() => setShowTrainerRankingModal(false)}
           isActive={config.trainerRankingActive || false}
@@ -4059,10 +4147,11 @@ export default function App() {
       {showOverallStatsModal && (
         <OverallStatsModal
           onClose={() => setShowOverallStatsModal(false)}
-          leaders={sortedLeaderRanking}
-          trainers={sortedTrainerRanking}
+          leaders={sortedLeadersByRanking as any}
+          trainers={sortedTrainersByRanking as any}
           approvedUsers={approvedUsers}
           rosterMembers={members}
+          results={results}
           customLogo={config.customLogo}
         />
       )}

@@ -417,12 +417,19 @@ export async function updateDoc(
   docRef: DocumentReference,
   partialData: any
 ): Promise<void> {
-  let existing = getLocalDoc(docRef.collection, docRef.id);
+  const hasIncrement = Object.values(partialData).some(
+    (val) => val && typeof val === 'object' && (val as any).__isIncrement
+  );
+
+  let existing: any = hasIncrement ? null : getLocalDoc(docRef.collection, docRef.id);
   if (!existing) {
     try {
       const snap = await getDoc(docRef);
       if (snap.exists()) existing = snap.data();
     } catch {}
+  }
+  if (!existing) {
+    existing = getLocalDoc(docRef.collection, docRef.id);
   }
   const base = existing || {};
   const merged = { ...base, ...partialData };
@@ -430,7 +437,7 @@ export async function updateDoc(
   // Handle special field transformations
   for (const [key, val] of Object.entries(partialData)) {
     if (val && typeof val === 'object' && (val as any).__isIncrement) {
-      merged[key] = (Number(base[key]) || 0) + (val as any).delta;
+      merged[key] = Math.max(0, (Number(base[key]) || 0) + (val as any).delta);
     }
   }
 

@@ -35,6 +35,7 @@ import {
   PickingItem,
   QuickLink,
   RankingMember,
+  Result,
   SocialLinks,
   Teacher,
   UserRegistration,
@@ -974,6 +975,7 @@ export const RankingBoardModal = ({
   allTrainers,
   approvedUsers = [],
   rosterMembers = [],
+  results = {},
   customLogo,
   onClose,
   isActive,
@@ -986,6 +988,7 @@ export const RankingBoardModal = ({
   allTrainers: RankingMember[];
   approvedUsers?: UserRegistration[];
   rosterMembers?: Member[];
+  results?: Record<string, Result>;
   customLogo?: string;
   onClose: () => void;
   isActive: boolean;
@@ -1000,6 +1003,25 @@ export const RankingBoardModal = ({
       (u) => u.fullName?.trim().toLowerCase().replace(/\s+/g, ' ') === clean
     )?.profilePic;
   };
+  const findTodayResult = (m: RankingMember): Result | undefined => {
+    if (results[m.id]?.submitted) return results[m.id];
+    const cleanName = (m.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const wa = ((m as any).whatsapp || '').replace(/\s+/g, '');
+    if (wa) {
+      if (results[wa]?.submitted) return results[wa];
+      if (results[`member_${wa}`]?.submitted) return results[`member_${wa}`];
+    }
+    const rosterMatch = rosterMembers.find(
+      (rm) =>
+        (wa && rm.whatsapp && rm.whatsapp.replace(/\s+/g, '') === wa) ||
+        (cleanName && rm.name?.trim().toLowerCase().replace(/\s+/g, ' ') === cleanName)
+    );
+    if (rosterMatch && results[rosterMatch.id]?.submitted) {
+      return results[rosterMatch.id];
+    }
+    return results[m.id];
+  };
+  const sortedMembers = [...members].sort((a, b) => (b.score || 0) - (a.score || 0));
   const [exporting, setExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState('');
   const exportRef = useRef<HTMLDivElement>(null);
@@ -1071,40 +1093,51 @@ export const RankingBoardModal = ({
             <p className="text-xs text-[#64748B] text-center py-12">
               This ranking board is currently closed.
             </p>
-          ) : members.length === 0 ? (
+          ) : sortedMembers.length === 0 ? (
             <p className="text-xs text-[#64748B] text-center py-12">No data available</p>
           ) : (
-            members.map((m, idx) => (
-              <div
-                key={m.id}
-                className={`flex items-center justify-between p-3 rounded-xl border ${
-                  idx < 3
-                    ? 'bg-[#FFF9E6] border-[#FDE68A]'
-                    : 'bg-[#F8FAFC] border-[#E5E7EB]'
-                }`}
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <span
-                    className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-extrabold font-mono tabular-nums shrink-0 ${
-                      idx === 0
-                        ? 'bg-[#FF6B00] text-white'
-                        : idx < 3
-                          ? 'bg-[#B45309] text-white'
-                          : 'bg-white border border-[#E5E7EB] text-[#64748B]'
-                    }`}
-                  >
-                    {idx + 1}
-                  </span>
-                  <div className="w-8 h-8 rounded-full overflow-hidden border border-[#E2E8F0] bg-white shrink-0">
-                    <CartoonAvatar src={findAvatar(m.name)} name={m.name} />
+            sortedMembers.map((m, idx) => {
+              const todayRes = findTodayResult(m);
+              const todayConv = todayRes?.submitted ? todayRes.convert || 0 : 0;
+              return (
+                <div
+                  key={m.id}
+                  className={`flex items-center justify-between p-3 rounded-xl border ${
+                    idx < 3
+                      ? 'bg-[#FFF9E6] border-[#FDE68A]'
+                      : 'bg-[#F8FAFC] border-[#E5E7EB]'
+                  }`}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span
+                      className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-extrabold font-mono tabular-nums shrink-0 ${
+                        idx === 0
+                          ? 'bg-[#FF6B00] text-white'
+                          : idx < 3
+                            ? 'bg-[#B45309] text-white'
+                            : 'bg-white border border-[#E5E7EB] text-[#64748B]'
+                      }`}
+                    >
+                      {idx + 1}
+                    </span>
+                    <div className="w-8 h-8 rounded-full overflow-hidden border border-[#E2E8F0] bg-white shrink-0">
+                      <CartoonAvatar src={findAvatar(m.name)} name={m.name} />
+                    </div>
+                    <span className="text-sm font-bold text-[#0F172A] truncate">{m.name}</span>
                   </div>
-                  <span className="text-sm font-bold text-[#0F172A] truncate">{m.name}</span>
+                  <div className="text-right shrink-0 flex flex-col items-end">
+                    {todayConv > 0 && (
+                      <span className="text-[10px] font-bold font-mono tabular-nums text-[#047857] bg-[#ECFDF5] border border-[#A7F3D0] px-1.5 py-0.5 rounded-md leading-none mb-1">
+                        +{todayConv} Today
+                      </span>
+                    )}
+                    <span className="text-sm font-extrabold font-mono tabular-nums text-[#0B4F9C] leading-tight">
+                      Total: {m.score || 0} Converts
+                    </span>
+                  </div>
                 </div>
-                <span className="text-sm font-extrabold font-mono tabular-nums text-[#0B4F9C] shrink-0">
-                  {m.score || 0} Converts
-                </span>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
 
@@ -1127,6 +1160,7 @@ export const OverallStatsModal = ({
   trainers,
   approvedUsers = [],
   rosterMembers = [],
+  results = {},
   customLogo,
 }: {
   onClose: () => void;
@@ -1134,6 +1168,7 @@ export const OverallStatsModal = ({
   trainers: RankingMember[];
   approvedUsers?: UserRegistration[];
   rosterMembers?: Member[];
+  results?: Record<string, Result>;
   customLogo?: string;
 }) => {
   const [tab, setTab] = useState<'leaders' | 'trainers'>('leaders');
@@ -1152,7 +1187,26 @@ export const OverallStatsModal = ({
     )?.profilePic;
   };
 
-  const list = tab === 'leaders' ? leaders : trainers;
+  const findTodayResult = (m: RankingMember): Result | undefined => {
+    if (results[m.id]?.submitted) return results[m.id];
+    const cleanName = (m.name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const wa = ((m as any).whatsapp || '').replace(/\s+/g, '');
+    if (wa) {
+      if (results[wa]?.submitted) return results[wa];
+      if (results[`member_${wa}`]?.submitted) return results[`member_${wa}`];
+    }
+    const rosterMatch = rosterMembers.find(
+      (rm) =>
+        (wa && rm.whatsapp && rm.whatsapp.replace(/\s+/g, '') === wa) ||
+        (cleanName && rm.name?.trim().toLowerCase().replace(/\s+/g, ' ') === cleanName)
+    );
+    if (rosterMatch && results[rosterMatch.id]?.submitted) {
+      return results[rosterMatch.id];
+    }
+    return results[m.id];
+  };
+
+  const list = [...(tab === 'leaders' ? leaders : trainers)].sort((a, b) => (b.score || 0) - (a.score || 0));
 
   const handleDownload = async () => {
     if (!exportRef.current) return;
@@ -1233,25 +1287,36 @@ export const OverallStatsModal = ({
         )}
 
         <div className="flex-1 overflow-y-auto p-5 space-y-2 custom-scrollbar">
-          {list.map((m, idx) => (
-            <div
-              key={m.id}
-              className="flex items-center justify-between p-3 bg-[#F8FAFC] rounded-xl border border-[#E5E7EB]"
-            >
-              <div className="flex items-center gap-2.5 min-w-0">
-                <span className="w-6 text-center text-xs font-mono font-bold text-[#64748B] tabular-nums">
-                  {idx + 1}.
-                </span>
-                <div className="w-8 h-8 rounded-full overflow-hidden border border-[#E2E8F0] bg-white shrink-0">
-                  <CartoonAvatar src={findAvatar(m.name)} name={m.name} />
+          {list.map((m, idx) => {
+            const todayRes = findTodayResult(m);
+            const todayConv = todayRes?.submitted ? todayRes.convert || 0 : 0;
+            return (
+              <div
+                key={m.id}
+                className="flex items-center justify-between p-3 bg-[#F8FAFC] rounded-xl border border-[#E5E7EB]"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span className="w-6 text-center text-xs font-mono font-bold text-[#64748B] tabular-nums">
+                    {idx + 1}.
+                  </span>
+                  <div className="w-8 h-8 rounded-full overflow-hidden border border-[#E2E8F0] bg-white shrink-0">
+                    <CartoonAvatar src={findAvatar(m.name)} name={m.name} />
+                  </div>
+                  <span className="text-xs font-bold text-[#0F172A] truncate">{m.name}</span>
                 </div>
-                <span className="text-xs font-bold text-[#0F172A] truncate">{m.name}</span>
+                <div className="text-right shrink-0 flex flex-col items-end">
+                  {todayConv > 0 && (
+                    <span className="text-[10px] font-bold font-mono tabular-nums text-[#047857] bg-[#ECFDF5] border border-[#A7F3D0] px-1.5 py-0.5 rounded-md leading-none mb-1">
+                      +{todayConv} Today
+                    </span>
+                  )}
+                  <span className="text-xs font-extrabold font-mono tabular-nums text-[#047857] leading-tight">
+                    Total: {m.score || 0} Converts
+                  </span>
+                </div>
               </div>
-              <span className="text-xs font-extrabold font-mono tabular-nums text-[#047857]">
-                {m.score || 0} Converts
-              </span>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <div className="fixed -left-[9999px] top-0 pointer-events-none">

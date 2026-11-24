@@ -436,7 +436,7 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                       Today: {eliteLeader.result?.convert || 0}
                     </span>
                     <span className="text-[#64748B]">
-                      Leads: {eliteLeader.leads ?? eliteLeader.result?.personalLead ?? 0}
+                      Leads: {eliteLeader.result?.submitted ? (eliteLeader.result.lead || 0) + (eliteLeader.result.personalLead || 0) : (eliteLeader.leads ?? 0)}
                     </span>
                   </div>
                 </div>
@@ -471,7 +471,7 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                       Today: {eliteTrainer.result?.convert || 0}
                     </span>
                     <span className="text-[#64748B]">
-                      Leads: {eliteTrainer.leads ?? eliteTrainer.result?.personalLead ?? 0}
+                      Leads: {eliteTrainer.result?.submitted ? (eliteTrainer.result.lead || 0) + (eliteTrainer.result.personalLead || 0) : (eliteTrainer.leads ?? 0)}
                     </span>
                   </div>
                 </div>
@@ -505,12 +505,15 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
               {sortedLeadersByRanking.length > 0 ? (
                 <div className="space-y-2">
                   {sortedLeadersByRanking.slice(0, 3).map((member, i) => {
-                    const result = results[member.id] || {
-                      lead: 0,
-                      convert: 0,
-                      personalLead: 0,
-                      submitted: false,
-                    };
+                    const result = member.result?.submitted
+                      ? member.result
+                      : results[member.id] ||
+                        member.result || {
+                          lead: 0,
+                          convert: 0,
+                          personalLead: 0,
+                          submitted: false,
+                        };
                     return (
                       <div
                         key={member.id}
@@ -530,15 +533,15 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                             <div className="text-[11px] text-[#64748B]">Team Leader</div>
                           </div>
                         </div>
-                        <div className="text-right shrink-0">
-                          <div className="text-sm font-extrabold font-mono tabular-nums text-[#0F172A]">
-                            {member.score || 0}
-                          </div>
+                        <div className="text-right shrink-0 flex flex-col items-end">
                           {result.convert > 0 && (
-                            <div className="text-[11px] font-semibold font-mono tabular-nums text-[#047857]">
+                            <span className="text-[10px] font-bold font-mono tabular-nums text-[#047857] bg-[#ECFDF5] border border-[#A7F3D0] px-1.5 py-0.5 rounded-md leading-none mb-1">
                               +{result.convert} Today
-                            </div>
+                            </span>
                           )}
+                          <div className="text-sm font-extrabold font-mono tabular-nums text-[#0F172A] leading-tight">
+                            Total: {member.score || 0}
+                          </div>
                         </div>
                       </div>
                     );
@@ -581,12 +584,15 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
               {sortedTrainersByRanking.length > 0 ? (
                 <div className="space-y-2">
                   {sortedTrainersByRanking.slice(0, 3).map((member, i) => {
-                    const result = results[member.id] || {
-                      lead: 0,
-                      convert: 0,
-                      personalLead: 0,
-                      submitted: false,
-                    };
+                    const result = member.result?.submitted
+                      ? member.result
+                      : results[member.id] ||
+                        member.result || {
+                          lead: 0,
+                          convert: 0,
+                          personalLead: 0,
+                          submitted: false,
+                        };
                     return (
                       <div
                         key={member.id}
@@ -606,15 +612,15 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                             <div className="text-[11px] text-[#64748B]">Team Trainer</div>
                           </div>
                         </div>
-                        <div className="text-right shrink-0">
-                          <div className="text-sm font-extrabold font-mono tabular-nums text-[#0F172A]">
-                            {member.score || 0}
-                          </div>
+                        <div className="text-right shrink-0 flex flex-col items-end">
                           {result.convert > 0 && (
-                            <div className="text-[11px] font-semibold font-mono tabular-nums text-[#047857]">
+                            <span className="text-[10px] font-bold font-mono tabular-nums text-[#047857] bg-[#ECFDF5] border border-[#A7F3D0] px-1.5 py-0.5 rounded-md leading-none mb-1">
                               +{result.convert} Today
-                            </div>
+                            </span>
                           )}
+                          <div className="text-sm font-extrabold font-mono tabular-nums text-[#0F172A] leading-tight">
+                            Total: {member.score || 0}
+                          </div>
                         </div>
                       </div>
                     );
