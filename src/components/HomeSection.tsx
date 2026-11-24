@@ -3,7 +3,6 @@ import {
   ChevronRight,
   ChevronLeft,
   Crown,
-  Award,
   Trophy,
   GraduationCap,
   Users,
@@ -477,38 +476,50 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
         {(eliteLeader || eliteTrainer) && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {eliteLeader && (
-              <div className="bg-white border border-[#BFD9FF] rounded-2xl p-3.5 sm:p-4 flex items-center gap-3.5 bg-gradient-to-br from-white via-[#F6FAFF] to-[#E8F1FF] shadow-[0_4px_14px_rgba(11,79,156,0.09)]">
+              <div className="relative overflow-hidden rounded-2xl p-3.5 sm:p-4 flex items-center gap-3.5 bg-gradient-to-br from-white via-[#F5F9FF] to-[#E6F0FF] border border-[#BFD9FF] shadow-[0_8px_22px_rgba(11,79,156,0.10),inset_0_1px_0_rgba(255,255,255,0.9)]">
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-[#0B4F9C]/15 via-[#F59E0B]/70 to-[#0B4F9C]/15"
+                />
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute -top-10 -right-10 w-28 h-28 rounded-full bg-[#3B82F6]/10 blur-xl"
+                />
                 <div className="relative shrink-0">
-                  <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-[#0B4F9C]/35 ring-2 ring-[#F59E0B]/25 bg-white shadow-sm">
-                    <CartoonAvatar src={findAvatar(eliteLeader.name)} name={eliteLeader.name} />
+                  <div className="w-13 h-13 rounded-full p-[2px] bg-gradient-to-br from-[#FDE68A] via-[#F59E0B] to-[#0B4F9C] shadow-[0_3px_10px_rgba(11,79,156,0.18)]">
+                    <div className="w-full h-full rounded-full overflow-hidden bg-white ring-[1.5px] ring-white">
+                      <CartoonAvatar src={findAvatar(eliteLeader.name)} name={eliteLeader.name} />
+                    </div>
                   </div>
                   <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-white border border-[#FDE68A] shadow-md flex items-center justify-center">
                     <EliteLeaderEmblem className="w-4.5 h-4.5" />
                   </div>
                 </div>
-                <div className="flex-1 min-w-0">
+                <div className="relative flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[11px] font-extrabold text-[#0B4F9C] uppercase tracking-wider flex items-center gap-1.5">
                       <EliteLeaderEmblem className="w-4 h-4 shrink-0" />
                       <span>Elite Team Leader</span>
                     </span>
                     {topOverall?.id === eliteLeader.id && (
-                      <span className="text-[10px] font-extrabold text-[#B45309]">
-                        Overall #1
+                      <span className="text-[10px] font-extrabold text-[#B45309] tracking-wide whitespace-nowrap">
+                        ★ Overall #1
                       </span>
                     )}
                   </div>
                   <div className="text-sm sm:text-base font-extrabold text-[#0F172A] truncate mt-0.5">
                     {eliteLeader.name}
                   </div>
-                  <div className="flex items-center gap-3 mt-1 text-xs font-mono tabular-nums">
+                  <div className="flex items-center gap-2.5 mt-1 text-xs font-mono tabular-nums">
                     <span className="text-[#0B4F9C] font-bold">
                       Total: {eliteLeader.score || 0}
                     </span>
+                    <span aria-hidden="true" className="text-[#CBD5E1]">·</span>
                     <span className="text-[#047857] font-bold">
                       Today: {eliteLeader.result?.convert || 0}
                     </span>
-                    <span className="text-[#64748B]">
+                    <span aria-hidden="true" className="text-[#CBD5E1]">·</span>
+                    <span className="text-[#64748B] font-medium">
                       Leads: {eliteLeader.result?.submitted ? (eliteLeader.result.lead || 0) + (eliteLeader.result.personalLead || 0) : (eliteLeader.leads ?? 0)}
                     </span>
                   </div>
@@ -517,38 +528,50 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
             )}
 
             {eliteTrainer && (
-              <div className="bg-white border border-[#86EFAC] rounded-2xl p-3.5 sm:p-4 flex items-center gap-3.5 bg-gradient-to-br from-white via-[#F1FCF6] to-[#E3F9EE] shadow-[0_4px_14px_rgba(4,120,87,0.09)]">
+              <div className="relative overflow-hidden rounded-2xl p-3.5 sm:p-4 flex items-center gap-3.5 bg-gradient-to-br from-white via-[#F1FCF6] to-[#E2F7EC] border border-[#9FEAC2] shadow-[0_8px_22px_rgba(4,120,87,0.10),inset_0_1px_0_rgba(255,255,255,0.9)]">
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-[#047857]/15 via-[#F59E0B]/70 to-[#047857]/15"
+                />
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute -top-10 -right-10 w-28 h-28 rounded-full bg-[#10B981]/10 blur-xl"
+                />
                 <div className="relative shrink-0">
-                  <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-[#047857]/35 ring-2 ring-[#10B981]/25 bg-white shadow-sm">
-                    <CartoonAvatar src={findAvatar(eliteTrainer.name)} name={eliteTrainer.name} />
+                  <div className="w-13 h-13 rounded-full p-[2px] bg-gradient-to-br from-[#FDE68A] via-[#F59E0B] to-[#047857] shadow-[0_3px_10px_rgba(4,120,87,0.18)]">
+                    <div className="w-full h-full rounded-full overflow-hidden bg-white ring-[1.5px] ring-white">
+                      <CartoonAvatar src={findAvatar(eliteTrainer.name)} name={eliteTrainer.name} />
+                    </div>
                   </div>
                   <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-white border border-[#A7F3D0] shadow-md flex items-center justify-center">
                     <EliteTrainerEmblem className="w-4.5 h-4.5" />
                   </div>
                 </div>
-                <div className="flex-1 min-w-0">
+                <div className="relative flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[11px] font-extrabold text-[#047857] uppercase tracking-wider flex items-center gap-1.5">
                       <EliteTrainerEmblem className="w-4 h-4 shrink-0" />
                       <span>Elite Team Trainer</span>
                     </span>
                     {topOverall?.id === eliteTrainer.id && (
-                      <span className="text-[10px] font-extrabold text-[#B45309]">
-                        Overall #1
+                      <span className="text-[10px] font-extrabold text-[#B45309] tracking-wide whitespace-nowrap">
+                        ★ Overall #1
                       </span>
                     )}
                   </div>
                   <div className="text-sm sm:text-base font-extrabold text-[#0F172A] truncate mt-0.5">
                     {eliteTrainer.name}
                   </div>
-                  <div className="flex items-center gap-3 mt-1 text-xs font-mono tabular-nums">
+                  <div className="flex items-center gap-2.5 mt-1 text-xs font-mono tabular-nums">
                     <span className="text-[#047857] font-bold">
                       Total: {eliteTrainer.score || 0}
                     </span>
+                    <span aria-hidden="true" className="text-[#CBD5E1]">·</span>
                     <span className="text-[#0B4F9C] font-bold">
                       Today: {eliteTrainer.result?.convert || 0}
                     </span>
-                    <span className="text-[#64748B]">
+                    <span aria-hidden="true" className="text-[#CBD5E1]">·</span>
+                    <span className="text-[#64748B] font-medium">
                       Leads: {eliteTrainer.result?.submitted ? (eliteTrainer.result.lead || 0) + (eliteTrainer.result.personalLead || 0) : (eliteTrainer.leads ?? 0)}
                     </span>
                   </div>

@@ -1,14 +1,4 @@
 import React, { useState } from 'react';
-import {
-  Home,
-  Plus,
-  FileText,
-  UserCircle,
-  MessageSquare,
-  Wallet,
-  Link2,
-} from 'lucide-react';
-import CartoonAvatar from './CartoonAvatar';
 
 export type UserTabType = 'home' | 'submit' | 'sheet' | 'profile' | 'community';
 
@@ -26,6 +16,77 @@ interface NavColorTheme {
   boxBg: string;
   hoverText: string;
 }
+
+const FilledHomeIcon: React.FC = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className="w-[20px] h-[20px]" aria-hidden="true">
+    <path
+      fillRule="evenodd"
+      clipRule="evenodd"
+      d="M11.34 2.72a1 1 0 0 1 1.32 0l8.25 7.26A1 1 0 0 1 20.25 11.75H19v7.5A1.75 1.75 0 0 1 17.25 21H14.5a.75.75 0 0 1-.75-.75v-4.5a1.75 1.75 0 0 0-3.5 0v4.5a.75.75 0 0 1-.75.75H6.75A1.75 1.75 0 0 1 5 19.25v-7.5H3.75a1 1 0 0 1-.66-1.77l8.25-7.26Z"
+    />
+  </svg>
+);
+
+const FilledSubmitIcon: React.FC = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className="w-[20px] h-[20px]" aria-hidden="true">
+    <path
+      fillRule="evenodd"
+      clipRule="evenodd"
+      d="M12 2.5C6.75 2.5 2.5 6.75 2.5 12S6.75 21.5 12 21.5s9.5-4.25 9.5-9.5S17.25 2.5 12 2.5Zm.9 5.5a.9.9 0 1 0-1.8 0v3.1H8a.9.9 0 1 0 0 1.8h3.1V16a.9.9 0 1 0 1.8 0v-3.1H16a.9.9 0 1 0 0-1.8h-3.1V8Z"
+    />
+  </svg>
+);
+
+const FilledWithdrawIcon: React.FC = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className="w-[20px] h-[20px]" aria-hidden="true">
+    <path d="M5.25 4A2.25 2.25 0 0 0 3 6.25v1.03c.54-.33 1.18-.53 1.88-.53h13.62V6.25A2.25 2.25 0 0 0 16.25 4H5.25Z" />
+    <path
+      fillRule="evenodd"
+      clipRule="evenodd"
+      d="M4.88 8.25A1.88 1.88 0 0 0 3 10.13v7.62A2.25 2.25 0 0 0 5.25 20h13.5A2.25 2.25 0 0 0 21 17.75v-7.25a2.25 2.25 0 0 0-2.25-2.25H4.88Zm10.87 4.5a1.38 1.38 0 1 0 0 2.75h2.25a1.38 1.38 0 1 0 0-2.75h-2.25Z"
+    />
+  </svg>
+);
+
+const FilledSheetIcon: React.FC = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className="w-[20px] h-[20px]" aria-hidden="true">
+    <path
+      fillRule="evenodd"
+      clipRule="evenodd"
+      d="M6.25 2.75A2.25 2.25 0 0 0 4 5v14a2.25 2.25 0 0 0 2.25 2.25h11.5A2.25 2.25 0 0 0 20 19V8.56a2.25 2.25 0 0 0-.66-1.59l-3.56-3.56a2.25 2.25 0 0 0-1.59-.66H6.25Zm8 1.85 3.9 3.9h-3.15a.75.75 0 0 1-.75-.75V4.6ZM8 12.25a.75.75 0 0 1 .75-.75h6.5a.75.75 0 0 1 0 1.5h-6.5a.75.75 0 0 1-.75-.75Zm0 3.75a.75.75 0 0 1 .75-.75h4.5a.75.75 0 0 1 0 1.5h-4.5A.75.75 0 0 1 8 16Z"
+    />
+  </svg>
+);
+
+const FilledAllLinksIcon: React.FC = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className="w-[20px] h-[20px]" aria-hidden="true">
+    <path
+      fillRule="evenodd"
+      clipRule="evenodd"
+      d="M12 2.5C6.75 2.5 2.5 6.75 2.5 12S6.75 21.5 12 21.5s9.5-4.25 9.5-9.5S17.25 2.5 12 2.5Zm-2.3 6.2a2.9 2.9 0 0 0-2.9 2.9v.8a2.9 2.9 0 0 0 2.9 2.9h1.2a.9.9 0 1 0 0-1.8H9.7a1.1 1.1 0 0 1-1.1-1.1v-.8a1.1 1.1 0 0 1 1.1-1.1h1.2a.9.9 0 1 0 0-1.8H9.7Zm4.6 0a.9.9 0 1 0 0 1.8h1.1a1.1 1.1 0 0 1 1.1 1.1v.8a1.1 1.1 0 0 1-1.1 1.1h-1.1a.9.9 0 1 0 0 1.8h1.1a2.9 2.9 0 0 0 2.9-2.9v-.8a2.9 2.9 0 0 0-2.9-2.9h-1.1Zm-4.1 2.4a.9.9 0 1 0 0 1.8h3.6a.9.9 0 1 0 0-1.8h-3.6Z"
+    />
+  </svg>
+);
+
+const FilledCommunityIcon: React.FC = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className="w-[20px] h-[20px]" aria-hidden="true">
+    <path
+      fillRule="evenodd"
+      clipRule="evenodd"
+      d="M4.75 3.5A2.75 2.75 0 0 0 2 6.25v8.5A2.75 2.75 0 0 0 4.75 17.5H6v2.75a.75.75 0 0 0 1.25.56l3.7-3.31h8.3A2.75 2.75 0 0 0 22 14.75v-8.5A2.75 2.75 0 0 0 19.25 3.5H4.75Zm3.5 6a1.15 1.15 0 1 0 0 2.3 1.15 1.15 0 0 0 0-2.3Zm3.75 0a1.15 1.15 0 1 0 0 2.3 1.15 1.15 0 0 0 0-2.3Zm3.75 0a1.15 1.15 0 1 0 0 2.3 1.15 1.15 0 0 0 0-2.3Z"
+    />
+  </svg>
+);
+
+const FilledProfileIcon: React.FC = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className="w-[20px] h-[20px]" aria-hidden="true">
+    <path
+      fillRule="evenodd"
+      clipRule="evenodd"
+      d="M12 2.5C6.75 2.5 2.5 6.75 2.5 12S6.75 21.5 12 21.5s9.5-4.25 9.5-9.5S17.25 2.5 12 2.5Zm0 3.75a3.15 3.15 0 1 1 0 6.3 3.15 3.15 0 0 1 0-6.3Zm0 13.15a7.2 7.2 0 0 1-5.53-2.58c.66-1.78 2.86-2.97 5.53-2.97s4.87 1.19 5.53 2.97A7.2 7.2 0 0 1 12 19.4Z"
+    />
+  </svg>
+);
 
 const NAV_THEMES: Record<string, NavColorTheme> = {
   home: {
@@ -64,8 +125,6 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   onOpenQuickLinks,
   isLinksOpen,
   communityActive,
-  userAvatar,
-  userName,
 }) => {
   const [clickedLinkId, setClickedLinkId] = useState<string | null>(null);
 
@@ -75,54 +134,38 @@ export const BottomNav: React.FC<BottomNavProps> = ({
     | { kind: 'link'; id: string; label: string; href: string; icon: React.ReactNode };
 
   const activeId = isLinksOpen ? 'all-links' : clickedLinkId || userTab;
-  const isProfileActive = activeId === 'profile';
-
-  const profileIcon =
-    userAvatar || userName ? (
-      <div
-        className={`w-[20px] h-[20px] rounded-full overflow-hidden border transition-all duration-200 ${
-          isProfileActive
-            ? 'border-white ring-2 ring-white/35'
-            : 'border-[#CBD5E1]'
-        }`}
-      >
-        <CartoonAvatar src={userAvatar} name={userName || 'User'} />
-      </div>
-    ) : (
-      <UserCircle size={18} strokeWidth={isProfileActive ? 2.2 : 1.75} />
-    );
 
   const navItems: NavEntry[] = [
     {
       kind: 'tab',
       id: 'home',
       label: 'Home',
-      icon: <Home size={18} strokeWidth={activeId === 'home' ? 2.2 : 1.75} />,
+      icon: <FilledHomeIcon />,
     },
     {
       kind: 'tab',
       id: 'submit',
       label: 'Submit',
-      icon: <Plus size={19} strokeWidth={activeId === 'submit' ? 2.5 : 2.1} />,
+      icon: <FilledSubmitIcon />,
     },
     {
       kind: 'link',
       id: 'withdraw',
       label: 'Withdraw',
       href: 'https://withdraw-request.vercel.app/',
-      icon: <Wallet size={18} strokeWidth={activeId === 'withdraw' ? 2.2 : 1.75} />,
+      icon: <FilledWithdrawIcon />,
     },
     {
       kind: 'tab',
       id: 'sheet',
       label: 'Sheet',
-      icon: <FileText size={18} strokeWidth={activeId === 'sheet' ? 2.2 : 1.75} />,
+      icon: <FilledSheetIcon />,
     },
     {
       kind: 'action',
       id: 'all-links',
       label: 'All Links',
-      icon: <Link2 size={18} strokeWidth={activeId === 'all-links' ? 2.2 : 1.75} />,
+      icon: <FilledAllLinksIcon />,
     },
     ...(communityActive
       ? [
@@ -130,16 +173,16 @@ export const BottomNav: React.FC<BottomNavProps> = ({
             kind: 'tab' as const,
             id: 'community' as UserTabType,
             label: 'Community',
-            icon: (
-              <MessageSquare
-                size={18}
-                strokeWidth={activeId === 'community' ? 2.2 : 1.75}
-              />
-            ),
+            icon: <FilledCommunityIcon />,
           },
         ]
       : []),
-    { kind: 'tab', id: 'profile', label: 'Profile', icon: profileIcon },
+    {
+      kind: 'tab',
+      id: 'profile',
+      label: 'Profile',
+      icon: <FilledProfileIcon />,
+    },
   ];
 
   const activeIndex = Math.max(
