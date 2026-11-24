@@ -3649,29 +3649,28 @@ export default function App() {
 
   if (!isAuthReady || !isConfigReady) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#051124] via-[#0B254A] to-[#0A1931] flex flex-col items-center justify-center p-6 text-white select-none overflow-hidden relative">
-        {/* Background ambient glow circles */}
-        <div className="absolute w-72 h-72 rounded-full bg-[#38BDF8]/10 blur-3xl pointer-events-none" />
-        <div className="absolute w-64 h-64 rounded-full bg-[#FF6B00]/10 blur-3xl pointer-events-none translate-x-12 translate-y-16" />
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6 text-[#0F172A] select-none overflow-hidden relative">
+        {/* Soft background ambient glow */}
+        <div className="absolute w-72 h-72 rounded-full bg-[#0B4F9C]/5 blur-3xl pointer-events-none" />
 
         <div className="relative w-32 h-32 flex items-center justify-center mb-8">
           {/* Outer dashed spinning ring */}
           <div
-            className="absolute inset-0 rounded-[32px] border-2 border-dashed border-[#38BDF8]/50 animate-spin"
+            className="absolute inset-0 rounded-[32px] border-2 border-dashed border-[#0B4F9C]/40 animate-spin"
             style={{ animationDuration: '10s' }}
           />
           {/* Fast rotating outer gradient ring */}
           <div
-            className="absolute inset-1 rounded-[28px] bg-gradient-to-tr from-[#0B4F9C] via-[#38BDF8] to-[#FF6B00] animate-spin opacity-85 shadow-[0_0_25px_rgba(56,189,248,0.35)]"
+            className="absolute inset-1 rounded-[28px] bg-gradient-to-tr from-[#0B4F9C] via-[#38BDF8] to-[#1D4ED8] animate-spin opacity-90 shadow-[0_10px_25px_rgba(11,79,156,0.25)]"
             style={{ animationDuration: '3s' }}
           />
           {/* Pulsing ring */}
           <div
-            className="absolute -inset-2 rounded-[36px] border border-[#38BDF8]/30 animate-ping opacity-25"
+            className="absolute -inset-2 rounded-[36px] border border-[#0B4F9C]/20 animate-ping opacity-20"
             style={{ animationDuration: '2.5s' }}
           />
-          {/* Inner core badge with rotating logo / U */}
-          <div className="relative w-26 h-26 rounded-[22px] bg-[#071E3D] border border-[#60A5FA]/45 shadow-[0_12px_32px_rgba(5,17,36,0.6)] flex items-center justify-center overflow-hidden animate-pulse">
+          {/* Inner core white badge with rotating logo / U */}
+          <div className="relative w-26 h-26 rounded-[22px] bg-white border border-[#D6E6FF] shadow-[0_12px_32px_rgba(11,79,156,0.18)] flex items-center justify-center overflow-hidden animate-pulse">
             {config.customLogo ? (
               <img
                 src={config.customLogo}
@@ -3679,7 +3678,7 @@ export default function App() {
                 className="w-full h-full object-cover transform scale-105"
               />
             ) : (
-              <span className="font-extrabold text-4xl tracking-tight text-white font-mono bg-gradient-to-br from-white via-blue-100 to-blue-300 bg-clip-text text-transparent">
+              <span className="font-extrabold text-4xl tracking-tight text-[#0B4F9C] font-mono">
                 UE
               </span>
             )}
@@ -3687,15 +3686,15 @@ export default function App() {
         </div>
 
         <div className="text-center space-y-2 z-10">
-          <h2 className="text-2xl font-extrabold tracking-tight text-white drop-shadow-sm">
-            Unity <span className="text-[#38BDF8]">Earning</span>
+          <h2 className="text-2xl font-extrabold tracking-tight text-[#0F172A]">
+            Unity <span className="text-[#0B4F9C]">Earning</span>
           </h2>
-          <p className="text-xs text-blue-200/80 font-medium tracking-wide">
+          <p className="text-xs text-[#64748B] font-medium tracking-wide">
             Performance &amp; Learning Portal
           </p>
-          <div className="pt-3 flex items-center justify-center gap-2.5 px-4 py-2 rounded-full bg-white/10 border border-white/15 backdrop-blur-md shadow-lg">
-            <Loader2 size={15} className="animate-spin text-[#38BDF8]" />
-            <span className="text-xs font-bold text-slate-100 tracking-wider">
+          <div className="pt-3 flex items-center justify-center gap-2.5 px-4 py-2 rounded-full bg-[#F4F6F9] border border-[#E5E7EB] shadow-sm">
+            <Loader2 size={15} className="animate-spin text-[#0B4F9C]" />
+            <span className="text-xs font-bold text-[#334155] tracking-wider">
               Loading portal...
             </span>
           </div>
