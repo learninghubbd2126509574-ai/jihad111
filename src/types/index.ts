@@ -174,6 +174,8 @@ export interface UserBalance {
   userName: string;
   balance: number;
   waivedFines: number;
+  waivedFinesMonth?: string;
+  clearedAt?: string;
   waivedDays?: string[];
   manualAdjustments: number;
   updatedAt?: any;

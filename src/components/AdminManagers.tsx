@@ -1565,7 +1565,7 @@ export const FineSettingsManager = ({
           >
             <h4 className="text-base font-bold text-[#0F172A]">Clear All Fines?</h4>
             <p className="text-xs text-[#64748B]">
-              Fine tracking will restart from today and all previous fines will be reset to zero.
+              Everyone&apos;s fine balance will be cleared to ৳0, while missed days, submission counts, and calendar details will remain intact.
             </p>
             <div className="flex gap-2.5">
               <button
@@ -1688,11 +1688,16 @@ export const BalanceManagementSection = ({
     const list: { key: string; whatsapp: string; name: string; position: string; memberId?: string }[] = [];
     const seen = new Set<string>();
     approvedUsers.forEach((u) => {
+      const cleanWa = (u.whatsapp || '').replace(/\s+/g, '');
       seen.add(u.fullName.trim().toLowerCase());
-      const m = members.find((x) => x.name.trim().toLowerCase() === u.fullName.trim().toLowerCase());
+      const m = members.find(
+        (x) =>
+          x.name.trim().toLowerCase() === u.fullName.trim().toLowerCase() ||
+          (cleanWa && x.whatsapp && x.whatsapp.replace(/\s+/g, '') === cleanWa)
+      );
       list.push({
-        key: u.whatsapp,
-        whatsapp: u.whatsapp,
+        key: cleanWa || m?.id || u.whatsapp,
+        whatsapp: cleanWa,
         name: u.fullName,
         position: u.position,
         memberId: m?.id,
@@ -1700,9 +1705,10 @@ export const BalanceManagementSection = ({
     });
     members.forEach((m) => {
       if (!seen.has(m.name.trim().toLowerCase())) {
+        const cleanWa = (m.whatsapp || '').replace(/\s+/g, '');
         list.push({
-          key: m.whatsapp || m.id,
-          whatsapp: m.whatsapp || '',
+          key: cleanWa || m.id,
+          whatsapp: cleanWa,
           name: m.name,
           position: m.type === 'leader' ? 'Team Leader' : 'Team Trainer',
           memberId: m.id,
@@ -1867,6 +1873,16 @@ export const BalanceManagementSection = ({
               </option>
             ))}
           </select>
+
+          {selectedUserObj && (() => {
+            const st = computeUserSubmissionStats(selectedUserObj.whatsapp, selectedUserObj.memberId);
+            return (
+              <div className="px-3.5 py-2 rounded-xl bg-[#F8FAFC] border border-[#E5E7EB] flex items-center justify-between text-xs font-mono tabular-nums">
+                <span className="text-[#64748B]">Missed: {st.missedDays}d</span>
+                <span className="font-bold text-[#B45309]">Current Fine: ৳{st.totalFine}</span>
+              </div>
+            );
+          })()}
 
           {activeTab === 'remove_day' ? (
             <input

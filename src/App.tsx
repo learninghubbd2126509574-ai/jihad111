@@ -221,6 +221,7 @@ export default function App() {
   const [userBalances, setUserBalances] = useState<Record<string, UserBalance>>({});
   const [submissionLogs, setSubmissionLogs] = useState<SubmissionLog[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [todayDateKey, setTodayDateKey] = useState<string>(() => format(new Date(), 'yyyy-MM-dd'));
 
   const [showConfirm, setShowConfirm] = useState<{
     title: string;
@@ -761,31 +762,74 @@ export default function App() {
     }
   }, [isAdmin, authenticatedUser, config.announcementActive, config.announcement, announcementDismissed]);
 
-  // 2. Scoped User Balances & Submission Logs (cached getDoc/getDocs instead of always-on listeners)
+  // Auto-rollover right after 12:00 AM midnight so missed-day fines update automatically
   useEffect(() => {
-    const needsFullBalances = userTab === 'sheet' || hasStlAccess || showAdminPanel;
+    const scheduleMidnightTick = () => {
+      const now = new Date();
+      const nextMidnight = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate() + 1,
+        0,
+        0,
+        2,
+        0
+      );
+      const msUntilMidnight = Math.max(1000, nextMidnight.getTime() - now.getTime());
+      return window.setTimeout(() => {
+        setTodayDateKey(format(new Date(), 'yyyy-MM-dd'));
+        if (isAdmin || authenticatedUser) {
+          refreshAllBalancesAndLogs(true);
+        }
+      }, msUntilMidnight);
+    };
+
+    const timerId = scheduleMidnightTick();
+    return () => window.clearTimeout(timerId);
+  }, [todayDateKey, isAdmin, authenticatedUser, refreshAllBalancesAndLogs]);
+
+  // 2. Live & Scoped User Balances + Submission Logs
+  useEffect(() => {
+    const needsFullBalances = isAdmin || userTab === 'sheet' || hasStlAccess || showAdminPanel;
 
     if (needsFullBalances) {
       if (isAdmin || authenticatedUser) {
-        refreshAllBalancesAndLogs(false);
+        refreshAllBalancesAndLogs(true);
       }
-      return;
+      if (!isAdmin && !authenticatedUser) return;
+
+      const unsubBalances = onSnapshot(
+        collection(db, 'userBalances'),
+        (snapshot) => {
+          const bMap: Record<string, UserBalance> = {};
+          snapshot.forEach((d) => {
+            bMap[d.id] = { id: d.id, ...d.data() } as UserBalance;
+          });
+          setUserBalances(bMap);
+        },
+        (err) => console.warn('Live balances listener warning:', err)
+      );
+      return () => unsubBalances();
     }
 
     if (!authenticatedUser?.whatsapp) return;
 
     const cleanWa = authenticatedUser.whatsapp.replace(/\s+/g, '');
     const scopedKey = `unity_cache_user_scoped_${cleanWa}`;
-    if (loadedCollectionsRef.current.has(scopedKey)) return;
 
-    const cachedScoped = readCacheWithTTL<{ balance?: UserBalance; logs: SubmissionLog[] }>(scopedKey);
-    if (cachedScoped) {
-      if (cachedScoped.balance) {
-        setUserBalances((prev) => ({ ...prev, [cleanWa]: cachedScoped.balance! }));
-      }
-      setSubmissionLogs(cachedScoped.logs);
-      loadedCollectionsRef.current.add(scopedKey);
-      return;
+    const unsubUserBal = onSnapshot(
+      doc(db, 'userBalances', cleanWa),
+      (balSnap) => {
+        if (balSnap.exists()) {
+          const balObj = { id: balSnap.id, ...balSnap.data() } as UserBalance;
+          setUserBalances((prev) => ({ ...prev, [cleanWa]: balObj }));
+        }
+      },
+      (err) => console.warn('Scoped balance listener warning:', err)
+    );
+
+    if (loadedCollectionsRef.current.has(scopedKey)) {
+      return () => unsubUserBal();
     }
 
     const now = new Date();
@@ -839,11 +883,14 @@ export default function App() {
 
     return () => {
       active = false;
+      unsubUserBal();
     };
   }, [
+    authenticatedUser,
     authenticatedUser?.whatsapp,
     firebaseUser,
     hasStlAccess,
+    isAdmin,
     refreshAllBalancesAndLogs,
     showAdminPanel,
     userTab,
@@ -2014,7 +2061,8 @@ export default function App() {
   const computeUserSubmissionStats = useCallback(
     (userWhatsapp: string, memberId?: string) => {
       const now = new Date();
-      const todayStr = format(now, 'yyyy-MM-dd');
+      const todayStr = todayDateKey || format(now, 'yyyy-MM-dd');
+      const currentMonthKey = todayStr.slice(0, 7);
       const currentYear = now.getFullYear();
       const currentMonth = now.getMonth();
       const totalDaysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
@@ -2022,7 +2070,13 @@ export default function App() {
 
       const isFineSystemActive = config.fineSystemActive !== false;
       const defaultStartOfMonth = format(new Date(currentYear, currentMonth, 1), 'yyyy-MM-dd');
-      const fineStartDateStr = config.fineStartDate || defaultStartOfMonth;
+      // Always count from the 1st of the current month unless an explicit current-month start date is set
+      const fineStartDateStr =
+        config.fineStartDate &&
+        config.fineStartDate >= defaultStartOfMonth &&
+        config.fineStartDate <= todayStr
+          ? config.fineStartDate
+          : defaultStartOfMonth;
 
       const [fy, fm, fd] = fineStartDateStr.split('-').map(Number);
       const startDayObj = new Date(fy, fm - 1, fd);
@@ -2031,10 +2085,15 @@ export default function App() {
         0,
         Math.round((nowDayObj.getTime() - startDayObj.getTime()) / (1000 * 60 * 60 * 24)) + 1
       );
+      // Past completed days (midnight 12:00 AM has already passed for these dates)
+      const completedPastDays = Math.max(0, activeFineDaysRange - 1);
 
       let userName = '';
-      if (userWhatsapp) {
-        const u = approvedUsers.find((x) => x.whatsapp === userWhatsapp);
+      const cleanWaInput = userWhatsapp ? userWhatsapp.replace(/\s+/g, '') : '';
+      if (cleanWaInput) {
+        const u = approvedUsers.find(
+          (x) => (x.whatsapp || '').replace(/\s+/g, '') === cleanWaInput
+        );
         if (u) userName = u.fullName;
       }
       if (!userName && memberId) {
@@ -2043,7 +2102,7 @@ export default function App() {
       }
 
       const cleanUserName = userName.trim().toLowerCase();
-      const cleanWa = userWhatsapp ? userWhatsapp.replace(/\s+/g, '') : '';
+      const cleanWa = cleanWaInput;
 
       const userLogs = submissionLogs.filter((log) => {
         if (cleanWa && log.whatsapp && log.whatsapp.replace(/\s+/g, '') === cleanWa) return true;
@@ -2076,22 +2135,45 @@ export default function App() {
         }
       });
 
-      if (memberId && results[memberId]?.submitted) {
-        submittedDaysSet.add(todayStr);
+      // Only count today's results[memberId] if it was actually updated today (prevents stale yesterday flags after midnight)
+      const memberRes = memberId ? results[memberId] : undefined;
+      if (memberRes?.submitted) {
+        let isResultFromToday = true;
+        if (memberRes.updatedAt) {
+          try {
+            const resDate =
+              typeof (memberRes.updatedAt as any).toDate === 'function'
+                ? (memberRes.updatedAt as any).toDate()
+                : new Date(
+                    (memberRes.updatedAt as any).seconds
+                      ? (memberRes.updatedAt as any).seconds * 1000
+                      : memberRes.updatedAt
+                  );
+            if (!isNaN(resDate.getTime())) {
+              isResultFromToday = format(resDate, 'yyyy-MM-dd') === todayStr;
+            }
+          } catch {}
+        }
+        if (isResultFromToday) {
+          submittedDaysSet.add(todayStr);
+        }
       }
 
-      const isTodaySubmitted =
-        submittedDaysSet.has(todayStr) || Boolean(memberId && results[memberId]?.submitted);
+      const isTodaySubmitted = submittedDaysSet.has(todayStr);
       const totalWorkingDays = config.workingDaysInMonth || totalDaysInMonth;
 
       const submittedDaysInPeriod = (Array.from(submittedDaysSet) as string[]).filter(
-        (dateStr) => typeof dateStr === 'string' && dateStr >= fineStartDateStr
+        (dateStr) =>
+          typeof dateStr === 'string' && dateStr >= fineStartDateStr && dateStr <= todayStr
       ).length;
 
-      let missedDaysCount = Math.max(0, activeFineDaysRange - submittedDaysInPeriod);
-      if (!isTodaySubmitted && activeFineDaysRange > 0) {
-        missedDaysCount = Math.max(0, missedDaysCount - 1);
-      }
+      const submittedPastDays = (Array.from(submittedDaysSet) as string[]).filter(
+        (dateStr) =>
+          typeof dateStr === 'string' && dateStr >= fineStartDateStr && dateStr < todayStr
+      ).length;
+
+      // Missed days only accrue once 12:00 AM midnight passes for that day
+      const missedDaysCount = Math.max(0, completedPastDays - submittedPastDays);
 
       const remainingDays = Math.max(0, totalDaysInMonth - dayOfMonth);
       const submissionPercentage =
@@ -2105,8 +2187,8 @@ export default function App() {
 
       const currentFineRate = config.fineAmount !== undefined ? config.fineAmount : 10;
       const userBalObj =
-        (userWhatsapp && userBalances[userWhatsapp]) ||
         (cleanWa && userBalances[cleanWa]) ||
+        (userWhatsapp && userBalances[userWhatsapp]) ||
         (memberId && userBalances[memberId]) ||
         Object.values(userBalances).find((b) => {
           const bal = b as UserBalance;
@@ -2118,11 +2200,15 @@ export default function App() {
         });
 
       const waivedDaysCount =
-        userBalObj?.waivedDays?.filter((d) => d && d >= fineStartDateStr).length || 0;
+        userBalObj?.waivedDays?.filter((d) => d && d >= fineStartDateStr && d < todayStr).length ||
+        0;
       const effectiveMissedDays = Math.max(0, missedDaysCount - waivedDaysCount);
 
       const rawFine = isFineSystemActive ? effectiveMissedDays * currentFineRate : 0;
-      const waivedAmount = userBalObj?.waivedFines || 0;
+      const waivedAmount =
+        userBalObj?.waivedFinesMonth && userBalObj.waivedFinesMonth !== currentMonthKey
+          ? 0
+          : userBalObj?.waivedFines || 0;
       const manualAdj = userBalObj?.manualAdjustments || 0;
       const totalFine = Math.max(0, rawFine + manualAdj - waivedAmount);
 
@@ -2162,6 +2248,9 @@ export default function App() {
         remainingDays,
         submissionPercentage,
         attendancePercentage,
+        rawFine,
+        waivedAmount,
+        manualAdj,
         totalFine,
         isFineSystemActive,
         fineStartDate: fineStartDateStr,
@@ -2171,7 +2260,58 @@ export default function App() {
         isTodaySubmitted,
       };
     },
-    [approvedUsers, config, members, results, submissionLogs, userBalances]
+    [approvedUsers, config, members, results, submissionLogs, todayDateKey, userBalances]
+  );
+
+  // Helper to resolve canonical userBalance doc key and existing balance record
+  const resolveBalanceTarget = useCallback(
+    (userKey: string, userName: string) => {
+      const cleanName = userName.trim().toLowerCase();
+      const cleanInputKey = (userKey || '').replace(/\s+/g, '');
+      const matchedAppUser = approvedUsers.find(
+        (u) =>
+          (cleanInputKey && (u.whatsapp || '').replace(/\s+/g, '') === cleanInputKey) ||
+          (cleanName && u.fullName.trim().toLowerCase() === cleanName)
+      );
+      const matchedMember = members.find(
+        (m) =>
+          m.id === userKey ||
+          (cleanInputKey && (m.whatsapp || '').replace(/\s+/g, '') === cleanInputKey) ||
+          (cleanName && m.name.trim().toLowerCase() === cleanName)
+      );
+      const resolvedWa = (
+        matchedAppUser?.whatsapp ||
+        matchedMember?.whatsapp ||
+        (userKey !== matchedMember?.id ? userKey : '')
+      ).replace(/\s+/g, '');
+      const primaryKey = resolvedWa || matchedMember?.id || cleanInputKey || userKey;
+      const existing =
+        userBalances[primaryKey] ||
+        (resolvedWa && userBalances[resolvedWa]) ||
+        (matchedMember?.id && userBalances[matchedMember.id]) ||
+        userBalances[userKey] ||
+        Object.values(userBalances).find((b) => {
+          const bal = b as UserBalance;
+          return (
+            (resolvedWa && (bal.whatsapp || '').replace(/\s+/g, '') === resolvedWa) ||
+            (cleanName && bal.userName?.trim().toLowerCase() === cleanName)
+          );
+        }) || {
+          whatsapp: resolvedWa || primaryKey,
+          userName,
+          balance: 0,
+          waivedFines: 0,
+          waivedDays: [],
+          manualAdjustments: 0,
+        };
+      return {
+        primaryKey,
+        resolvedWa,
+        memberId: matchedMember?.id,
+        existing,
+      };
+    },
+    [approvedUsers, members, userBalances]
   );
 
   // Fine & Balance Admin Handlers
@@ -2201,59 +2341,94 @@ export default function App() {
     }
   };
 
+  // Clear All Fines: clears everyone's fine amount to ৳0 while keeping missed days & all submission details intact
   const clearAllFineData = async () => {
     try {
-      const todayStr = format(new Date(), 'yyyy-MM-dd');
+      const now = new Date();
+      const todayStr = format(now, 'yyyy-MM-dd');
+      const currentMonthKey = format(now, 'yyyy-MM');
+      const monthStartStr = format(new Date(now.getFullYear(), now.getMonth(), 1), 'yyyy-MM-dd');
+
       await updateDoc(doc(db, 'config', 'global'), {
-        fineStartDate: todayStr,
+        fineStartDate: monthStartStr,
         finesResetAt: new Date().toISOString(),
-        totalConverts: 0,
       });
 
       const batch = writeBatch(db);
-      members.forEach((m) => {
-        batch.set(
-          doc(db, 'userBalances', m.id),
-          {
-            whatsapp: m.whatsapp || '',
-            userName: m.name,
-            waivedFines: 0,
-            waivedDays: [],
-            manualAdjustments: 0,
+      const nextBalances: Record<string, UserBalance> = { ...userBalances };
+      const processedKeys = new Set<string>();
+
+      const clearSingleTarget = (wa: string, memberId: string | undefined, displayName: string) => {
+        const cleanWa = (wa || '').replace(/\s+/g, '');
+        const key = cleanWa || memberId || '';
+        if (!key || processedKeys.has(key)) return;
+        processedKeys.add(key);
+
+        const stats = computeUserSubmissionStats(cleanWa, memberId);
+        const prev =
+          userBalances[key] ||
+          (memberId && userBalances[memberId]) ||
+          ({
+            whatsapp: cleanWa,
+            userName: displayName,
             balance: 0,
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
-        if (m.whatsapp) {
-          batch.set(
-            doc(db, 'userBalances', m.whatsapp),
-            {
-              whatsapp: m.whatsapp,
-              userName: m.name,
-              waivedFines: 0,
-              waivedDays: [],
-              manualAdjustments: 0,
-              balance: 0,
-              updatedAt: serverTimestamp(),
-            },
-            { merge: true }
-          );
+            waivedDays: [],
+            waivedFines: 0,
+            manualAdjustments: 0,
+          } as UserBalance);
+
+        const updatedDoc: UserBalance = {
+          ...prev,
+          id: key,
+          whatsapp: cleanWa || prev.whatsapp || '',
+          userName: displayName || prev.userName || '',
+          waivedFines: stats.rawFine,
+          waivedFinesMonth: currentMonthKey,
+          manualAdjustments: 0,
+          balance: 0,
+          clearedAt: new Date().toISOString(),
+          updatedAt: serverTimestamp(),
+        };
+        nextBalances[key] = updatedDoc;
+        batch.set(doc(db, 'userBalances', key), updatedDoc, { merge: true });
+
+        // Remove any legacy duplicate doc keyed by memberId when WhatsApp key exists
+        if (cleanWa && memberId && memberId !== cleanWa && userBalances[memberId]) {
+          delete nextBalances[memberId];
+          batch.delete(doc(db, 'userBalances', memberId));
         }
+      };
+
+      approvedUsers.forEach((u) => {
+        const matchedM = members.find(
+          (m) =>
+            m.name.trim().toLowerCase() === u.fullName.trim().toLowerCase() ||
+            (u.whatsapp &&
+              m.whatsapp &&
+              m.whatsapp.replace(/\s+/g, '') === u.whatsapp.replace(/\s+/g, ''))
+        );
+        clearSingleTarget(u.whatsapp, matchedM?.id, u.fullName);
       });
 
-      const resultsSnap = await getDocs(collection(db, 'results'));
-      resultsSnap.forEach((d) => batch.delete(d.ref));
+      members.forEach((m) => {
+        clearSingleTarget(m.whatsapp || '', m.id, m.name);
+      });
 
-      const todayLogsSnap = await getDocs(
-        query(collection(db, 'submissionLogs'), where('date', '==', todayStr))
-      );
-      todayLogsSnap.forEach((d) => batch.delete(d.ref));
+      setUserBalances(nextBalances);
+      writeCacheWithTTL('unity_cache_allBalancesAndLogs', {
+        bMap: nextBalances,
+        logs: submissionLogs,
+      });
 
       await batch.commit();
-      await refreshAllBalancesAndLogs(true);
-      await writeAuditLog('SYSTEM', 'All Users', 'Clear All Fine Data', 0, `Reset from ${todayStr}`);
-      showMsg('All fine data cleared successfully!', 'success');
+      await writeAuditLog(
+        'SYSTEM',
+        'All Users',
+        'Clear All Fines',
+        0,
+        `Cleared fines to ৳0 (submission & missed-day details preserved, ${todayStr})`
+      );
+      showMsg('All fines cleared to ৳0! Missed days & history details remain preserved.', 'success');
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, 'config/global', showMsg);
     }
@@ -2288,9 +2463,9 @@ export default function App() {
         );
         if (m.whatsapp) {
           batch.set(
-            doc(db, 'userBalances', m.whatsapp),
+            doc(db, 'userBalances', m.whatsapp.replace(/\s+/g, '')),
             {
-              whatsapp: m.whatsapp,
+              whatsapp: m.whatsapp.replace(/\s+/g, ''),
               userName: m.name,
               waivedFines: 0,
               waivedDays: [],
@@ -2341,41 +2516,43 @@ export default function App() {
     reason: string
   ) => {
     try {
-      const cleanName = userName.trim().toLowerCase();
-      const matchedUser =
-        approvedUsers.find((u) => u.fullName.trim().toLowerCase() === cleanName) ||
-        members.find((m) => m.name.trim().toLowerCase() === cleanName);
-      const primaryKey =
-        matchedUser && 'whatsapp' in matchedUser && matchedUser.whatsapp
-          ? matchedUser.whatsapp
-          : userKey;
-
-      const existing =
-        userBalances[primaryKey] ||
-        userBalances[userKey] ||
-        Object.values(userBalances).find(
-          (b) => (b as UserBalance).userName?.trim().toLowerCase() === cleanName
-        ) || {
-          whatsapp: primaryKey,
-          userName,
-          balance: 1500,
-          waivedFines: 0,
-          manualAdjustments: 0,
-        };
-
-      const newManual = (existing.manualAdjustments || 0) + (isDeduct ? -amount : amount);
-      await setDoc(
-        doc(db, 'userBalances', primaryKey),
-        {
-          ...existing,
-          whatsapp: primaryKey,
-          userName,
-          manualAdjustments: newManual,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
+      const currentMonthKey = format(new Date(), 'yyyy-MM');
+      const { primaryKey, resolvedWa, memberId, existing } = resolveBalanceTarget(
+        userKey,
+        userName
       );
-      await refreshAllBalancesAndLogs(true);
+      const currentStats = computeUserSubmissionStats(resolvedWa || primaryKey, memberId);
+      const targetTotal = isDeduct
+        ? Math.max(0, currentStats.totalFine - amount)
+        : currentStats.totalFine + amount;
+      const newManual = targetTotal - currentStats.rawFine + currentStats.waivedAmount;
+
+      const updatedDoc: UserBalance = {
+        ...existing,
+        id: primaryKey,
+        whatsapp: resolvedWa || existing.whatsapp || primaryKey,
+        userName,
+        waivedFines: currentStats.waivedAmount,
+        waivedFinesMonth: existing.waivedFinesMonth || currentMonthKey,
+        manualAdjustments: newManual,
+        updatedAt: serverTimestamp(),
+      };
+
+      const nextBalances = { ...userBalances, [primaryKey]: updatedDoc };
+      if (memberId && memberId !== primaryKey && nextBalances[memberId]) {
+        delete nextBalances[memberId];
+      }
+      setUserBalances(nextBalances);
+      writeCacheWithTTL('unity_cache_allBalancesAndLogs', {
+        bMap: nextBalances,
+        logs: submissionLogs,
+      });
+
+      await setDoc(doc(db, 'userBalances', primaryKey), updatedDoc, { merge: true });
+      if (memberId && memberId !== primaryKey && userBalances[memberId]) {
+        await deleteDoc(doc(db, 'userBalances', memberId));
+      }
+
       await writeAuditLog(
         primaryKey,
         userName,
@@ -2383,7 +2560,10 @@ export default function App() {
         amount,
         reason
       );
-      showMsg(`Fine ${isDeduct ? 'deducted' : 'added'} successfully!`, 'success');
+      showMsg(
+        `Fine ${isDeduct ? 'deducted' : 'added'} successfully! Current Fine: ৳${targetTotal}`,
+        'success'
+      );
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, `userBalances/${userKey}`, showMsg);
     }
@@ -2396,37 +2576,37 @@ export default function App() {
     reason: string
   ) => {
     try {
-      const cleanName = userName.trim().toLowerCase();
-      const matchedUser =
-        approvedUsers.find((u) => u.fullName.trim().toLowerCase() === cleanName) ||
-        members.find((m) => m.name.trim().toLowerCase() === cleanName);
-      const primaryKey =
-        matchedUser && 'whatsapp' in matchedUser && matchedUser.whatsapp
-          ? matchedUser.whatsapp
-          : userKey;
-
-      const existing =
-        userBalances[primaryKey] ||
-        userBalances[userKey] || {
-          whatsapp: primaryKey,
-          userName,
-          balance: 1500,
-          waivedFines: 0,
-          manualAdjustments: 0,
-        };
-
-      await setDoc(
-        doc(db, 'userBalances', primaryKey),
-        {
-          ...existing,
-          whatsapp: primaryKey,
-          userName,
-          waivedFines: (existing.waivedFines || 0) + amount,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
+      const currentMonthKey = format(new Date(), 'yyyy-MM');
+      const { primaryKey, resolvedWa, memberId, existing } = resolveBalanceTarget(
+        userKey,
+        userName
       );
-      await refreshAllBalancesAndLogs(true);
+      const currentWaived =
+        existing.waivedFinesMonth && existing.waivedFinesMonth !== currentMonthKey
+          ? 0
+          : existing.waivedFines || 0;
+
+      const updatedDoc: UserBalance = {
+        ...existing,
+        id: primaryKey,
+        whatsapp: resolvedWa || existing.whatsapp || primaryKey,
+        userName,
+        waivedFines: currentWaived + amount,
+        waivedFinesMonth: currentMonthKey,
+        updatedAt: serverTimestamp(),
+      };
+
+      const nextBalances = { ...userBalances, [primaryKey]: updatedDoc };
+      setUserBalances(nextBalances);
+      writeCacheWithTTL('unity_cache_allBalancesAndLogs', {
+        bMap: nextBalances,
+        logs: submissionLogs,
+      });
+
+      await setDoc(doc(db, 'userBalances', primaryKey), updatedDoc, { merge: true });
+      if (memberId && memberId !== primaryKey && userBalances[memberId]) {
+        await deleteDoc(doc(db, 'userBalances', memberId));
+      }
       await writeAuditLog(primaryKey, userName, 'Waive Fine', amount, reason);
       showMsg(`৳${amount} fine waived successfully!`, 'success');
     } catch (err) {
@@ -2441,41 +2621,33 @@ export default function App() {
     reason: string
   ) => {
     try {
-      const cleanName = userName.trim().toLowerCase();
-      const matchedUser =
-        approvedUsers.find((u) => u.fullName.trim().toLowerCase() === cleanName) ||
-        members.find((m) => m.name.trim().toLowerCase() === cleanName);
-      const primaryKey =
-        matchedUser && 'whatsapp' in matchedUser && matchedUser.whatsapp
-          ? matchedUser.whatsapp
-          : userKey;
-
-      const existing =
-        userBalances[primaryKey] ||
-        userBalances[userKey] || {
-          whatsapp: primaryKey,
-          userName,
-          balance: 1500,
-          waivedFines: 0,
-          manualAdjustments: 0,
-          waivedDays: [],
-        };
-
+      const { primaryKey, resolvedWa, memberId, existing } = resolveBalanceTarget(
+        userKey,
+        userName
+      );
       const currentWaivedDays = [...(existing.waivedDays || [])];
       if (!currentWaivedDays.includes(dateStr)) currentWaivedDays.push(dateStr);
 
-      await setDoc(
-        doc(db, 'userBalances', primaryKey),
-        {
-          ...existing,
-          whatsapp: primaryKey,
-          userName,
-          waivedDays: currentWaivedDays,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-      await refreshAllBalancesAndLogs(true);
+      const updatedDoc: UserBalance = {
+        ...existing,
+        id: primaryKey,
+        whatsapp: resolvedWa || existing.whatsapp || primaryKey,
+        userName,
+        waivedDays: currentWaivedDays,
+        updatedAt: serverTimestamp(),
+      };
+
+      const nextBalances = { ...userBalances, [primaryKey]: updatedDoc };
+      setUserBalances(nextBalances);
+      writeCacheWithTTL('unity_cache_allBalancesAndLogs', {
+        bMap: nextBalances,
+        logs: submissionLogs,
+      });
+
+      await setDoc(doc(db, 'userBalances', primaryKey), updatedDoc, { merge: true });
+      if (memberId && memberId !== primaryKey && userBalances[memberId]) {
+        await deleteDoc(doc(db, 'userBalances', memberId));
+      }
       await writeAuditLog(
         primaryKey,
         userName,
@@ -2496,12 +2668,14 @@ export default function App() {
       const day1Str = format(new Date(now.getFullYear(), now.getMonth(), 1), 'yyyy-MM-dd');
       const batch = writeBatch(db);
       const keysProcessed = new Set<string>();
+      const nextBalances: Record<string, UserBalance> = { ...userBalances };
 
       approvedUsers.forEach((u) => {
-        if (u.whatsapp && !keysProcessed.has(u.whatsapp)) {
-          keysProcessed.add(u.whatsapp);
-          const existing = userBalances[u.whatsapp] || {
-            whatsapp: u.whatsapp,
+        const cleanWa = (u.whatsapp || '').replace(/\s+/g, '');
+        if (cleanWa && !keysProcessed.has(cleanWa)) {
+          keysProcessed.add(cleanWa);
+          const existing = userBalances[cleanWa] || {
+            whatsapp: cleanWa,
             userName: u.fullName,
             balance: 0,
             waivedFines: 0,
@@ -2510,20 +2684,18 @@ export default function App() {
           };
           const days = [...(existing.waivedDays || [])];
           if (!days.includes(day1Str)) days.push(day1Str);
-          batch.set(
-            doc(db, 'userBalances', u.whatsapp),
-            { ...existing, waivedDays: days, updatedAt: serverTimestamp() },
-            { merge: true }
-          );
+          const updated = { ...existing, id: cleanWa, waivedDays: days, updatedAt: serverTimestamp() };
+          nextBalances[cleanWa] = updated;
+          batch.set(doc(db, 'userBalances', cleanWa), updated, { merge: true });
         }
       });
 
       members.forEach((m) => {
-        const key = m.whatsapp || m.id;
+        const key = (m.whatsapp || '').replace(/\s+/g, '') || m.id;
         if (key && !keysProcessed.has(key)) {
           keysProcessed.add(key);
           const existing = userBalances[key] || {
-            whatsapp: m.whatsapp || '',
+            whatsapp: (m.whatsapp || '').replace(/\s+/g, ''),
             userName: m.name,
             balance: 0,
             waivedFines: 0,
@@ -2532,16 +2704,19 @@ export default function App() {
           };
           const days = [...(existing.waivedDays || [])];
           if (!days.includes(day1Str)) days.push(day1Str);
-          batch.set(
-            doc(db, 'userBalances', key),
-            { ...existing, waivedDays: days, updatedAt: serverTimestamp() },
-            { merge: true }
-          );
+          const updated = { ...existing, id: key, waivedDays: days, updatedAt: serverTimestamp() };
+          nextBalances[key] = updated;
+          batch.set(doc(db, 'userBalances', key), updated, { merge: true });
         }
       });
 
+      setUserBalances(nextBalances);
+      writeCacheWithTTL('unity_cache_allBalancesAndLogs', {
+        bMap: nextBalances,
+        logs: submissionLogs,
+      });
+
       await batch.commit();
-      await refreshAllBalancesAndLogs(true);
       await writeAuditLog('SYSTEM', 'All Users', 'Waive Day 1 Fine', 0, `${day1Str} fixed`);
       showMsg(`Day 1 fine (${day1Str}) waived for all members!`, 'success');
     } catch (err) {
@@ -2551,28 +2726,29 @@ export default function App() {
 
   const adminRecalculateFine = async (whatsapp: string, userName: string) => {
     try {
-      const stats = computeUserSubmissionStats(whatsapp, undefined);
-      const existing = userBalances[whatsapp] || {
+      const { primaryKey, resolvedWa, memberId, existing } = resolveBalanceTarget(
         whatsapp,
-        userName,
-        balance: 0,
-        waivedFines: 0,
-        manualAdjustments: 0,
-      };
-      await setDoc(
-        doc(db, 'userBalances', whatsapp),
-        {
-          ...existing,
-          whatsapp,
-          userName,
-          balance: existing.balance ?? 0,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
+        userName
       );
-      await refreshAllBalancesAndLogs(true);
+      const stats = computeUserSubmissionStats(resolvedWa || primaryKey, memberId);
+      const updatedDoc: UserBalance = {
+        ...existing,
+        id: primaryKey,
+        whatsapp: resolvedWa || existing.whatsapp || primaryKey,
+        userName,
+        balance: existing.balance ?? 0,
+        updatedAt: serverTimestamp(),
+      };
+      const nextBalances = { ...userBalances, [primaryKey]: updatedDoc };
+      setUserBalances(nextBalances);
+      writeCacheWithTTL('unity_cache_allBalancesAndLogs', {
+        bMap: nextBalances,
+        logs: submissionLogs,
+      });
+
+      await setDoc(doc(db, 'userBalances', primaryKey), updatedDoc, { merge: true });
       await writeAuditLog(
-        whatsapp,
+        primaryKey,
         userName,
         'Recalculate Fine',
         stats.totalFine,
@@ -3473,36 +3649,56 @@ export default function App() {
 
   if (!isAuthReady || !isConfigReady) {
     return (
-      <div className="min-h-screen bg-[#0F172A] flex flex-col items-center justify-center p-6 text-white select-none">
-        <div className="relative w-24 h-24 flex items-center justify-center mb-6">
-          {/* Outer rotating gradient ring */}
-          <div className="absolute inset-0 rounded-3xl bg-gradient-to-tr from-[#0B4F9C] via-[#38BDF8] to-[#FF6B00] animate-spin opacity-80 blur-xs" style={{ animationDuration: '3s' }} />
-          {/* Second pulsing ring */}
-          <div className="absolute -inset-1 rounded-3xl border-2 border-[#38BDF8]/40 animate-ping opacity-25" style={{ animationDuration: '2s' }} />
-          {/* Inner core badge with U */}
-          <div className="relative w-22 h-22 rounded-2xl bg-[#0B4F9C] border border-[#D6E6FF]/30 shadow-2xl flex items-center justify-center overflow-hidden">
+      <div className="min-h-screen bg-gradient-to-br from-[#051124] via-[#0B254A] to-[#0A1931] flex flex-col items-center justify-center p-6 text-white select-none overflow-hidden relative">
+        {/* Background ambient glow circles */}
+        <div className="absolute w-72 h-72 rounded-full bg-[#38BDF8]/10 blur-3xl pointer-events-none" />
+        <div className="absolute w-64 h-64 rounded-full bg-[#FF6B00]/10 blur-3xl pointer-events-none translate-x-12 translate-y-16" />
+
+        <div className="relative w-32 h-32 flex items-center justify-center mb-8">
+          {/* Outer dashed spinning ring */}
+          <div
+            className="absolute inset-0 rounded-[32px] border-2 border-dashed border-[#38BDF8]/50 animate-spin"
+            style={{ animationDuration: '10s' }}
+          />
+          {/* Fast rotating outer gradient ring */}
+          <div
+            className="absolute inset-1 rounded-[28px] bg-gradient-to-tr from-[#0B4F9C] via-[#38BDF8] to-[#FF6B00] animate-spin opacity-85 shadow-[0_0_25px_rgba(56,189,248,0.35)]"
+            style={{ animationDuration: '3s' }}
+          />
+          {/* Pulsing ring */}
+          <div
+            className="absolute -inset-2 rounded-[36px] border border-[#38BDF8]/30 animate-ping opacity-25"
+            style={{ animationDuration: '2.5s' }}
+          />
+          {/* Inner core badge with rotating logo / U */}
+          <div className="relative w-26 h-26 rounded-[22px] bg-[#071E3D] border border-[#60A5FA]/45 shadow-[0_12px_32px_rgba(5,17,36,0.6)] flex items-center justify-center overflow-hidden animate-pulse">
             {config.customLogo ? (
               <img
                 src={config.customLogo}
                 alt="Unity Earning"
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover transform scale-105"
               />
             ) : (
-              <span className="font-extrabold text-3xl tracking-tight text-white font-mono">
-                U
+              <span className="font-extrabold text-4xl tracking-tight text-white font-mono bg-gradient-to-br from-white via-blue-100 to-blue-300 bg-clip-text text-transparent">
+                UE
               </span>
             )}
           </div>
         </div>
 
-        <h2 className="text-lg font-extrabold tracking-tight text-white">
-          Unity <span className="text-[#38BDF8]">Earning</span>
-        </h2>
-        <div className="mt-2.5 flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/10 border border-white/15 backdrop-blur-md">
-          <Loader2 size={13} className="animate-spin text-[#38BDF8]" />
-          <span className="text-xs font-semibold text-slate-200 tracking-wide">
-            Loading portal...
-          </span>
+        <div className="text-center space-y-2 z-10">
+          <h2 className="text-2xl font-extrabold tracking-tight text-white drop-shadow-sm">
+            Unity <span className="text-[#38BDF8]">Earning</span>
+          </h2>
+          <p className="text-xs text-blue-200/80 font-medium tracking-wide">
+            Performance &amp; Learning Portal
+          </p>
+          <div className="pt-3 flex items-center justify-center gap-2.5 px-4 py-2 rounded-full bg-white/10 border border-white/15 backdrop-blur-md shadow-lg">
+            <Loader2 size={15} className="animate-spin text-[#38BDF8]" />
+            <span className="text-xs font-bold text-slate-100 tracking-wider">
+              Loading portal...
+            </span>
+          </div>
         </div>
       </div>
     );
