@@ -112,6 +112,74 @@ const HERO_SLIDES: BannerSlide[] = [
 // Extra slide appended for seamless 2-up wrap on desktop
 const DESKTOP_SLIDES = [...HERO_SLIDES, HERO_SLIDES[0]];
 
+const EliteLeaderEmblem: React.FC<{ className?: string }> = ({ className = 'w-5 h-5' }) => (
+  <svg viewBox="0 0 32 32" fill="none" className={className} aria-hidden="true">
+    <defs>
+      <linearGradient id="eliteLeaderShield" x1="4" y1="2" x2="28" y2="30" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stopColor="#1D6CE0" />
+        <stop offset="55%" stopColor="#0B4F9C" />
+        <stop offset="100%" stopColor="#072B66" />
+      </linearGradient>
+      <linearGradient id="eliteGoldCrown" x1="8" y1="8" x2="24" y2="23" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stopColor="#FDE68A" />
+        <stop offset="45%" stopColor="#F59E0B" />
+        <stop offset="100%" stopColor="#B45309" />
+      </linearGradient>
+    </defs>
+    <path
+      d="M16 2.2L27.5 6.8V14.8C27.5 22.1 22.6 27.6 16 29.8C9.4 27.6 4.5 22.1 4.5 14.8V6.8L16 2.2Z"
+      fill="url(#eliteLeaderShield)"
+      stroke="#FCD34D"
+      strokeWidth="1.4"
+    />
+    <path
+      d="M9.4 19.8L8.4 12.6L12.8 15.6L16 10.4L19.2 15.6L23.6 12.6L22.6 19.8H9.4Z"
+      fill="url(#eliteGoldCrown)"
+      stroke="#FEF3C7"
+      strokeWidth="0.7"
+      strokeLinejoin="round"
+    />
+    <rect x="9.6" y="21" width="12.8" height="2" rx="1" fill="url(#eliteGoldCrown)" />
+    <circle cx="16" cy="8.5" r="1.1" fill="#FEF3C7" />
+  </svg>
+);
+
+const EliteTrainerEmblem: React.FC<{ className?: string }> = ({ className = 'w-5 h-5' }) => (
+  <svg viewBox="0 0 32 32" fill="none" className={className} aria-hidden="true">
+    <defs>
+      <linearGradient id="eliteTrainerCrest" x1="4" y1="2" x2="28" y2="30" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stopColor="#10B981" />
+        <stop offset="55%" stopColor="#047857" />
+        <stop offset="100%" stopColor="#064E3B" />
+      </linearGradient>
+      <linearGradient id="eliteTrainerGold" x1="9" y1="8" x2="23" y2="24" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stopColor="#FEF08A" />
+        <stop offset="50%" stopColor="#F59E0B" />
+        <stop offset="100%" stopColor="#D97706" />
+      </linearGradient>
+    </defs>
+    <path
+      d="M16 2.4L26.8 8.6V21.2L16 29.6L5.2 21.2V8.6L16 2.4Z"
+      fill="url(#eliteTrainerCrest)"
+      stroke="#A7F3D0"
+      strokeWidth="1.4"
+      strokeLinejoin="round"
+    />
+    <circle cx="16" cy="14.2" r="5.6" fill="url(#eliteTrainerGold)" stroke="#FEF9C3" strokeWidth="0.8" />
+    <path
+      d="M16 10.6L17.1 12.9L19.6 13.2L17.8 15L18.2 17.5L16 16.3L13.8 17.5L14.2 15L12.4 13.2L14.9 12.9L16 10.6Z"
+      fill="#064E3B"
+    />
+    <path
+      d="M12.2 19.6L10.8 24.4L14.3 22.6L16 24.8L17.7 22.6L21.2 24.4L19.8 19.6"
+      stroke="#FDE68A"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
 export const HomeSection: React.FC<HomeSectionProps> = ({
   stats,
   config,
@@ -409,18 +477,23 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
         {(eliteLeader || eliteTrainer) && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {eliteLeader && (
-              <div className="bg-white border border-[#D6E6FF] rounded-2xl p-3.5 sm:p-4 flex items-center gap-3.5 bg-gradient-to-br from-white via-[#F8FBFF] to-[#EEF5FF] shadow-[0_2px_10px_rgba(11,79,156,0.07)]">
-                <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-[#D6E6FF] shrink-0 bg-white">
-                  <CartoonAvatar src={findAvatar(eliteLeader.name)} name={eliteLeader.name} />
+              <div className="bg-white border border-[#BFD9FF] rounded-2xl p-3.5 sm:p-4 flex items-center gap-3.5 bg-gradient-to-br from-white via-[#F6FAFF] to-[#E8F1FF] shadow-[0_4px_14px_rgba(11,79,156,0.09)]">
+                <div className="relative shrink-0">
+                  <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-[#0B4F9C]/35 ring-2 ring-[#F59E0B]/25 bg-white shadow-sm">
+                    <CartoonAvatar src={findAvatar(eliteLeader.name)} name={eliteLeader.name} />
+                  </div>
+                  <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-white border border-[#FDE68A] shadow-md flex items-center justify-center">
+                    <EliteLeaderEmblem className="w-4.5 h-4.5" />
+                  </div>
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] font-bold text-[#0B4F9C] uppercase tracking-wider flex items-center gap-1">
-                      <Crown size={12} />
-                      Elite Team Leader
+                    <span className="text-[11px] font-extrabold text-[#0B4F9C] uppercase tracking-wider flex items-center gap-1.5">
+                      <EliteLeaderEmblem className="w-4 h-4 shrink-0" />
+                      <span>Elite Team Leader</span>
                     </span>
                     {topOverall?.id === eliteLeader.id && (
-                      <span className="text-[10px] font-bold text-[#EA580C]">
+                      <span className="text-[10px] font-extrabold text-[#B45309]">
                         Overall #1
                       </span>
                     )}
@@ -444,18 +517,23 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
             )}
 
             {eliteTrainer && (
-              <div className="bg-white border border-[#A7F3D0] rounded-2xl p-3.5 sm:p-4 flex items-center gap-3.5 bg-gradient-to-br from-white via-[#F2FBF7] to-[#ECFDF5] shadow-[0_2px_10px_rgba(4,120,87,0.07)]">
-                <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-[#A7F3D0] shrink-0 bg-white">
-                  <CartoonAvatar src={findAvatar(eliteTrainer.name)} name={eliteTrainer.name} />
+              <div className="bg-white border border-[#86EFAC] rounded-2xl p-3.5 sm:p-4 flex items-center gap-3.5 bg-gradient-to-br from-white via-[#F1FCF6] to-[#E3F9EE] shadow-[0_4px_14px_rgba(4,120,87,0.09)]">
+                <div className="relative shrink-0">
+                  <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-[#047857]/35 ring-2 ring-[#10B981]/25 bg-white shadow-sm">
+                    <CartoonAvatar src={findAvatar(eliteTrainer.name)} name={eliteTrainer.name} />
+                  </div>
+                  <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-white border border-[#A7F3D0] shadow-md flex items-center justify-center">
+                    <EliteTrainerEmblem className="w-4.5 h-4.5" />
+                  </div>
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] font-bold text-[#047857] uppercase tracking-wider flex items-center gap-1">
-                      <Award size={12} />
-                      Elite Team Trainer
+                    <span className="text-[11px] font-extrabold text-[#047857] uppercase tracking-wider flex items-center gap-1.5">
+                      <EliteTrainerEmblem className="w-4 h-4 shrink-0" />
+                      <span>Elite Team Trainer</span>
                     </span>
                     {topOverall?.id === eliteTrainer.id && (
-                      <span className="text-[10px] font-bold text-[#EA580C]">
+                      <span className="text-[10px] font-extrabold text-[#B45309]">
                         Overall #1
                       </span>
                     )}
