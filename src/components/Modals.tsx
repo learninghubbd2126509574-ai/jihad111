@@ -1266,36 +1266,29 @@ export const OverallStatsModal = ({
         )}
 
         <div className="flex-1 overflow-y-auto p-5 space-y-2 custom-scrollbar">
-          {list.map((m, idx) => {
-            const todayRes = findTodayResult(m);
-            const todayConv = todayRes?.submitted ? todayRes.convert || 0 : 0;
-            return (
+          {list.map((m, idx) => (
               <div
                 key={m.id}
-                className="flex items-center justify-between p-3 bg-[#F8FAFC] rounded-xl border border-[#E5E7EB]"
+                className="flex items-center justify-between gap-3 p-3 bg-[#F8FAFC] rounded-xl border border-[#E5E7EB]"
               >
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <span className="w-6 text-center text-xs font-mono font-bold text-[#64748B] tabular-nums">
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                  <span className="w-6 text-center text-xs font-mono font-bold text-[#64748B] tabular-nums shrink-0">
                     {idx + 1}.
                   </span>
                   <div className="w-8 h-8 rounded-full overflow-hidden border border-[#E2E8F0] bg-white shrink-0">
                     <CartoonAvatar src={findAvatar(m.name)} name={m.name} />
                   </div>
-                  <span className="text-xs font-bold text-[#0F172A] truncate">{m.name}</span>
+                  <span className="text-xs font-bold text-[#0F172A] break-words leading-snug flex-1">
+                    {m.name}
+                  </span>
                 </div>
-                <div className="text-right shrink-0 flex flex-col items-end">
-                  {todayConv > 0 && (
-                    <span className="text-[10px] font-bold font-mono tabular-nums text-[#047857] bg-[#ECFDF5] border border-[#A7F3D0] px-1.5 py-0.5 rounded-md leading-none mb-1">
-                      +{todayConv} Today
-                    </span>
-                  )}
-                  <span className="text-xs font-extrabold font-mono tabular-nums text-[#047857] leading-tight">
-                    Total: {m.score || 0} Converts
+                <div className="text-right shrink-0">
+                  <span className="text-xs font-extrabold font-mono tabular-nums text-[#047857] bg-[#ECFDF5] border border-[#A7F3D0] px-2.5 py-1 rounded-lg">
+                    {m.score || 0}
                   </span>
                 </div>
               </div>
-            );
-          })}
+            ))}
         </div>
 
         <div className="fixed -left-[9999px] top-0 pointer-events-none">

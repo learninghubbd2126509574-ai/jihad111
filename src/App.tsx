@@ -222,6 +222,13 @@ export default function App() {
   const [submissionLogs, setSubmissionLogs] = useState<SubmissionLog[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [todayDateKey, setTodayDateKey] = useState<string>(() => format(new Date(), 'yyyy-MM-dd'));
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('unity_dark_mode') === 'true';
+    } catch {
+      return false;
+    }
+  });
 
   const [showConfirm, setShowConfirm] = useState<{
     title: string;
@@ -3720,7 +3727,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F4F6F9] text-[#0F172A] pb-24 flex flex-col">
+    <div className={`min-h-screen pb-24 flex flex-col transition-colors duration-300 ${isDarkMode ? 'bg-[#0B0F19] text-[#F1F5F9] dark' : 'bg-[#F4F6F9] text-[#0F172A]'}`}>
       <HeaderBar
         customLogo={config.customLogo}
         timerActive={config.timerActive}
@@ -3728,6 +3735,16 @@ export default function App() {
         isAdmin={isAdmin}
         userAvatar={currentAuthUser?.profilePic}
         userName={currentAuthUser?.fullName}
+        isDarkMode={isDarkMode}
+        onToggleDarkMode={() => {
+          setIsDarkMode((prev) => {
+            const next = !prev;
+            try {
+              localStorage.setItem('unity_dark_mode', String(next));
+            } catch {}
+            return next;
+          });
+        }}
         onOpenProfile={() => setUserTab('profile')}
         onStartTimer={() => startTimer()}
         onStopTimer={stopTimer}
