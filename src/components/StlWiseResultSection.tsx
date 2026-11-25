@@ -308,7 +308,7 @@ export default function StlWiseResultSection({
             const progressRatio = hasTarget ? Math.min(rawRatio, 100) : 0;
             const graphPercent = hasTarget
               ? progressRatio
-              : Math.max(Math.round((item.totalConvert / maxConvert) * 100), item.totalConvert > 0 ? 8 : 2);
+              : item.totalConvert > 0 ? Math.max(Math.round((item.totalConvert / maxConvert) * 100), 8) : 0;
 
             return (
               <div key={stlId} className="py-3 first:pt-0 last:pb-0">
@@ -364,7 +364,7 @@ export default function StlWiseResultSection({
                           />
                         </div>
                         <span className="text-[11px] font-mono tabular-nums text-[#64748B]">
-                          {hasTarget ? `${rawRatio}%` : `${graphPercent}%`}
+                          {hasTarget ? `${rawRatio}%` : `${item.totalConvert > 0 ? graphPercent : 0}%`}
                         </span>
                       </div>
                     </div>

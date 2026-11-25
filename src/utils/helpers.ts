@@ -190,3 +190,18 @@ export function generateResultExportText(
 
   return lines.join('\n');
 }
+
+export function formatMemberName(name: string, type: 'leader' | 'trainer' | string): string {
+  if (!name) return '';
+  const trimmed = name.trim();
+  const lower = trimmed.toLowerCase();
+  if (type === 'leader' || type === 'Team Leader') {
+    if (lower.startsWith('tl ') || lower.startsWith('tl-')) return trimmed;
+    return `TL ${trimmed}`;
+  }
+  if (type === 'trainer' || type === 'Team Trainer') {
+    if (lower.startsWith('tr ') || lower.startsWith('tr-')) return trimmed;
+    return `TR ${trimmed}`;
+  }
+  return trimmed;
+}

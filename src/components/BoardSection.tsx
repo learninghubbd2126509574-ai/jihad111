@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import CartoonAvatar from './CartoonAvatar';
 import { Member, Result, UserRegistration } from '../types';
+import { formatMemberName } from '../utils/helpers';
 
 export interface BoardProps {
   title: string;
@@ -201,7 +202,7 @@ export const MemberCard: React.FC<MemberCardProps> = ({
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <h3 className="font-bold text-base text-[#0F172A] truncate">
-                {member.name}
+                {formatMemberName(member.name, accentColor === 'gold' ? 'leader' : 'trainer')}
               </h3>
               <span
                 className={`text-xs font-bold font-mono tabular-nums ${

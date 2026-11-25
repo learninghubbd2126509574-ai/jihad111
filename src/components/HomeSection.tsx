@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import CartoonAvatar from './CartoonAvatar';
 import { Config, Member, Result, UserRegistration } from '../types';
+import { formatMemberName } from '../utils/helpers';
 
 import bannerTeamwork from '../assets/images/unity_banner_teamwork_1795424636443.jpg';
 import bannerElearning from '../assets/images/unity_banner_elearning_1795424635783.jpg';
@@ -469,7 +470,7 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                     )}
                   </div>
                   <div className="text-sm sm:text-base font-extrabold text-white truncate mt-0.5">
-                    {eliteLeader.name}
+                    {formatMemberName(eliteLeader.name, 'leader')}
                   </div>
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1 text-[11px] sm:text-xs font-mono tabular-nums">
                     <span className="text-[#93C5FD] font-bold whitespace-nowrap">
@@ -525,7 +526,7 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                     )}
                   </div>
                   <div className="text-sm sm:text-base font-extrabold text-white truncate mt-0.5">
-                    {eliteTrainer.name}
+                    {formatMemberName(eliteTrainer.name, 'trainer')}
                   </div>
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1 text-[11px] sm:text-xs font-mono tabular-nums">
                     <span className="text-[#6EE7B7] font-bold whitespace-nowrap">
@@ -594,7 +595,7 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                           </div>
                           <div className="min-w-0">
                             <div className="font-bold text-sm text-[#0F172A] truncate">
-                              {member.name}
+                              {formatMemberName(member.name, 'leader')}
                             </div>
                             <div className="text-[11px] text-[#64748B]">Team Leader</div>
                           </div>
@@ -673,7 +674,7 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                           </div>
                           <div className="min-w-0">
                             <div className="font-bold text-sm text-[#0F172A] truncate">
-                              {member.name}
+                              {formatMemberName(member.name, 'trainer')}
                             </div>
                             <div className="text-[11px] text-[#64748B]">Team Trainer</div>
                           </div>

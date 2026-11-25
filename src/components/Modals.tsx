@@ -27,6 +27,7 @@ import {
 import RankingExportTemplate from './RankingExportTemplate';
 import CartoonAvatar from './CartoonAvatar';
 import { generateRankingPdf } from '../utils/exportRankingPdf';
+import { formatMemberName } from '../utils/helpers';
 import {
   Application,
   AttendanceRecord,
@@ -1103,7 +1104,7 @@ export const RankingBoardModal = ({
                     <CartoonAvatar src={findAvatar(m.name)} name={m.name} />
                   </div>
                   <span className="text-sm font-bold text-[#0F172A] leading-snug break-words">
-                    {m.name}
+                    {formatMemberName(m.name, title.toLowerCase().includes('leader') ? 'leader' : 'trainer')}
                   </span>
                 </div>
                 <span

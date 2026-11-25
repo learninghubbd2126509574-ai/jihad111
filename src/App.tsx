@@ -222,6 +222,13 @@ export default function App() {
   const [submissionLogs, setSubmissionLogs] = useState<SubmissionLog[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [todayDateKey, setTodayDateKey] = useState<string>(() => format(new Date(), 'yyyy-MM-dd'));
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('unity_dark_mode') === 'true';
+    } catch {
+      return false;
+    }
+  });
 
   const [showConfirm, setShowConfirm] = useState<{
     title: string;
@@ -3653,32 +3660,22 @@ export default function App() {
         {/* Soft background ambient glow */}
         <div className="absolute w-72 h-72 rounded-full bg-[#0B4F9C]/5 blur-3xl pointer-events-none" />
 
-        <div className="relative w-32 h-32 flex items-center justify-center mb-8">
-          {/* Outer dashed spinning ring */}
+        <div className="relative w-28 h-28 flex items-center justify-center mb-6">
+          {/* Single clean smooth rotating ring */}
           <div
-            className="absolute inset-0 rounded-[32px] border-2 border-dashed border-[#0B4F9C]/40 animate-spin"
-            style={{ animationDuration: '10s' }}
+            className="absolute inset-0 rounded-full border-[3px] border-[#0B4F9C] border-t-transparent animate-spin"
+            style={{ animationDuration: '1.2s' }}
           />
-          {/* Fast rotating outer gradient ring */}
-          <div
-            className="absolute inset-1 rounded-[28px] bg-gradient-to-tr from-[#0B4F9C] via-[#38BDF8] to-[#1D4ED8] animate-spin opacity-90 shadow-[0_10px_25px_rgba(11,79,156,0.25)]"
-            style={{ animationDuration: '3s' }}
-          />
-          {/* Pulsing ring */}
-          <div
-            className="absolute -inset-2 rounded-[36px] border border-[#0B4F9C]/20 animate-ping opacity-20"
-            style={{ animationDuration: '2.5s' }}
-          />
-          {/* Inner core white badge with rotating logo / U */}
-          <div className="relative w-26 h-26 rounded-[22px] bg-white border border-[#D6E6FF] shadow-[0_12px_32px_rgba(11,79,156,0.18)] flex items-center justify-center overflow-hidden animate-pulse">
+          {/* Center logo badge */}
+          <div className="relative w-20 h-20 rounded-full bg-white border border-[#D6E6FF] shadow-[0_8px_24px_rgba(11,79,156,0.15)] flex items-center justify-center overflow-hidden">
             {config.customLogo ? (
               <img
                 src={config.customLogo}
                 alt="Unity Earning"
-                className="w-full h-full object-cover transform scale-105"
+                className="w-full h-full object-cover"
               />
             ) : (
-              <span className="font-extrabold text-4xl tracking-tight text-[#0B4F9C] font-mono">
+              <span className="font-extrabold text-2xl tracking-tight text-[#0B4F9C] font-mono">
                 UE
               </span>
             )}
@@ -3720,7 +3717,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F4F6F9] text-[#0F172A] pb-24 flex flex-col">
+    <div className={`min-h-screen pb-24 flex flex-col transition-colors duration-300 ${isDarkMode ? 'bg-[#0B0F19] text-[#F1F5F9] dark' : 'bg-[#F4F6F9] text-[#0F172A]'}`}>
       <HeaderBar
         customLogo={config.customLogo}
         timerActive={config.timerActive}
@@ -3728,6 +3725,16 @@ export default function App() {
         isAdmin={isAdmin}
         userAvatar={currentAuthUser?.profilePic}
         userName={currentAuthUser?.fullName}
+        isDarkMode={isDarkMode}
+        onToggleDarkMode={() => {
+          setIsDarkMode((prev) => {
+            const next = !prev;
+            try {
+              localStorage.setItem('unity_dark_mode', String(next));
+            } catch {}
+            return next;
+          });
+        }}
         onOpenProfile={() => setUserTab('profile')}
         onStartTimer={() => startTimer()}
         onStopTimer={stopTimer}
