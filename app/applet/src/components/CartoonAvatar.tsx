@@ -70,7 +70,7 @@ export function getAvatarVariantIndex(name?: string): number {
   return Math.abs(hash) % 4;
 }
 
-// 4 Japanese Anime Boy Avatars
+// 4 Japanese Anime Boy Avatars (Professional & Clean Vector Anime Style)
 function AnimeBoy1() {
   return (
     <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice" className="w-full h-full block" xmlns="http://www.w3.org/2000/svg">
@@ -81,21 +81,29 @@ function AnimeBoy1() {
         </linearGradient>
       </defs>
       <rect width="100" height="100" fill="url(#ab1Bg)" />
+      {/* Torso & Uniform */}
       <path d="M22 100 C22 75 35 68 50 68 C65 68 78 75 78 100 Z" fill="#1e40af" />
       <polygon points="50,78 40,68 47,68" fill="#1d4ed8" />
       <polygon points="50,78 60,68 53,68" fill="#1d4ed8" />
       <path d="M47 78 L53 78 L52 90 L48 90 Z" fill="#ffffff" />
+      {/* Neck */}
       <rect x="44" y="58" width="12" height="15" rx="3" fill="#fde68a" />
+      {/* Head / Face */}
       <ellipse cx="50" cy="45" rx="20" ry="22" fill="#fef3c7" />
+      {/* Anime Hair (Dark Blue/Black styled spiky layers) */}
       <path d="M28 44 C26 24 36 15 50 15 C64 15 74 24 72 44 C72 32 66 22 56 22 C46 22 34 26 28 44 Z" fill="#0f172a" />
       <path d="M36 24 C45 18 58 19 66 27 C58 22 45 22 36 24 Z" fill="#334155" />
+      {/* Anime Eyes (Large expressive blue/cyan eyes) */}
       <ellipse cx="40.5" cy="44" rx="3.5" ry="4.5" fill="#1e3a8a" />
       <ellipse cx="59.5" cy="44" rx="3.5" ry="4.5" fill="#1e3a8a" />
       <circle cx="41.5" cy="42.5" r="1.5" fill="#ffffff" />
       <circle cx="60.5" cy="42.5" r="1.5" fill="#ffffff" />
+      {/* Eyebrows */}
       <path d="M36 37 Q41 35 45 38" stroke="#0f172a" strokeWidth="2" strokeLinecap="round" fill="none" />
       <path d="M55 38 Q59 35 64 37" stroke="#0f172a" strokeWidth="2" strokeLinecap="round" fill="none" />
+      {/* Gentle confident anime smile */}
       <path d="M44 53 Q50 58 56 53" stroke="#b45309" strokeWidth="2" strokeLinecap="round" fill="none" />
+      {/* Blush */}
       <circle cx="35" cy="49" r="3" fill="#f87171" opacity="0.35" />
       <circle cx="65" cy="49" r="3" fill="#f87171" opacity="0.35" />
     </svg>
@@ -112,18 +120,25 @@ function AnimeBoy2() {
         </linearGradient>
       </defs>
       <rect width="100" height="100" fill="url(#ab2Bg)" />
+      {/* Torso & Teal Jacket */}
       <path d="M20 100 C20 74 34 67 50 67 C66 67 80 74 80 100 Z" fill="#0f766e" />
       <path d="M38 67 Q50 82 62 67 Z" fill="#115e59" />
+      {/* Neck */}
       <rect x="44" y="56" width="12" height="14" rx="3" fill="#fed7aa" />
+      {/* Head */}
       <ellipse cx="50" cy="44" rx="20" ry="21" fill="#fed7aa" />
+      {/* Anime Hair (Silver/Ash layered anime bangs) */}
       <path d="M28 42 C28 22 38 14 50 14 C62 14 72 22 72 42 C68 28 60 20 50 20 C40 20 32 28 28 42 Z" fill="#475569" />
       <path d="M35 22 C45 17 58 17 65 24 C55 19 45 19 35 22 Z" fill="#94a3b8" />
+      {/* Anime Emerald Eyes */}
       <ellipse cx="41" cy="43" rx="3.2" ry="4" fill="#065f46" />
       <ellipse cx="59" cy="43" rx="3.2" ry="4" fill="#065f46" />
       <circle cx="42" cy="41.5" r="1.3" fill="#ffffff" />
       <circle cx="60" cy="41.5" r="1.3" fill="#ffffff" />
+      {/* Eyebrows */}
       <path d="M37 36 Q41 34 45.5 37" stroke="#1e293b" strokeWidth="1.8" strokeLinecap="round" fill="none" />
       <path d="M54.5 37 Q59 34 63 36" stroke="#1e293b" strokeWidth="1.8" strokeLinecap="round" fill="none" />
+      {/* Smile */}
       <path d="M44 52 Q50 57 56 52" stroke="#9a3412" strokeWidth="2" strokeLinecap="round" fill="none" />
       <circle cx="36" cy="49" r="2.5" fill="#f43f5e" opacity="0.3" />
       <circle cx="64" cy="49" r="2.5" fill="#f43f5e" opacity="0.3" />
@@ -141,18 +156,24 @@ function AnimeBoy3() {
         </linearGradient>
       </defs>
       <rect width="100" height="100" fill="url(#ab3Bg)" />
+      {/* Torso & Orange/Gold Outfit */}
       <path d="M20 100 C20 74 34 68 50 68 C66 68 80 74 80 100 Z" fill="#c2410c" />
       <path d="M46 68 L46 100 L54 100 L54 68 Z" fill="#9a3412" />
       <rect x="44" y="58" width="12" height="14" rx="3" fill="#fed7aa" />
+      {/* Head */}
       <ellipse cx="50" cy="46" rx="19.5" ry="20.5" fill="#fde68a" />
+      {/* Anime Hair (Golden Blond spiky anime style) */}
       <path d="M28 40 C28 22 38 14 50 14 C62 14 72 22 72 40 C70 26 62 18 50 18 C38 18 30 26 28 40 Z" fill="#b45309" />
       <path d="M35 20 C45 15 58 15 65 22 C55 18 45 18 35 20 Z" fill="#f59e0b" />
+      {/* Anime Amber Eyes */}
       <ellipse cx="41" cy="45" rx="3.2" ry="4" fill="#78350f" />
       <ellipse cx="59" cy="45" rx="3.2" ry="4" fill="#78350f" />
       <circle cx="42" cy="43.5" r="1.3" fill="#ffffff" />
       <circle cx="60" cy="43.5" r="1.3" fill="#ffffff" />
+      {/* Eyebrows */}
       <path d="M37 38 Q41 36 45 38.5" stroke="#451a03" strokeWidth="1.8" strokeLinecap="round" fill="none" />
       <path d="M55 38.5 Q59 36 63 38" stroke="#451a03" strokeWidth="1.8" strokeLinecap="round" fill="none" />
+      {/* Smile with teeth */}
       <path d="M43 53 Q50 60 57 53 Z" fill="#78350f" />
       <path d="M45 54 Q50 57 55 54 Z" fill="#ffffff" />
     </svg>
@@ -169,20 +190,26 @@ function AnimeBoy4() {
         </linearGradient>
       </defs>
       <rect width="100" height="100" fill="url(#ab4Bg)" />
+      {/* Torso & Violet Suit */}
       <path d="M20 100 C20 74 34 68 50 68 C66 68 80 74 80 100 Z" fill="#6d28d9" />
       <polygon points="50,72 42,68 47,84" fill="#ffffff" />
       <polygon points="50,72 58,68 53,84" fill="#ffffff" />
       <polygon points="50,75 48,90 50,96 52,90" fill="#f43f5e" />
       <rect x="44" y="58" width="12" height="14" rx="3" fill="#fed7aa" />
+      {/* Head */}
       <ellipse cx="50" cy="45" rx="19.5" ry="21" fill="#fed7aa" />
+      {/* Anime Hair (Purple-black neat fringe) */}
       <path d="M28 41 C28 24 36 16 50 16 C64 16 72 24 72 41 C70 28 62 20 50 20 C38 20 30 28 28 41 Z" fill="#312e81" />
       <path d="M35 21 C45 17 58 17 65 23 C55 19 45 19 35 21 Z" fill="#4f46e5" />
+      {/* Anime Violet Eyes */}
       <ellipse cx="41" cy="44" rx="3.2" ry="4" fill="#3b0764" />
       <ellipse cx="59" cy="44" rx="3.2" ry="4" fill="#3b0764" />
       <circle cx="42" cy="42.5" r="1.3" fill="#ffffff" />
       <circle cx="60" cy="42.5" r="1.3" fill="#ffffff" />
+      {/* Eyebrows */}
       <path d="M37 38 Q41 36 45 38.5" stroke="#1e1b4b" strokeWidth="1.8" strokeLinecap="round" fill="none" />
       <path d="M55 38.5 Q59 36 63 38" stroke="#1e1b4b" strokeWidth="1.8" strokeLinecap="round" fill="none" />
+      {/* Smile */}
       <path d="M44 52 Q50 57 56 52" stroke="#581c87" strokeWidth="2" strokeLinecap="round" fill="none" />
       <circle cx="36" cy="48" r="2.8" fill="#f43f5e" opacity="0.35" />
       <circle cx="64" cy="48" r="2.8" fill="#f43f5e" opacity="0.35" />
@@ -190,7 +217,7 @@ function AnimeBoy4() {
   );
 }
 
-// 4 Japanese Anime Girl Avatars
+// 4 Japanese Anime Girl Avatars (Professional & Gorgeous Vector Anime Style)
 function AnimeGirl1() {
   return (
     <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid slice" className="w-full h-full block" xmlns="http://www.w3.org/2000/svg">
@@ -201,21 +228,29 @@ function AnimeGirl1() {
         </linearGradient>
       </defs>
       <rect width="100" height="100" fill="url(#ag1Bg)" />
+      {/* Ponytail / Hair Back */}
       <ellipse cx="68" cy="36" rx="9" ry="17" fill="#831843" transform="rotate(25 68 36)" />
       <circle cx="63" cy="27" r="4.5" fill="#ec4899" />
+      {/* Torso & Pink Anime Dress */}
       <path d="M22 100 C22 75 35 68 50 68 C65 68 78 75 78 100 Z" fill="#db2777" />
       <path d="M42 68 Q50 78 58 68 Z" fill="#fce7f3" />
       <rect x="44" y="58" width="12" height="14" rx="3" fill="#fed7aa" />
+      {/* Head */}
       <ellipse cx="50" cy="45" rx="19" ry="20.5" fill="#fef3c7" />
+      {/* Anime Hair (Pink-magenta twin tails/bangs) */}
       <path d="M29 42 C29 23 38 17 50 17 C62 17 71 23 71 42 C67 28 58 24 48 24 C38 24 33 28 29 42 Z" fill="#831843" />
       <path d="M35 22 C45 17 58 17 65 24 C55 19 45 19 35 22 Z" fill="#db2777" />
+      {/* Anime Magenta Eyes (Large sparkling eyes) */}
       <ellipse cx="41" cy="44" rx="3.5" ry="4.5" fill="#9d174d" />
       <ellipse cx="59" cy="44" rx="3.5" ry="4.5" fill="#9d174d" />
       <circle cx="42" cy="42.5" r="1.4" fill="#ffffff" />
       <circle cx="60" cy="42.5" r="1.4" fill="#ffffff" />
+      {/* Eyebrows */}
       <path d="M37 38 Q41 36 45 38.5" stroke="#831843" strokeWidth="1.6" strokeLinecap="round" fill="none" />
       <path d="M55 38.5 Q59 36 63 38" stroke="#831843" strokeWidth="1.6" strokeLinecap="round" fill="none" />
+      {/* Sweet Anime Smile */}
       <path d="M44 52 Q50 58 56 52" stroke="#be123c" strokeWidth="2.2" strokeLinecap="round" fill="none" />
+      {/* Rosy Cheeks */}
       <circle cx="35" cy="49" r="3.5" fill="#fb7185" opacity="0.5" />
       <circle cx="65" cy="49" r="3.5" fill="#fb7185" opacity="0.5" />
     </svg>
@@ -232,17 +267,21 @@ function AnimeGirl2() {
         </linearGradient>
       </defs>
       <rect width="100" height="100" fill="url(#ag2Bg)" />
+      {/* Elegant Professional Hijab / Scarf */}
       <path d="M18 100 C18 72 32 64 50 64 C68 64 82 72 82 100 Z" fill="#0284c7" />
       <ellipse cx="50" cy="44" rx="24" ry="27" fill="#0284c7" />
       <ellipse cx="50" cy="45" rx="17.5" ry="21" fill="#38bdf8" />
       <ellipse cx="50" cy="46" rx="15" ry="18" fill="#fef3c7" />
       <circle cx="50" cy="65" r="3" fill="#facc15" />
+      {/* Anime Blue Eyes */}
       <ellipse cx="42" cy="45" rx="3.2" ry="4" fill="#0369a1" />
       <ellipse cx="58" cy="45" rx="3.2" ry="4" fill="#0369a1" />
       <circle cx="43" cy="43.5" r="1.3" fill="#ffffff" />
       <circle cx="59" cy="43.5" r="1.3" fill="#ffffff" />
+      {/* Eyebrows */}
       <path d="M38 40 Q42 38 46 40" stroke="#0f172a" strokeWidth="1.5" strokeLinecap="round" fill="none" />
       <path d="M54 40 Q58 38 62 40" stroke="#0f172a" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+      {/* Gentle Smile */}
       <path d="M45 53 Q50 58 55 53" stroke="#b45309" strokeWidth="2" strokeLinecap="round" fill="none" />
       <circle cx="37" cy="50" r="3" fill="#f43f5e" opacity="0.4" />
       <circle cx="63" cy="50" r="3" fill="#f43f5e" opacity="0.4" />
@@ -260,19 +299,26 @@ function AnimeGirl3() {
         </linearGradient>
       </defs>
       <rect width="100" height="100" fill="url(#ag3Bg)" />
+      {/* Twin Buns */}
       <circle cx="31" cy="24" r="9" fill="#581c87" />
       <circle cx="69" cy="24" r="9" fill="#581c87" />
+      {/* Torso & Purple Outfit */}
       <path d="M22 100 C22 75 35 68 50 68 C65 68 78 75 78 100 Z" fill="#7c3aed" />
       <rect x="44" y="58" width="12" height="14" rx="3" fill="#fed7aa" />
+      {/* Head */}
       <ellipse cx="50" cy="45" rx="19" ry="20" fill="#fef3c7" />
+      {/* Anime Hair */}
       <path d="M30 40 C30 24 38 19 50 19 C62 19 70 24 70 40 C66 28 58 26 50 26 C42 26 34 28 30 40 Z" fill="#581c87" />
+      {/* Stylish Round Anime Glasses */}
       <circle cx="41" cy="43.5" r="6.5" fill="none" stroke="#7c3aed" strokeWidth="1.8" />
       <circle cx="59" cy="43.5" r="6.5" fill="none" stroke="#7c3aed" strokeWidth="1.8" />
       <line x1="47.5" y1="43.5" x2="52.5" y2="43.5" stroke="#7c3aed" strokeWidth="1.8" />
+      {/* Anime Amethyst Eyes */}
       <ellipse cx="41" cy="43.5" rx="3" ry="3.8" fill="#4c1d95" />
       <ellipse cx="59" cy="43.5" rx="3" ry="3.8" fill="#4c1d95" />
       <circle cx="42" cy="42" r="1.2" fill="#ffffff" />
       <circle cx="60" cy="42" r="1.2" fill="#ffffff" />
+      {/* Smile */}
       <path d="M44 53 Q50 59 56 53" stroke="#b45309" strokeWidth="2" strokeLinecap="round" fill="none" />
       <circle cx="34" cy="49" r="3" fill="#ec4899" opacity="0.45" />
       <circle cx="66" cy="49" r="3" fill="#ec4899" opacity="0.45" />
@@ -290,18 +336,24 @@ function AnimeGirl4() {
         </linearGradient>
       </defs>
       <rect width="100" height="100" fill="url(#ag4Bg)" />
+      {/* Torso & Emerald Top */}
       <path d="M22 100 C22 75 35 68 50 68 C65 68 78 75 78 100 Z" fill="#059669" />
       <rect x="44" y="58" width="12" height="14" rx="3" fill="#fed7aa" />
+      {/* Head */}
       <ellipse cx="50" cy="45" rx="19" ry="20" fill="#fef3c7" />
+      {/* Anime Hair (Golden/Honey wavy long anime hair) */}
       <path d="M28 42 C28 24 38 18 50 18 C62 18 72 24 72 42 C68 28 58 26 48 26 C38 26 32 30 28 42 Z" fill="#78350f" />
       <circle cx="65" cy="30" r="4.5" fill="#f59e0b" />
       <circle cx="65" cy="30" r="2" fill="#78350f" />
+      {/* Anime Emerald Eyes */}
       <ellipse cx="41" cy="44" rx="3.2" ry="4" fill="#065f46" />
       <ellipse cx="59" cy="44" rx="3.2" ry="4" fill="#065f46" />
       <circle cx="42" cy="42.5" r="1.3" fill="#ffffff" />
       <circle cx="60" cy="42.5" r="1.3" fill="#ffffff" />
+      {/* Eyebrows */}
       <path d="M37 39 Q41 37 45 39.5" stroke="#78350f" strokeWidth="1.6" strokeLinecap="round" fill="none" />
       <path d="M55 39.5 Q59 37 63 39" stroke="#78350f" strokeWidth="1.6" strokeLinecap="round" fill="none" />
+      {/* Smile */}
       <path d="M43 52 Q50 58 57 52" stroke="#b45309" strokeWidth="2.2" strokeLinecap="round" fill="none" />
       <circle cx="35" cy="49" r="3" fill="#f87171" opacity="0.4" />
       <circle cx="65" cy="49" r="3" fill="#f87171" opacity="0.4" />
@@ -358,19 +410,8 @@ export const CartoonAvatar: React.FC<CartoonAvatarProps> = ({
 }) => {
   const [loadError, setLoadError] = useState(false);
 
-  // Normalize old or stored avatar strings (e.g. "boy-1", "girl-1", "cartoon:boy-1") to new anime avatars
-  let cleanSrc = src;
-  if (cleanSrc && !cleanSrc.includes(':') && (cleanSrc.startsWith('boy-') || cleanSrc.startsWith('girl-'))) {
-    cleanSrc = `cartoon:anime-${cleanSrc}`;
-  } else if (cleanSrc && cleanSrc.startsWith('cartoon:')) {
-    const id = cleanSrc.replace('cartoon:', '');
-    if (id.startsWith('boy-') || id.startsWith('girl-')) {
-      cleanSrc = `cartoon:anime-${id}`;
-    }
-  }
-
-  if (cleanSrc && cleanSrc.startsWith('cartoon:')) {
-    const cartoonId = cleanSrc.replace('cartoon:', '');
+  if (src && src.startsWith('cartoon:')) {
+    const cartoonId = src.replace('cartoon:', '');
     const found = CARTOON_AVATAR_LIST.find(c => c.id === cartoonId);
     if (found) {
       const Comp = found.component;
@@ -382,11 +423,10 @@ export const CartoonAvatar: React.FC<CartoonAvatarProps> = ({
     }
   }
 
-  // If a real profile picture (URL or base64) exists and hasn't errored out
-  if (cleanSrc && !loadError && (cleanSrc.startsWith('data:') || cleanSrc.startsWith('http://') || cleanSrc.startsWith('https://') || cleanSrc.startsWith('/'))) {
+  if (src && !loadError && (src.startsWith('data:') || src.startsWith('http://') || src.startsWith('https://') || src.startsWith('/'))) {
     return (
       <img
-        src={cleanSrc}
+        src={src}
         alt={alt || name || 'User Profile'}
         className={`block w-full h-full object-cover select-none ${className}`}
         referrerPolicy="no-referrer"
@@ -395,7 +435,6 @@ export const CartoonAvatar: React.FC<CartoonAvatarProps> = ({
     );
   }
 
-  // Fallback: Automatic friendly Boy/Girl Japanese Anime Avatar based on Name
   const resolvedGender: 'male' | 'female' = 
     (gender === 'male' || gender === 'female') ? gender : detectGenderFromName(name);
   const variantIndex = getAvatarVariantIndex(name);
