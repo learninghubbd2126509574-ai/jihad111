@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, Menu, Square, Sun, Moon } from 'lucide-react';
+import { Play, Menu, Square } from 'lucide-react';
 import { SessionTimerBadge } from './SessionTimer';
 import CartoonAvatar from './CartoonAvatar';
 
@@ -10,8 +10,6 @@ interface HeaderBarProps {
   isAdmin: boolean;
   userAvatar?: string;
   userName?: string;
-  isDarkMode?: boolean;
-  onToggleDarkMode?: () => void;
   onOpenProfile?: () => void;
   onStartTimer: () => void;
   onStopTimer: () => void;
@@ -26,8 +24,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   isAdmin,
   userAvatar,
   userName,
-  isDarkMode,
-  onToggleDarkMode,
   onOpenProfile,
   onStartTimer,
   onStopTimer,
@@ -35,7 +31,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   onOpenMenu,
 }) => {
   return (
-    <header className="sticky top-0 z-[200] bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-[#E5E7EB] dark:border-slate-800 px-3.5 sm:px-6 h-14 sm:h-16 flex items-center justify-between gap-4 transition-colors">
+    <header className="sticky top-0 z-[200] bg-white/95 backdrop-blur-md border-b border-[#E5E7EB] px-3.5 sm:px-6 h-14 sm:h-16 flex items-center justify-between gap-4">
       {/* Left: Brand Logo & Title */}
       <div className="flex items-center gap-3 min-w-0">
         <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-[#1D6CE0] to-[#0B4F9C] text-white flex items-center justify-center font-extrabold text-sm sm:text-base shrink-0 overflow-hidden shadow-[0_2px_8px_rgba(11,79,156,0.25)]">
@@ -51,13 +47,13 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
           )}
         </div>
 
-        <span className="h-7 w-px bg-[#E2E8F0] dark:bg-slate-700 shrink-0" aria-hidden="true" />
+        <span className="h-7 w-px bg-[#E2E8F0] shrink-0" aria-hidden="true" />
 
         <div className="flex flex-col min-w-0">
-          <div className="font-extrabold text-base sm:text-lg leading-tight text-[#0F172A] dark:text-white truncate tracking-tight">
-            Unity <span className="text-[#0B4F9C] dark:text-blue-400">Earning</span>
+          <div className="font-extrabold text-base sm:text-lg leading-tight text-[#0F172A] truncate tracking-tight">
+            Unity <span className="text-[#0B4F9C]">Earning</span>
           </div>
-          <div className="text-[11px] text-[#64748B] dark:text-slate-400 font-medium truncate">
+          <div className="text-[11px] text-[#64748B] font-medium truncate">
             Performance Portal
           </div>
         </div>
@@ -65,19 +61,6 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
 
       {/* Right: Actions */}
       <div className="flex items-center gap-2 shrink-0">
-        {/* Dark/White mode toggle icon to the left of the timer */}
-        {onToggleDarkMode && (
-          <button
-            type="button"
-            onClick={onToggleDarkMode}
-            className="w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-xl bg-white dark:bg-slate-800 hover:bg-[#F8FAFC] dark:hover:bg-slate-700 border border-[#E2E8F0] dark:border-slate-700 text-[#0F172A] dark:text-yellow-400 shadow-[0_1px_3px_rgba(15,23,42,0.05)] transition-colors cursor-pointer"
-            title={isDarkMode ? "Switch to White Mode" : "Switch to Dark Mode"}
-            aria-label="Toggle Dark/White Mode"
-          >
-            {isDarkMode ? <Sun size={18} strokeWidth={1.85} /> : <Moon size={18} strokeWidth={1.85} />}
-          </button>
-        )}
-
         {timerActive ? (
           <div className="flex items-center gap-1.5">
             <SessionTimerBadge
@@ -127,7 +110,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
         <button
           type="button"
           onClick={onOpenMenu}
-          className="w-10 h-10 flex items-center justify-center rounded-xl bg-white dark:bg-slate-800 hover:bg-[#F8FAFC] dark:hover:bg-slate-700 border border-[#E2E8F0] dark:border-slate-700 text-[#0F172A] dark:text-slate-200 hover:text-[#0B4F9C] dark:hover:text-blue-400 shadow-[0_1px_3px_rgba(15,23,42,0.05)] transition-colors cursor-pointer"
+          className="w-10 h-10 flex items-center justify-center rounded-xl bg-white hover:bg-[#F8FAFC] border border-[#E2E8F0] text-[#0F172A] hover:text-[#0B4F9C] shadow-[0_1px_3px_rgba(15,23,42,0.05)] transition-colors cursor-pointer"
           title="Open Menu"
           aria-label="Open Menu"
         >

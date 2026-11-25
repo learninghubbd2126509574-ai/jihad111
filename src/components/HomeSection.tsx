@@ -265,6 +265,133 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
 
   return (
     <div className="space-y-4 sm:space-y-5 animate-fade-in">
+      {/* Slim Auto-Scrolling 3-Second Work & E-Learning Hero Carousel */}
+      <section
+        aria-label="Unity Earning E-Learning Showcase"
+        onMouseEnter={() => setIsPaused(true)}
+        onMouseLeave={() => setIsPaused(false)}
+        onTouchStart={() => setIsPaused(true)}
+        onTouchEnd={() => setIsPaused(false)}
+        className="relative w-full rounded-2xl overflow-hidden bg-white border border-[#D6E6FF] shadow-[0_4px_16px_rgba(11,79,156,0.08)] group"
+      >
+        {/* Mobile: 1 slim banner at a time */}
+        <div
+          className="flex md:hidden transition-transform duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform"
+          style={{ transform: `translate3d(-${activeSlide * 100}%, 0, 0)` }}
+        >
+          {HERO_SLIDES.map((slide) => (
+            <div
+              key={slide.id}
+              className="w-full shrink-0 h-[116px] sm:h-[144px] relative bg-gradient-to-r from-[#EEF5FF] via-[#F8FBFF] to-[#E6F0FF]"
+            >
+              {!failedImages[slide.id] ? (
+                <img
+                  src={slide.src}
+                  alt={slide.alt}
+                  referrerPolicy="no-referrer"
+                  onError={() =>
+                    setFailedImages((prev) => ({ ...prev, [slide.id]: true }))
+                  }
+                  className="w-full h-full object-cover object-center select-none"
+                  draggable={false}
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-between px-5 bg-gradient-to-br from-[#EEF5FF] via-white to-[#ECFDF5]">
+                  <div>
+                    <div className="text-lg font-extrabold text-[#0F172A] tracking-tight">
+                      {slide.title}
+                    </div>
+                    <div className="text-[11px] font-medium text-[#475569]">
+                      {slide.subtitle}
+                    </div>
+                  </div>
+                  <div className="w-11 h-11 rounded-xl bg-[#0B4F9C]/10 text-[#0B4F9C] flex items-center justify-center shrink-0">
+                    <BookOpen size={22} />
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Desktop (md+): Slim 2-up horizontal scrolling track */}
+        <div
+          className="hidden md:flex transition-transform duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform"
+          style={{ transform: `translate3d(-${activeSlide * 50}%, 0, 0)` }}
+        >
+          {DESKTOP_SLIDES.map((slide, idx) => (
+            <div
+              key={`${slide.id}-${idx}`}
+              className="w-1/2 shrink-0 h-[168px] lg:h-[184px] relative bg-gradient-to-r from-[#EEF5FF] via-[#F8FBFF] to-[#E6F0FF] border-r border-[#E2E8F0]/70 last:border-r-0"
+            >
+              {!failedImages[slide.id] ? (
+                <img
+                  src={slide.src}
+                  alt={slide.alt}
+                  referrerPolicy="no-referrer"
+                  onError={() =>
+                    setFailedImages((prev) => ({ ...prev, [slide.id]: true }))
+                  }
+                  className="w-full h-full object-cover object-center select-none"
+                  draggable={false}
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-between px-6 bg-gradient-to-br from-[#EEF5FF] via-white to-[#ECFDF5]">
+                  <div>
+                    <div className="text-xl font-extrabold text-[#0F172A] tracking-tight">
+                      {slide.title}
+                    </div>
+                    <div className="text-xs font-medium text-[#475569]">
+                      {slide.subtitle}
+                    </div>
+                  </div>
+                  <div className="w-12 h-12 rounded-xl bg-[#0B4F9C]/10 text-[#0B4F9C] flex items-center justify-center shrink-0">
+                    <BookOpen size={24} />
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Left / Right Subtle Navigation Arrows */}
+        <button
+          type="button"
+          onClick={() =>
+            setActiveSlide((prev) => (prev - 1 + HERO_SLIDES.length) % HERO_SLIDES.length)
+          }
+          aria-label="Previous slide"
+          className="hidden sm:flex absolute left-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/85 hover:bg-white text-[#0F172A] border border-[#E2E8F0] shadow-sm items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+        >
+          <ChevronLeft size={16} />
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSlide((prev) => (prev + 1) % HERO_SLIDES.length)}
+          aria-label="Next slide"
+          className="hidden sm:flex absolute right-2.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white/85 hover:bg-white text-[#0F172A] border border-[#E2E8F0] shadow-sm items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+        >
+          <ChevronRight size={16} />
+        </button>
+
+        {/* Bottom Compact Slide Indicator Dots */}
+        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-white/80 backdrop-blur-xs border border-[#E2E8F0]/80 shadow-2xs">
+          {HERO_SLIDES.map((slide, idx) => (
+            <button
+              key={slide.id}
+              type="button"
+              onClick={() => setActiveSlide(idx)}
+              aria-label={`View slide ${idx + 1}: ${slide.subtitle}`}
+              className={`h-1.5 rounded-full transition-all duration-300 cursor-pointer ${
+                activeSlide === idx
+                  ? 'w-4 bg-[#0B4F9C]'
+                  : 'w-1.5 bg-[#CBD5E1] hover:bg-[#94A3B8]'
+              }`}
+            />
+          ))}
+        </div>
+      </section>
+
       <section className="space-y-3.5 sm:space-y-4">
         {/* 4 Slim KPI Summary Cards (2x2 on mobile/tablet, 4-col on desktop) */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
@@ -341,19 +468,19 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                       </span>
                     )}
                   </div>
-                  <div className="text-sm sm:text-base font-extrabold text-white break-words mt-0.5">
+                  <div className="text-sm sm:text-base font-extrabold text-white truncate mt-0.5">
                     {eliteLeader.name}
                   </div>
-                  <div className="flex flex-nowrap items-center gap-x-2 gap-y-0.5 mt-1 text-[11px] sm:text-xs font-mono tabular-nums whitespace-nowrap overflow-x-auto">
-                    <span className="text-[#93C5FD] font-bold">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1 text-[11px] sm:text-xs font-mono tabular-nums">
+                    <span className="text-[#93C5FD] font-bold whitespace-nowrap">
                       Total: {eliteLeader.score || 0}
                     </span>
                     <span aria-hidden="true" className="text-white/30">·</span>
-                    <span className="text-[#6EE7B7] font-bold">
+                    <span className="text-[#6EE7B7] font-bold whitespace-nowrap">
                       Today: {eliteLeader.result?.convert || 0}
                     </span>
                     <span aria-hidden="true" className="text-white/30">·</span>
-                    <span className="text-[#E2E8F0] font-medium">
+                    <span className="text-[#E2E8F0] font-medium whitespace-nowrap">
                       Leads: {eliteLeader.result?.submitted ? (eliteLeader.result.lead || 0) + (eliteLeader.result.personalLead || 0) : (eliteLeader.leads ?? 0)}
                     </span>
                   </div>
@@ -397,19 +524,19 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
                       </span>
                     )}
                   </div>
-                  <div className="text-sm sm:text-base font-extrabold text-white break-words mt-0.5">
+                  <div className="text-sm sm:text-base font-extrabold text-white truncate mt-0.5">
                     {eliteTrainer.name}
                   </div>
-                  <div className="flex flex-nowrap items-center gap-x-2 gap-y-0.5 mt-1 text-[11px] sm:text-xs font-mono tabular-nums whitespace-nowrap overflow-x-auto">
-                    <span className="text-[#6EE7B7] font-bold">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1 text-[11px] sm:text-xs font-mono tabular-nums">
+                    <span className="text-[#6EE7B7] font-bold whitespace-nowrap">
                       Total: {eliteTrainer.score || 0}
                     </span>
                     <span aria-hidden="true" className="text-white/30">·</span>
-                    <span className="text-[#FDE68A] font-bold">
+                    <span className="text-[#FDE68A] font-bold whitespace-nowrap">
                       Today: {eliteTrainer.result?.convert || 0}
                     </span>
                     <span aria-hidden="true" className="text-white/30">·</span>
-                    <span className="text-[#E2E8F0] font-medium">
+                    <span className="text-[#E2E8F0] font-medium whitespace-nowrap">
                       Leads: {eliteTrainer.result?.submitted ? (eliteTrainer.result.lead || 0) + (eliteTrainer.result.personalLead || 0) : (eliteTrainer.leads ?? 0)}
                     </span>
                   </div>
@@ -443,32 +570,48 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
             <div className="p-4 flex-1 flex flex-col justify-center">
               {sortedLeadersByRanking.length > 0 ? (
                 <div className="space-y-2">
-                  {sortedLeadersByRanking.slice(0, 3).map((member, i) => (
+                  {sortedLeadersByRanking.slice(0, 3).map((member, i) => {
+                    const result = member.result?.submitted
+                      ? member.result
+                      : results[member.id] ||
+                        member.result || {
+                          lead: 0,
+                          convert: 0,
+                          personalLead: 0,
+                          submitted: false,
+                        };
+                    return (
                       <div
                         key={member.id}
                         className="p-2.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] flex items-center justify-between gap-3"
                       >
-                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                          <span className="w-6 text-center font-mono tabular-nums text-xs font-bold text-[#0B4F9C] shrink-0">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className="w-6 text-center font-mono tabular-nums text-xs font-bold text-[#0B4F9C]">
                             #{i + 1}
                           </span>
                           <div className="w-9 h-9 rounded-full overflow-hidden border border-[#E2E8F0] shrink-0 bg-white">
                             <CartoonAvatar src={findAvatar(member.name)} name={member.name} />
                           </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="font-bold text-sm text-[#0F172A] break-words leading-snug">
+                          <div className="min-w-0">
+                            <div className="font-bold text-sm text-[#0F172A] truncate">
                               {member.name}
                             </div>
                             <div className="text-[11px] text-[#64748B]">Team Leader</div>
                           </div>
                         </div>
-                        <div className="text-right shrink-0 flex items-center">
-                          <div className="text-sm font-extrabold font-mono tabular-nums text-[#0B4F9C] bg-[#EEF5FF] border border-[#D6E6FF] px-2.5 py-1 rounded-lg">
-                            {member.score || 0}
+                        <div className="text-right shrink-0 flex flex-col items-end">
+                          {result.convert > 0 && (
+                            <span className="text-[10px] font-bold font-mono tabular-nums text-[#047857] bg-[#ECFDF5] border border-[#A7F3D0] px-1.5 py-0.5 rounded-md leading-none mb-1">
+                              +{result.convert} Today
+                            </span>
+                          )}
+                          <div className="text-sm font-extrabold font-mono tabular-nums text-[#0F172A] leading-tight">
+                            Total: {member.score || 0}
                           </div>
                         </div>
                       </div>
-                    ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="py-6 flex flex-col items-center text-center">
@@ -506,32 +649,48 @@ export const HomeSection: React.FC<HomeSectionProps> = ({
             <div className="p-4 flex-1 flex flex-col justify-center">
               {sortedTrainersByRanking.length > 0 ? (
                 <div className="space-y-2">
-                  {sortedTrainersByRanking.slice(0, 3).map((member, i) => (
+                  {sortedTrainersByRanking.slice(0, 3).map((member, i) => {
+                    const result = member.result?.submitted
+                      ? member.result
+                      : results[member.id] ||
+                        member.result || {
+                          lead: 0,
+                          convert: 0,
+                          personalLead: 0,
+                          submitted: false,
+                        };
+                    return (
                       <div
                         key={member.id}
                         className="p-2.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] flex items-center justify-between gap-3"
                       >
-                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                          <span className="w-6 text-center font-mono tabular-nums text-xs font-bold text-[#047857] shrink-0">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className="w-6 text-center font-mono tabular-nums text-xs font-bold text-[#047857]">
                             #{i + 1}
                           </span>
                           <div className="w-9 h-9 rounded-full overflow-hidden border border-[#E2E8F0] shrink-0 bg-white">
                             <CartoonAvatar src={findAvatar(member.name)} name={member.name} />
                           </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="font-bold text-sm text-[#0F172A] break-words leading-snug">
+                          <div className="min-w-0">
+                            <div className="font-bold text-sm text-[#0F172A] truncate">
                               {member.name}
                             </div>
                             <div className="text-[11px] text-[#64748B]">Team Trainer</div>
                           </div>
                         </div>
-                        <div className="text-right shrink-0 flex items-center">
-                          <div className="text-sm font-extrabold font-mono tabular-nums text-[#047857] bg-[#ECFDF5] border border-[#A7F3D0] px-2.5 py-1 rounded-lg">
-                            {member.score || 0}
+                        <div className="text-right shrink-0 flex flex-col items-end">
+                          {result.convert > 0 && (
+                            <span className="text-[10px] font-bold font-mono tabular-nums text-[#047857] bg-[#ECFDF5] border border-[#A7F3D0] px-1.5 py-0.5 rounded-md leading-none mb-1">
+                              +{result.convert} Today
+                            </span>
+                          )}
+                          <div className="text-sm font-extrabold font-mono tabular-nums text-[#0F172A] leading-tight">
+                            Total: {member.score || 0}
                           </div>
                         </div>
                       </div>
-                    ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="py-6 flex flex-col items-center text-center">
